@@ -96,6 +96,8 @@ Everything is reachable without a mouse. Press **?** in the app for the cheat sh
 | **⌫** | Delete |
 | **esc** | Close |
 
+Editing or deleting a recurring event first asks **This event** / **This and following events** / **All events** — pick one with **↑ ↓** + **↩**, or jump straight to it with **1 / 2 / 3**.
+
 | In the editor | |
 |---|---|
 | **⌘↩** | Save |
@@ -130,7 +132,9 @@ Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swif
 
 ## Known limitations / ideas
 
-- Editing a recurring event changes only that occurrence (no "all events" option yet).
+- "This and following events" (edit or delete) on Google splits the series by truncating the old RRULE and inserting a new one; this doesn't handle all-day recurring events' `UNTIL` correctly yet.
+- Creating a recurring event only offers a few fixed patterns (daily, weekly, monthly, every weekday) — no custom RRULE builder.
+- Deleting less than the whole series never detaches its Zoom meeting (only "All events" does).
 - No drag-to-move / resize of existing events yet.
 - No desktop notifications for upcoming meetings yet (the menu bar item shows the next one).
 - Zoom meetings are created with Zoom's default settings; add fields to the `settings` dictionary in `ZoomAPI.createMeeting` (waiting room, mute on entry, etc.).

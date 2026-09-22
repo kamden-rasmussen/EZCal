@@ -76,8 +76,8 @@ extension CalendarStore {
     }
 
     func openFocused() { if sheet == nil, let e = focusedEvent { sheet = .detail(e) } }
-    func editFocused() { if sheet == nil, let e = focusedEvent, e.canEdit { editDraft(e) } }
-    func deleteFocused() { if sheet == nil, let e = focusedEvent, e.canEdit { deleteRequest = e } }
+    func editFocused() { if sheet == nil, let e = focusedEvent, e.canEdit { requestEdit(e) } }
+    func deleteFocused() { if sheet == nil, let e = focusedEvent, e.canEdit { requestDelete(e) } }
 
     func toggleSidebar() { columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly }
 

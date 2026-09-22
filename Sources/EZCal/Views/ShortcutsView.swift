@@ -29,6 +29,10 @@ struct ShortcutsView: View {
             Row(label: "Delete", keys: ["⌫"]),
             Row(label: "Close", keys: ["esc"]),
         ]),
+        Section(title: "Choosing a recurring event's scope", rows: [
+            Row(label: "Choose highlighted / jump to a choice", keys: ["↑↓", "↩"]),
+            Row(label: "This event / this and following / all", keys: ["1", "2", "3"]),
+        ]),
         Section(title: "In the editor", rows: [
             Row(label: "Save", keys: ["⌘", "↩"]),
             Row(label: "Cancel", keys: ["esc"]),

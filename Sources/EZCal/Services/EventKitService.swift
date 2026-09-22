@@ -100,8 +100,11 @@ final class EventKitService: @unchecked Sendable {
     // MARK: Writes
 
     /// `notes == nil` leaves the existing notes untouched. For all-day events `end` is the inclusive last day.
+    /// `span` controls how an edit to a recurring event applies (issue #3); `recurrenceRule` is only used
+    /// when creating a new event.
     func save(existing: CalEvent?, calendarId: String, title: String, start: Date, end: Date,
-              allDay: Bool, location: String, notes: String?) throws {
+              allDay: Bool, location: String, notes: String?,
+              span: EKSpan = .thisEvent, recurrenceRule: EKRecurrenceRule? = nil) throws {
         let ev: EKEvent
         if let existing {
             guard let found = find(existing) else { throw APIError.invalid("That event no longer exists in Calendar.") }
@@ -110,6 +113,7 @@ final class EventKitService: @unchecked Sendable {
             guard let cal = store.calendar(withIdentifier: calendarId) else { throw APIError.invalid("Calendar not found.") }
             ev = EKEvent(eventStore: store)
             ev.calendar = cal
+            if let recurrenceRule { ev.recurrenceRules = [recurrenceRule] }
         }
         ev.title = title.isEmpty ? "New Event" : title
         ev.isAllDay = allDay
@@ -117,11 +121,11 @@ final class EventKitService: @unchecked Sendable {
         ev.endDate = end
         ev.location = location.isEmpty ? nil : location
         if let notes { ev.notes = notes.isEmpty ? nil : notes }
-        try store.save(ev, span: .thisEvent, commit: true)
+        try store.save(ev, span: span, commit: true)
     }
 
-    func delete(_ event: CalEvent) throws {
+    func delete(_ event: CalEvent, span: EKSpan = .thisEvent) throws {
         guard let ev = find(event) else { return }
-        try store.remove(ev, span: .thisEvent, commit: true)
+        try store.remove(ev, span: span, commit: true)
     }
 }

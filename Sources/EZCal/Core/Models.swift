@@ -77,6 +77,9 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     var canEdit: Bool
     var isBusyOnly: Bool
     var isRecurring: Bool
+    /// Google's id for the recurring event's master/series (nil for a non-recurring event, or an
+    /// EventKit one — EventKit doesn't distinguish instance vs. series ids the way Google does).
+    var recurringEventId: String? = nil
     var zoomMeetingID: String?
     var isTentative: Bool
     var isDeclined: Bool
@@ -149,6 +152,10 @@ struct EventDraft: Identifiable {
     var notes = ""
     var attendees: [Attendee] = []
     var video: Video = .none
+    /// Which occurrences an edit to an existing recurring event applies to (chosen via RecurrenceScopeView).
+    var recurrenceScope: RecurrenceScope = .thisEvent
+    /// Recurrence to create a new event with; ignored when editing an existing event.
+    var recurrence: RecurrenceOption = .none
 }
 
 enum ViewMode: String, CaseIterable, Identifiable {
@@ -169,6 +176,8 @@ enum ActiveSheet: Identifiable {
     case editor(EventDraft)
     case palette
     case shortcuts
+    /// Shown before editing or deleting an occurrence of a recurring event.
+    case recurrenceScope(CalEvent, RecurrenceAction)
 
     var id: String {
         switch self {
@@ -176,6 +185,7 @@ enum ActiveSheet: Identifiable {
         case .shortcuts: return "shortcuts"
         case .detail(let e): return "detail-" + e.id
         case .editor(let d): return "editor-" + d.id.uuidString
+        case .recurrenceScope(let e, let a): return "scope-\(a.rawValue)-" + e.id
         }
     }
 }
