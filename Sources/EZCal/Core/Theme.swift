@@ -34,6 +34,10 @@ enum Theme {
     static let selection = dynamic("#E3E8FA", "#262C4A")
     static let todayBg = dynamic("#F6F5FF", "#1B1C22")
     static let now = Color(nsColor: NSColor(hex: "#E5484D"))
+    /// Subtle wash over non-working hours in the time grid.
+    static let nonWorkingShade = Color(nsColor: NSColor(name: nil) { a in
+        a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor.black.withAlphaComponent(0.16) : NSColor.black.withAlphaComponent(0.035)
+    })
 
     /// Event title color: the calendar color pulled toward the text color so it stays readable on its own tint.
     static func eventText(_ c: Color) -> Color {

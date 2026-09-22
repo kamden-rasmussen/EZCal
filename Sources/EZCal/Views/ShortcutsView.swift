@@ -41,6 +41,7 @@ struct ShortcutsView: View {
             Row(label: "Show or hide a coworker", keys: ["⌘K"]),
             Row(label: "Toggle sidebar", keys: ["⌘", "\\"]),
             Row(label: "Hide weekends", keys: ["⌘", "⇧", "W"]),
+            Row(label: "Show / hide time zone", keys: ["⌘K"]),
             Row(label: "Refresh", keys: ["⌘", "R"]),
         ]),
         Section(title: "App", rows: [

@@ -50,9 +50,13 @@ enum EventLayout {
 struct TimeGridView: View {
     @Environment(CalendarStore.self) private var store
     @AppStorage("hourHeight") private var hourHeight = 56.0
+    @AppStorage("showSecondaryZone") private var showSecondaryZone = true
+    @AppStorage("secondaryZoneID") private var secondaryZoneID = ""
     let days: [Date]
 
     private let gutter: CGFloat = 56
+    private var secondaryZone: TimeZone? { AppSettings.effectiveZone(id: secondaryZoneID, show: showSecondaryZone) }
+    private var secondaryWidth: CGFloat { secondaryZone == nil ? 0 : 44 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,6 +67,7 @@ struct TimeGridView: View {
                 ScrollView {
                     HStack(alignment: .top, spacing: 0) {
                         hourGutter
+                        if let zone = secondaryZone { secondaryGutter(zone) }
                         ForEach(days, id: \.self) { day in
                             DayColumn(day: day, hourHeight: hourHeight)
                         }
@@ -73,8 +78,9 @@ struct TimeGridView: View {
                 .scrollIndicators(.hidden)
                 .task {
                     try? await Task.sleep(nanoseconds: 60_000_000)   // let the grid lay out first
+                    let start = AppSettings.workingHours.startHour        // grid opens at the beginning of the working day
                     let now = Calendar.current.component(.hour, from: Date())
-                    proxy.scrollTo("hour-\(min(max(now - 4, 6), 8))", anchor: .top)
+                    proxy.scrollTo("hour-\(min(max(now - 4, start), start + 2))", anchor: .top)
                 }
                 .onChange(of: store.focusedEventID) { _, _ in
                     guard let e = store.focusedEvent, !e.isAllDay else { return }
@@ -88,6 +94,12 @@ struct TimeGridView: View {
     private var header: some View {
         HStack(spacing: 0) {
             Color.clear.frame(width: gutter, height: 1)
+            if let zone = secondaryZone {
+                Text(ZoneMath.shortName(zone))
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.text3)
+                    .frame(width: secondaryWidth, height: 1, alignment: .center)
+                    .help("Secondary time zone: \(zone.identifier)")
+            }
             ForEach(days, id: \.self) { day in
                 let isToday = Calendar.current.isDateInToday(day)
                 HStack(spacing: 8) {
@@ -118,6 +130,7 @@ struct TimeGridView: View {
                 HStack(alignment: .top, spacing: 0) {
                     Text("all-day").font(.system(size: 11)).foregroundStyle(Theme.text3)
                         .frame(width: gutter - 8, alignment: .trailing).padding(.trailing, 8).padding(.top, 6)
+                    Color.clear.frame(width: secondaryWidth, height: 1)
                     ForEach(Array(days.enumerated()), id: \.offset) { i, _ in
                         VStack(spacing: 2) {
                             ForEach(perDay[i]) { e in AllDayChip(event: e) }
@@ -149,13 +162,32 @@ struct TimeGridView: View {
         .frame(width: gutter, alignment: .leading)
     }
 
+    /// Second hour column showing the same instants converted into `zone`'s wall clock (e.g. "9 AM" → "6 PM CET").
+    private func secondaryGutter(_ zone: TimeZone) -> some View {
+        let refDay = days.first ?? Date()
+        let dayStart = Calendar.current.startOfDay(for: refDay)
+        return VStack(spacing: 0) {
+            ForEach(0..<24, id: \.self) { h in
+                let instant = Calendar.current.date(byAdding: .hour, value: h, to: dayStart) ?? refDay
+                Text(h == 0 ? "" : ZoneMath.hourLabel(instant, in: zone))
+                    .font(.system(size: 10).monospacedDigit()).foregroundStyle(Theme.text3.opacity(0.85))
+                    .padding(.top, 1)
+                    .frame(width: secondaryWidth, height: hourHeight, alignment: .top)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.top, -8)
+        .frame(width: secondaryWidth, alignment: .leading)
+        .overlay(alignment: .trailing) { Rectangle().fill(Theme.line2).frame(width: 1) }
+    }
+
     private var hourLines: some View {
         VStack(spacing: 0) {
             ForEach(0..<24, id: \.self) { _ in
                 Rectangle().fill(Theme.line2).frame(height: 1).frame(height: hourHeight, alignment: .top)
             }
         }
-        .padding(.leading, gutter)
+        .padding(.leading, gutter + secondaryWidth)
         .padding(.trailing, 8)
         .allowsHitTesting(false)
     }
@@ -186,6 +218,15 @@ struct DayColumn: View {
                     .contentShape(Rectangle())
                     .gesture(createGesture)
                     .accessibilityHidden(true)
+
+                // Subtle wash over hours outside the working day (Settings → General → Working hours).
+                ForEach(Array(AppSettings.workingHours.nonWorkingRanges(on: day, cal: store.cal).enumerated()), id: \.offset) { _, r in
+                    Theme.nonWorkingShade
+                        .frame(height: CGFloat(r.upperBound - r.lowerBound) / 60 * hourHeight)
+                        .offset(y: CGFloat(r.lowerBound) / 60 * hourHeight)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
 
                 ForEach(placed) { p in
                     let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
@@ -324,7 +365,7 @@ struct EventBlock: View {
         .opacity(event.isDeclined ? 0.5 : 1)
         .contentShape(shape)
         .onHover { hovering = $0 }
-        .help(event.ownerName.map { "\($0) · \(titleText)" } ?? titleText)
+        .help(helpText)
         .onTapGesture { store.focusedEventID = event.id; store.sheet = .detail(event) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
@@ -334,6 +375,14 @@ struct EventBlock: View {
     private var titleText: String {
         if event.ownerName != nil, event.isBusyOnly { return "Busy" }
         return event.title
+    }
+
+    /// Base hover tooltip, plus the event's time in the secondary time zone (if one is configured) so you don't
+    /// have to do the math when scheduling across zones.
+    private var helpText: String {
+        let base = event.ownerName.map { "\($0) · \(titleText)" } ?? titleText
+        guard !event.isAllDay, let zone = AppSettings.secondaryTimeZone else { return base }
+        return "\(base) · \(ZoneMath.rangeLabel(start: event.start, end: event.end, in: zone))"
     }
 
     private var accessibilityText: String {
