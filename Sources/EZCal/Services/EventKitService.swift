@@ -125,3 +125,73 @@ final class EventKitService: @unchecked Sendable {
         try store.remove(ev, span: .thisEvent, commit: true)
     }
 }
+
+// MARK: - Reminders / Tasks
+
+extension EventKitService {
+    var isRemindersAuthorized: Bool { EKEventStore.authorizationStatus(for: .reminder) == .fullAccess }
+
+    func requestRemindersAccess() async throws -> Bool {
+        try await store.requestFullAccessToReminders()
+    }
+
+    func taskLists() -> [TaskList] {
+        store.calendars(for: .reminder).map { c in
+            TaskList(id: "ektl|\(c.calendarIdentifier)", listId: c.calendarIdentifier, name: c.title, colorHex: Self.hex(c.cgColor))
+        }
+    }
+
+    /// `fetchReminders` is callback-based even though nothing here does network I/O.
+    func tasks(for list: TaskList) async -> [EZTask] {
+        await withCheckedContinuation { cont in
+            guard let cal = store.calendar(withIdentifier: list.listId) else { cont.resume(returning: []); return }
+            let pred = store.predicateForReminders(in: [cal])
+            store.fetchReminders(matching: pred) { reminders in
+                cont.resume(returning: (reminders ?? []).compactMap { Self.map($0, list: list) })
+            }
+        }
+    }
+
+    static func map(_ r: EKReminder, list: TaskList) -> EZTask {
+        let due = r.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
+        let hasTime = r.dueDateComponents?.hour != nil
+        return EZTask(id: "\(list.id)|\(r.calendarItemIdentifier)", taskId: r.calendarItemIdentifier, listId: list.id,
+                      title: (r.title?.isEmpty == false ? r.title! : "(No title)"), notes: r.notes ?? "",
+                      dueDate: due, hasDueTime: hasTime, isCompleted: r.isCompleted, colorHex: list.colorHex)
+    }
+
+    /// `existing == nil` creates a new reminder in `listId`. `due == nil` clears the due date.
+    func saveTask(existing: EZTask?, listId: String, title: String, due: Date?, hasDueTime: Bool, notes: String) throws {
+        let r: EKReminder
+        if let existing, let found = store.calendarItem(withIdentifier: existing.taskId) as? EKReminder {
+            r = found
+        } else {
+            guard let cal = store.calendar(withIdentifier: listId) else { throw APIError.invalid("Reminder list not found.") }
+            r = EKReminder(eventStore: store)
+            r.calendar = cal
+        }
+        r.title = title.isEmpty ? "New Task" : title
+        r.notes = notes.isEmpty ? nil : notes
+        if let due {
+            let units: Set<Calendar.Component> = hasDueTime ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day]
+            r.dueDateComponents = Calendar.current.dateComponents(units, from: due)
+        } else {
+            r.dueDateComponents = nil
+        }
+        try store.save(r, commit: true)
+    }
+
+    func setTaskCompleted(_ task: EZTask, completed: Bool) throws {
+        guard let r = store.calendarItem(withIdentifier: task.taskId) as? EKReminder else {
+            throw APIError.invalid("That task no longer exists in Reminders.")
+        }
+        r.isCompleted = completed
+        r.completionDate = completed ? Date() : nil
+        try store.save(r, commit: true)
+    }
+
+    func deleteTask(_ task: EZTask) throws {
+        guard let r = store.calendarItem(withIdentifier: task.taskId) as? EKReminder else { return }
+        try store.remove(r, commit: true)
+    }
+}

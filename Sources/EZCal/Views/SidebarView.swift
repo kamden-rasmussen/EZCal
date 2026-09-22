@@ -22,6 +22,12 @@ struct SidebarView: View {
                     }
                 }
 
+                if store.tasks.enabled && !store.tasks.lists.isEmpty {
+                    group("Tasks") {
+                        ForEach(store.tasks.lists) { l in TaskListRow(list: l) }
+                    }
+                }
+
                 if !store.accounts.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
@@ -129,6 +135,36 @@ private struct SourceRow: View {
         .onHover { hovering = $0 }
         .accessibilityLabel("\(source.name), \(on ? "shown" : "hidden")")
         .accessibilityHint("Toggles this calendar")
+    }
+}
+
+/// Sidebar row for a reminder list, styled to match `SourceRow` above.
+private struct TaskListRow: View {
+    @Environment(CalendarStore.self) private var store
+    let list: TaskList
+    @State private var hovering = false
+
+    var body: some View {
+        let on = store.tasks.isVisible(list)
+        Button { store.tasks.toggle(list) } label: {
+            HStack(spacing: 9) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(on ? list.color : Color.clear)
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(list.color, lineWidth: on ? 0 : 1.5))
+                    .overlay { if on { Image(systemName: "checkmark").font(.system(size: 8, weight: .heavy)).foregroundStyle(.white) } }
+                    .frame(width: 14, height: 14)
+                    .padding(.horizontal, 3)
+                Text(list.name).lineLimit(1).foregroundStyle(on ? Theme.text : Theme.text2)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 6).frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Theme.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityLabel("\(list.name) tasks, \(on ? "shown" : "hidden")")
+        .accessibilityHint("Toggles this reminder list")
     }
 }
 

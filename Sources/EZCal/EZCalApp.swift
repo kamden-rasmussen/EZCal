@@ -21,6 +21,7 @@ struct EZCalApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Event") { store.newDraft() }.keyboardShortcut("n")
+                NewWindowButton()
             }
 
             CommandMenu("Calendar") {
@@ -57,6 +58,19 @@ struct EZCalApp: App {
             }
         }
 
+        // ⌘⇧N: a second, independent window (e.g. to compare two weeks side by side). It gets its own
+        // `CalendarStore`, so navigation state (anchor/mode/focus/sheet) is isolated per window; accounts,
+        // calendars and Reminders lists are shared because they're read from the same UserDefaults/Keychain/
+        // EventKit store, but each window fetches and caches its own copy of events rather than sharing one
+        // in-memory cache. See README "Multi-window" for the tradeoffs of this approach.
+        WindowGroup("EZCal", id: "secondary") {
+            ContentView()
+                .environment(CalendarStore())
+                .frame(minWidth: 980, minHeight: 640)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1440, height: 900)
+
         MenuBarExtra {
             MenuBarView().environment(store)
         } label: {
@@ -66,5 +80,14 @@ struct EZCalApp: App {
         Settings {
             SettingsView().environment(store)
         }
+    }
+}
+
+/// Small wrapper so `.commands { }` (which builds a plain `View`) can reach `openWindow`.
+private struct NewWindowButton: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("New Window") { openWindow(id: "secondary") }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
     }
 }

@@ -67,6 +67,21 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     if let e = store.errorMessage, !store.eventKitEnabled { Text(e).font(.caption).foregroundStyle(.red) }
                 }
+                Section("Reminders (tasks)") {
+                    if store.tasks.enabled {
+                        HStack {
+                            Label("Enabled", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            Spacer()
+                            Button("Disable", role: .destructive) { store.disableReminders() }
+                        }
+                    } else {
+                        Button { Task { await store.enableReminders() } } label: {
+                            Label("Enable Reminders access", systemImage: "checklist")
+                        }
+                    }
+                    Text("Shows tasks with due dates from Apple Reminders in the grid, with a checkbox to complete them, and lets ⌘K quick-add new ones (\u{201c}task: call dentist tomorrow 3pm\u{201d}).")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Google OAuth client") { GoogleCredentialsForm() }
             }
             .formStyle(.grouped)
