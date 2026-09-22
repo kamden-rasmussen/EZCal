@@ -9,6 +9,7 @@ struct EventEditorView: View {
     @State private var suggestions: [DirectoryPerson] = []
     @State private var busy: [String: [Range<Date>]?] = [:]
     @State private var showFindTime = false
+    @State private var confirmRemoveZoom = false
     @FocusState private var titleFocused: Bool
 
     init(draft: EventDraft) { _draft = State(initialValue: draft) }
@@ -76,6 +77,11 @@ struct EventEditorView: View {
                 onPick: { start, end, _ in draft.start = start; draft.end = end; showFindTime = false },
                 onClose: { showFindTime = false }
             )
+        }
+        .confirmationDialog("Remove the Zoom meeting?", isPresented: $confirmRemoveZoom) {
+            Button("Remove", role: .destructive) { if let e = draft.existing { Task { await store.removeZoom(from: e) } } }
+        } message: {
+            Text("This deletes the Zoom meeting and removes its link from the event.")
         }
     }
 
@@ -384,6 +390,9 @@ struct EventEditorView: View {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(url.absoluteString, forType: .string)
                         }.buttonStyle(SecondaryButtonStyle())
+                        if draft.existing?.meetingProvider == .zoom {
+                            Button("Remove") { confirmRemoveZoom = true }.buttonStyle(SecondaryButtonStyle())
+                        }
                     }
                 } else {
                     HStack(spacing: 6) {
@@ -395,6 +404,7 @@ struct EventEditorView: View {
                         if store.zoomConnected {
                             Text("A Zoom meeting is created when you save, and the link is added to the event.")
                                 .font(.system(size: 12)).foregroundStyle(Theme.text2)
+                            zoomOptionsGrid
                         } else {
                             HStack {
                                 Text("Zoom isn't connected yet.").font(.system(size: 12)).foregroundStyle(Theme.text2)
@@ -406,6 +416,32 @@ struct EventEditorView: View {
             }
         }
         .padding(.vertical, 14)
+    }
+
+    /// Zoom's Create Meeting `settings` fields; passed through to `ZoomAPI.createMeeting` on save.
+    private var zoomOptionsGrid: some View {
+        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 4) {
+            GridRow {
+                zoomToggle("Waiting room", $draft.zoomOptions.waitingRoom)
+                zoomToggle("Mute on entry", $draft.zoomOptions.muteOnEntry)
+            }
+            GridRow {
+                zoomToggle("Join before host", $draft.zoomOptions.joinBeforeHost)
+                zoomToggle("Require passcode", $draft.zoomOptions.passcodeEnabled)
+            }
+            GridRow {
+                zoomToggle("Host video on", $draft.zoomOptions.hostVideoOn)
+                zoomToggle("Participant video on", $draft.zoomOptions.participantVideoOn)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func zoomToggle(_ label: String, _ isOn: Binding<Bool>) -> some View {
+        Toggle(label, isOn: isOn)
+            .toggleStyle(.checkbox)
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.text2)
     }
 
     private func videoButton(_ v: EventDraft.Video, _ label: String, key: KeyEquivalent) -> some View {
@@ -486,7 +522,11 @@ struct EventEditorView: View {
         saving = true; error = nil
         Task {
             do { try await store.save(draft) }
-            catch { self.error = error.localizedDescription }
+            catch {
+                self.error = error.localizedDescription
+                // Flip the shared flag so this view's (and every other) "Connect Zoom" button becomes reconnect.
+                if case APIError.zoomReconnectNeeded = error { store.zoomConnected = false; store.zoomNeedsReconnect = true }
+            }
             saving = false
         }
     }

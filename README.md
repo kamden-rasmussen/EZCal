@@ -5,7 +5,7 @@ A free, hackable, native macOS calendar for Google Calendar, inspired by Notion 
 - **Google Calendar**: multiple accounts, day / week / month views, create / edit / delete / RSVP
 - **iCloud & Apple Calendar accounts**: every calendar macOS already syncs (iCloud, Exchange, Fastmail, CalDAV) appears alongside Google, with no passwords or API keys. Events on both are de-duplicated.
 - **Coworker overlay**: search your Google Workspace directory, click a person, and their calendar appears in your grid (full details if they share them with you, free/busy blocks if not)
-- **Zoom in one click**: pick "Zoom" when creating an event, or hit "Add Zoom meeting" on an existing one. Real Zoom meetings are created through the Zoom API and attached to the event. Google Meet works too.
+- **Zoom in one click**: pick "Zoom" when creating an event, or hit "Add Zoom meeting" on an existing one, with your own defaults (waiting room, mute on entry, join before host, host/participant video, passcode) editable per event. Real Zoom meetings are created through the Zoom API and attached to the event, deleted when you delete the event or remove the link, and updated if you move the event's time. Google Meet works too.
 - **Availability check** while inviting people ("Alice is busy at this time")
 - **Find a time** (⌘F in the editor, or ⌘K → "Find a time for coworkers"): lists the best slots where every attendee you can see is free, with a per-day availability grid; people whose calendars aren't shared show as "unknown" and never block a slot
 - **Join buttons** on every event with a Zoom / Meet / Teams link, plus a menu bar item showing your next meeting
@@ -35,7 +35,7 @@ You bring your own API credentials, so the app is free and nothing is shared wit
 
 Click **Use my iCloud / Apple Calendar accounts** on the welcome screen (or Settings → Accounts) and allow calendar access. EZCal reads whatever accounts you've added in System Settings → Internet Accounts, so to add iCloud, Exchange, etc., add them there.
 
-Limits versus Google calendars: EventKit doesn't let apps invite people or set your RSVP, so those controls and Google Meet are hidden for Apple calendars, and Zoom meetings on them aren't auto-deleted when you delete the event. Coworker overlay is Google-only.
+Limits versus Google calendars: EventKit doesn't let apps invite people or set your RSVP, so those controls and Google Meet are hidden for Apple calendars. Coworker overlay is Google-only.
 
 ### 1. Google (optional if you only use Apple Calendar, ~5 min)
 
@@ -59,6 +59,12 @@ Notes:
 4. Copy the **Client ID** and **Client secret** into EZCal Settings → Zoom, then **Connect Zoom**.
 
 You don't need to publish the Zoom app; leaving it in development works for your own account. If your Zoom admin restricts app installs, ask them to pre-approve it.
+
+Meeting defaults (waiting room, mute on entry, join before host, host/participant video, passcode) live in Settings → Zoom; each event's editor starts from those and lets you change them before the meeting is created. "Remove Zoom link" on an event deletes the Zoom meeting and strips it from the event. If Zoom rejects EZCal's token (revoked or expired), the next Zoom action shows an error with a one-click **Reconnect Zoom** — in the banner at the top of the window, in Settings → Zoom, or right in the editor.
+
+### How EZCal remembers an Apple Calendar event's Zoom meeting
+
+EventKit (iCloud/Apple Calendar) has no field for arbitrary app metadata, so there's nowhere obvious to store "this event's Zoom meeting is #123". EZCal keeps the id in a single hidden line appended to the event's notes — two zero-width spaces bracketing `EZCAL-ZOOM:<id>` — which `EventKitService` strips out before showing notes anywhere in the app or re-adds when saving. This was chosen over a local id-to-event map (keyed by EventKit's `eventIdentifier`) because the marker travels with the event itself: it survives EZCal being reinstalled, another device editing the same iCloud event, and EventKit occasionally reassigning identifiers, all of which would silently orphan a local map. The formatting/parsing lives in `ZoomNotes` (`Services/ZoomAPI.swift`) and is unit-tested in `Tests/EZCalTests/ZoomTests.swift`.
 
 ## How coworker overlay works
 
@@ -153,13 +159,13 @@ Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback tests, slot
 scripts/                    build_app.sh, make_icon.swift
 ```
 
-Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swift`), the collision layout in `EventLayout`, the palette in `Palette` (`Util.swift`), what gets written into the event when Zoom is attached in `CalendarStore.zoomBlock`.
+Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swift`), the collision layout in `EventLayout`, the palette in `Palette` (`Util.swift`), what gets written into the event when Zoom is attached in `ZoomNotes` (`Services/ZoomAPI.swift`), and meeting options in `ZoomMeetingOptions` (same file).
 
 ## Known limitations / ideas
 
 - Editing a recurring event changes only that occurrence (no "all events" option yet).
-- Zoom meetings are created with Zoom's default settings; add fields to the `settings` dictionary in `ZoomAPI.createMeeting` (waiting room, mute on entry, etc.).
 - Moving an event to another calendar isn't supported in the editor.
+- "Remove Zoom link" recognizes the block EZCal itself appends; on a Google event whose description is HTML (rare — only happens if it already contained a `<` before Zoom was added) it may remove more than just the Zoom lines. Plain-text notes (the common case, and always the case for Apple Calendar events) aren't affected.
 
 ## License
 

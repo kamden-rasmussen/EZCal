@@ -33,6 +33,9 @@ final class CalendarStore {
     var errorMessage: String?
     var sheet: ActiveSheet?
     var zoomConnected = ZoomAPI.isConnected
+    /// True only when a Zoom call just failed because the token was expired/revoked — distinct from
+    /// `!zoomConnected` so the error banner doesn't offer "Reconnect" for someone who never connected Zoom.
+    var zoomNeedsReconnect = false
     var eventKitEnabled = false
     /// `EZCAL_DEMO=1`: fake calendars and events, nothing read from or written to your accounts.
     let isDemo = ProcessInfo.processInfo.environment["EZCAL_DEMO"] != nil
@@ -299,11 +302,11 @@ final class CalendarStore {
     }
 
     func connectZoom() async {
-        do { try await ZoomAPI.connect(); zoomConnected = true; errorMessage = nil }
+        do { try await ZoomAPI.connect(); zoomConnected = true; zoomNeedsReconnect = false; errorMessage = nil }
         catch { errorMessage = error.localizedDescription }
     }
 
-    func disconnectZoom() { ZoomAPI.disconnect(); zoomConnected = false }
+    func disconnectZoom() { ZoomAPI.disconnect(); zoomConnected = false; zoomNeedsReconnect = false }
 
     // MARK: - Loading
 
@@ -560,21 +563,6 @@ final class CalendarStore {
         sheet = .editor(d)
     }
 
-    private func zoomBlock(_ m: ZoomMeeting, html: Bool) -> String {
-        var lines = ["Join Zoom Meeting", m.joinURL, "", "Meeting ID: \(m.id)"]
-        if let p = m.password, !p.isEmpty { lines.append("Passcode: \(p)") }
-        if html {
-            lines[1] = "<a href=\"\(m.joinURL)\">\(m.joinURL)</a>"
-            return lines.joined(separator: "<br>")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private func appendBlock(_ block: String, to notes: String, html: Bool) -> String {
-        if notes.isEmpty { return block }
-        return notes + (html ? "<br><br>" : "\n\n") + block
-    }
-
     func save(_ d: EventDraft) async throws {
         let title = d.title.trimmingCharacters(in: .whitespaces)
         let existing = d.existing
@@ -604,9 +592,9 @@ final class CalendarStore {
         var wantsMeet = false
 
         if d.video == .zoom, existing?.meetingURL == nil {
-            let m = try await ZoomAPI.createMeeting(topic: displayTitle, start: start, end: end, agenda: "")
+            let m = try await ZoomAPI.createMeeting(topic: displayTitle, start: start, end: end, agenda: "", options: d.zoomOptions)
             let html = !isEK && rawNotes.contains("<")
-            rawNotes = appendBlock(zoomBlock(m, html: html), to: rawNotes, html: html)
+            rawNotes = ZoomNotes.appending(ZoomNotes.block(for: m, html: html), to: rawNotes, html: html)
             notesChanged = true
             if location.isEmpty { location = m.joinURL }
             zoomId = String(m.id)
@@ -617,10 +605,16 @@ final class CalendarStore {
         _ = notes; notes = rawNotes
 
         if isEK {
+            // The visible notes never contain the marker; re-embed it here so it survives the round trip.
+            let ekNotes = notesChanged ? ZoomNotes.applyingMarker(id: zoomId, to: notes) : nil
             try EventKitService.shared.save(existing: existing, calendarId: calendarId, title: displayTitle,
                                             start: start, end: d.isAllDay ? c.startOfDay(for: max(d.start, d.end)) : end,
                                             allDay: d.isAllDay, location: location,
-                                            notes: notesChanged ? notes : nil)
+                                            notes: ekNotes)
+            if let zid = zoomId, let existing, existing.zoomMeetingID != nil,
+               (existing.start != start || existing.end != end || existing.title != title) {
+                await ZoomAPI.updateMeeting(id: zid, topic: displayTitle, start: start, end: end)
+            }
             sheet = nil
             await reload()
             await refreshUpcoming()
@@ -677,19 +671,21 @@ final class CalendarStore {
             sheet = nil
             await reload()
             await refreshUpcoming()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { reportZoomError(error) }
     }
 
     /// One-click "add Zoom" for an event that already exists.
     func attachZoom(to e: CalEvent) async {
         do {
             let end = e.end > e.start ? e.end : e.start.addingTimeInterval(1800)
-            let m = try await ZoomAPI.createMeeting(topic: e.title, start: e.start, end: end)
+            let m = try await ZoomAPI.createMeeting(topic: e.title, start: e.start, end: end, options: .defaults)
             if e.isEventKit {
+                let notes = ZoomNotes.applyingMarker(id: String(m.id),
+                    to: ZoomNotes.appending(ZoomNotes.block(for: m, html: false), to: e.notes, html: false))
                 try EventKitService.shared.save(existing: e, calendarId: e.calendarId, title: e.title,
                                                 start: e.start, end: e.end, allDay: e.isAllDay,
                                                 location: e.location.isEmpty ? m.joinURL : e.location,
-                                                notes: appendBlock(zoomBlock(m, html: false), to: e.notes, html: false))
+                                                notes: notes)
                 sheet = nil
                 await reload()
                 await refreshUpcoming()
@@ -697,7 +693,7 @@ final class CalendarStore {
             }
             let html = e.notes.contains("<")
             var body: [String: Any] = [
-                "description": appendBlock(zoomBlock(m, html: html), to: e.notes, html: html),
+                "description": ZoomNotes.appending(ZoomNotes.block(for: m, html: html), to: e.notes, html: html),
                 "extendedProperties": ["private": ["zoomMeetingId": String(m.id)]],
             ]
             if e.location.isEmpty { body["location"] = m.joinURL }
@@ -705,7 +701,39 @@ final class CalendarStore {
             sheet = nil
             await reload()
             await refreshUpcoming()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { reportZoomError(error) }
+    }
+
+    /// "Remove Zoom link": deletes the meeting on Zoom's side (if we created it) and strips the block
+    /// and hidden marker from the event's location/notes. Leaves other meeting links (Meet, a pasted
+    /// Teams/Webex URL) untouched.
+    func removeZoom(from e: CalEvent) async {
+        guard e.meetingProvider == .zoom else { return }
+        do {
+            if let z = e.zoomMeetingID { await ZoomAPI.deleteMeeting(id: z) }
+            let newLocation = e.location == e.meetingURL?.absoluteString ? "" : e.location
+            let newNotes = ZoomNotes.removingZoomBlock(from: e.notes)
+            if e.isEventKit {
+                try EventKitService.shared.save(existing: e, calendarId: e.calendarId, title: e.title,
+                                                start: e.start, end: e.end, allDay: e.isAllDay,
+                                                location: newLocation,
+                                                notes: ZoomNotes.applyingMarker(id: nil, to: newNotes))
+            } else {
+                var body: [String: Any] = ["location": newLocation, "description": newNotes]
+                if e.zoomMeetingID != nil { body["extendedProperties"] = ["private": ["zoomMeetingId": NSNull()]] }
+                try await GoogleAPI(accountId: e.accountId).patchEvent(calendarId: e.calendarId, eventId: e.eventId, body: body)
+            }
+            sheet = nil
+            await reload()
+            await refreshUpcoming()
+        } catch { reportZoomError(error) }
+    }
+
+    /// Records the error for the banner and, when it's Zoom rejecting our token, flips `zoomConnected`
+    /// so every "Connect Zoom" button in the app becomes a one-click reconnect.
+    private func reportZoomError(_ error: Error) {
+        errorMessage = error.localizedDescription
+        if case APIError.zoomReconnectNeeded = error { zoomConnected = false; zoomNeedsReconnect = true }
     }
 
     func rsvp(_ e: CalEvent, _ response: String) async {

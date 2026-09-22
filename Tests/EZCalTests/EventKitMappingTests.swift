@@ -38,4 +38,28 @@ final class EventKitMappingTests: XCTestCase {
         ev.title = "Holiday"; ev.startDate = Date(); ev.endDate = Date().addingTimeInterval(3600)
         XCTAssertFalse(EventKitService.map(ev, source: ro)!.canEdit)
     }
+
+    /// EventKit has no custom-field API, so a Zoom meeting id attached to an Apple Calendar event is
+    /// remembered as a hidden marker line in `notes` (see `ZoomNotes`). `map` should recover the id
+    /// and hide the marker from the notes it surfaces to the rest of the app.
+    func testZoomMarkerIsParsedAndHiddenFromNotes() {
+        let ev = EKEvent(eventStore: EKEventStore())
+        ev.title = "Standup"
+        ev.startDate = Date(timeIntervalSince1970: 1_800_000_000)
+        ev.endDate = ev.startDate.addingTimeInterval(1800)
+        ev.notes = ZoomNotes.applyingMarker(id: "555111222", to: "Agenda:\n- one\n- two")
+        let e = EventKitService.map(ev, source: src)!
+        XCTAssertEqual(e.zoomMeetingID, "555111222")
+        XCTAssertEqual(e.notes, "Agenda:\n- one\n- two")
+        XCTAssertFalse(e.notes.contains("EZCAL-ZOOM"))
+    }
+
+    func testNoZoomMarkerMeansNilZoomMeetingID() {
+        let ev = EKEvent(eventStore: EKEventStore())
+        ev.title = "Lunch"; ev.startDate = Date(); ev.endDate = Date().addingTimeInterval(1800)
+        ev.notes = "Just lunch, no video call."
+        let e = EventKitService.map(ev, source: src)!
+        XCTAssertNil(e.zoomMeetingID)
+        XCTAssertEqual(e.notes, "Just lunch, no video call.")
+    }
 }

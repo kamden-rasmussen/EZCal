@@ -119,6 +119,14 @@ enum AppSettings {
     static var hasGoogleCredentials: Bool { !googleClientID.isEmpty }
     static var hasZoomCredentials: Bool { !zoomClientID.isEmpty && !zoomClientSecret.isEmpty }
 
+    // Zoom meeting defaults (Settings → Zoom); see `ZoomMeetingOptions`.
+    static var zoomWaitingRoom: Bool { defaults.object(forKey: "zoomWaitingRoom") as? Bool ?? true }
+    static var zoomMuteOnEntry: Bool { defaults.object(forKey: "zoomMuteOnEntry") as? Bool ?? false }
+    static var zoomJoinBeforeHost: Bool { defaults.object(forKey: "zoomJoinBeforeHost") as? Bool ?? false }
+    static var zoomHostVideo: Bool { defaults.object(forKey: "zoomHostVideo") as? Bool ?? true }
+    static var zoomParticipantVideo: Bool { defaults.object(forKey: "zoomParticipantVideo") as? Bool ?? false }
+    static var zoomPasscodeEnabled: Bool { defaults.object(forKey: "zoomPasscodeEnabled") as? Bool ?? true }
+
     static var showWeekends: Bool { defaults.object(forKey: "showWeekends") as? Bool ?? true }
     /// 0 = follow system
     static var firstWeekday: Int { defaults.integer(forKey: "firstWeekday") }

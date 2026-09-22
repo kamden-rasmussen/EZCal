@@ -66,7 +66,10 @@ final class EventKitService: @unchecked Sendable {
         }
         let me = attendees.first { $0.isSelf }
         let location = e.location ?? ""
-        let notes = e.notes ?? ""
+        let rawNotes = e.notes ?? ""
+        // Apple Calendar events have no custom-field API, so the Zoom meeting id (if any) travels as
+        // a hidden marker line in notes — see `ZoomNotes`. Strip it before it's shown anywhere.
+        let notes = ZoomNotes.strippingMarker(rawNotes)
         let eventId = e.eventIdentifier ?? UUID().uuidString
 
         return CalEvent(
@@ -81,7 +84,7 @@ final class EventKitService: @unchecked Sendable {
             colorHex: source.colorHex, sourceName: source.name,
             ownerName: nil, isOverlay: false, canEdit: source.canWrite,
             isBusyOnly: false, isRecurring: e.hasRecurrenceRules,
-            zoomMeetingID: nil,
+            zoomMeetingID: ZoomNotes.meetingID(in: rawNotes),
             isTentative: e.availability == .tentative || me?.response == "tentative",
             isDeclined: me?.response == "declined"
         )

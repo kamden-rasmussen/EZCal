@@ -9,6 +9,9 @@ enum APIError: LocalizedError {
     case http(Int, String)
     case oauth(String)
     case invalid(String)
+    /// Zoom's access/refresh token was expired or revoked. Kept distinct from `.oauth` so the UI can
+    /// offer one-click reconnect instead of just showing an error string.
+    case zoomReconnectNeeded(String)
 
     var errorDescription: String? {
         switch self {
@@ -17,6 +20,7 @@ enum APIError: LocalizedError {
         case .http(let code, let msg): return "HTTP \(code): \(msg)"
         case .oauth(let msg): return "Sign-in failed: \(msg)"
         case .invalid(let msg): return msg
+        case .zoomReconnectNeeded: return "Zoom's sign-in has expired. Reconnect Zoom to keep creating meetings."
         }
     }
 }
