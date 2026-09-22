@@ -37,6 +37,10 @@ struct ContentView: View {
                         .focused($gridFocused)
                         .focusEffectDisabled()
                         .onKeyPress(phases: .down) { handle($0) }
+                        .background(HorizontalSwipeNavigator { delta in
+                            guard store.sheet == nil, store.deleteRequest == nil else { return }
+                            store.step(delta)
+                        })
                     }
                     .frame(maxWidth: .infinity)
                 }
