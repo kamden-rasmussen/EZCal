@@ -169,11 +169,14 @@ enum ActiveSheet: Identifiable {
     case editor(EventDraft)
     case palette
     case shortcuts
+    /// Standalone "Find a time" (opened from the ⌘K palette, not tied to an open editor).
+    case findTime
 
     var id: String {
         switch self {
         case .palette: return "palette"
         case .shortcuts: return "shortcuts"
+        case .findTime: return "findTime"
         case .detail(let e): return "detail-" + e.id
         case .editor(let d): return "editor-" + d.id.uuidString
         }
