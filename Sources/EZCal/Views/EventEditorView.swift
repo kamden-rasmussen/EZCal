@@ -31,6 +31,7 @@ struct EventEditorView: View {
                     titleBlock
                     divider
                     whenBlock
+                    if isNew { divider; recurrenceBlock }
                     if !isEK { peopleBlock }
                     divider
                     videoBlock
@@ -153,6 +154,21 @@ struct EventEditorView: View {
                 Spacer(minLength: 0)
                 allDayToggle
             }
+        }
+        .padding(.vertical, 14)
+    }
+
+    /// "Nice to have" from issue #3: set a recurrence when creating an event. Editing an existing
+    /// recurring event's own pattern is out of scope; that's handled via RecurrenceScopeView instead.
+    private var recurrenceBlock: some View {
+        row("repeat") {
+            Picker("Repeat", selection: $draft.recurrence) {
+                ForEach(RecurrenceOption.allCases) { opt in Text(opt.label).tag(opt) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 170)
+            .accessibilityLabel("Repeat")
         }
         .padding(.vertical, 14)
     }

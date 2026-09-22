@@ -68,16 +68,18 @@ struct ContentView: View {
                     onClose: { store.sheet = nil }
                 )
             case .addSubscription: AddICSSubscriptionView()
+            case .recurrenceScope(let e, let a): RecurrenceScopeView(event: e, action: a)
             }
         }
+        // Recurring events go through RecurrenceScopeView (store.requestDelete) instead of this dialog.
         .confirmationDialog(
             "Delete “\(store.deleteRequest?.title ?? "")”?",
             isPresented: Binding(get: { store.deleteRequest != nil }, set: { if !$0 { store.deleteRequest = nil } }),
             presenting: store.deleteRequest
         ) { e in
             Button("Delete", role: .destructive) { Task { await store.delete(e) } }
-        } message: { e in
-            Text(e.isRecurring ? "Only this occurrence will be deleted." : "This can't be undone.")
+        } message: { _ in
+            Text("This can't be undone.")
         }
         .task { await store.bootstrap() }
         .task {

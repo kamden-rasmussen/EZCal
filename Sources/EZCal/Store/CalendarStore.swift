@@ -604,13 +604,16 @@ final class CalendarStore {
         sheet = .editor(d)
     }
 
-    func editDraft(_ e: CalEvent) {
+    /// `scope` is which occurrences the edit applies to when `e` is recurring (chosen via RecurrenceScopeView
+    /// beforehand); it's ignored for a non-recurring event.
+    func editDraft(_ e: CalEvent, scope: RecurrenceScope = .thisEvent) {
         var end = e.end
         if e.isAllDay { end = cal.date(byAdding: .day, value: -1, to: e.end) ?? e.end }
         var d = EventDraft(existing: e, title: e.title, start: e.start, end: end, isAllDay: e.isAllDay,
                            sourceId: e.sourceId, location: e.location, notes: e.notes.strippingHTML,
                            attendees: e.attendees)
         d.video = .none
+        d.recurrenceScope = scope
         sheet = .editor(d)
     }
 
@@ -661,7 +664,9 @@ final class CalendarStore {
             try EventKitService.shared.save(existing: existing, calendarId: calendarId, title: displayTitle,
                                             start: start, end: d.isAllDay ? c.startOfDay(for: max(d.start, d.end)) : end,
                                             allDay: d.isAllDay, location: location,
-                                            notes: ekNotes)
+                                            notes: ekNotes,
+                                            span: existing?.isRecurring == true ? d.recurrenceScope.ekSpan : .thisEvent,
+                                            recurrenceRule: existing == nil ? d.recurrence.ekRule : nil)
             if let zid = zoomId, let existing, existing.zoomMeetingID != nil,
                (existing.start != start || existing.end != end || existing.title != title) {
                 await ZoomAPI.updateMeeting(id: zid, topic: displayTitle, start: start, end: end)
@@ -702,11 +707,17 @@ final class CalendarStore {
         }
 
         if let existing {
-            try await api.patchEvent(calendarId: calendarId, eventId: existing.eventId, body: body, withMeet: wantsMeet)
+            if existing.isRecurring {
+                try await patchGoogleRecurring(existing: existing, body: body, calendarId: calendarId,
+                                               withMeet: wantsMeet, scope: d.recurrenceScope)
+            } else {
+                try await api.patchEvent(calendarId: calendarId, eventId: existing.eventId, body: body, withMeet: wantsMeet)
+            }
             if let zid = zoomId, existing.zoomMeetingID != nil, (existing.start != start || existing.end != end || existing.title != title) {
                 await ZoomAPI.updateMeeting(id: zid, topic: displayTitle, start: start, end: end)
             }
         } else {
+            if let rule = d.recurrence.rrule { body["recurrence"] = [rule] }
             try await api.insertEvent(calendarId: calendarId, body: body, withMeet: wantsMeet)
         }
         sheet = nil
@@ -714,11 +725,14 @@ final class CalendarStore {
         await refreshUpcoming()
     }
 
-    func delete(_ e: CalEvent) async {
+    /// `scope` is which occurrences to delete when `e` is recurring; ignored otherwise.
+    func delete(_ e: CalEvent, scope: RecurrenceScope = .thisEvent) async {
         do {
-            if e.isEventKit { try EventKitService.shared.delete(e) }
+            if e.isEventKit { try EventKitService.shared.delete(e, span: e.isRecurring ? scope.ekSpan : .thisEvent) }
+            else if e.isRecurring { try await deleteGoogleRecurring(e, scope: scope) }
             else { try await GoogleAPI(accountId: e.accountId).deleteEvent(calendarId: e.calendarId, eventId: e.eventId) }
-            if let z = e.zoomMeetingID { await ZoomAPI.deleteMeeting(id: z) }
+            // Zoom meetings are only actually detached when the whole series (or the only occurrence) goes away.
+            if let z = e.zoomMeetingID, !e.isRecurring || scope == .all { await ZoomAPI.deleteMeeting(id: z) }
             sheet = nil
             await reload()
             await refreshUpcoming()

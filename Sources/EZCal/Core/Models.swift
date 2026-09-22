@@ -79,6 +79,9 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     var canEdit: Bool
     var isBusyOnly: Bool
     var isRecurring: Bool
+    /// Google's id for the recurring event's master/series (nil for a non-recurring event, or an
+    /// EventKit one — EventKit doesn't distinguish instance vs. series ids the way Google does).
+    var recurringEventId: String? = nil
     var zoomMeetingID: String?
     var isTentative: Bool
     var isDeclined: Bool
@@ -154,6 +157,10 @@ struct EventDraft: Identifiable {
     var video: Video = .none
     /// Only used when creating a new Zoom meeting; starts from Settings → Zoom's defaults.
     var zoomOptions: ZoomMeetingOptions = .defaults
+    /// Which occurrences an edit to an existing recurring event applies to (chosen via RecurrenceScopeView).
+    var recurrenceScope: RecurrenceScope = .thisEvent
+    /// Recurrence to create a new event with; ignored when editing an existing event.
+    var recurrence: RecurrenceOption = .none
 }
 
 enum ViewMode: String, CaseIterable, Identifiable {
@@ -177,6 +184,8 @@ enum ActiveSheet: Identifiable {
     /// Standalone "Find a time" (opened from the ⌘K palette, not tied to an open editor).
     case findTime
     case addSubscription
+    /// Shown before editing or deleting an occurrence of a recurring event.
+    case recurrenceScope(CalEvent, RecurrenceAction)
 
     var id: String {
         switch self {
@@ -186,6 +195,7 @@ enum ActiveSheet: Identifiable {
         case .addSubscription: return "addSubscription"
         case .detail(let e): return "detail-" + e.id
         case .editor(let d): return "editor-" + d.id.uuidString
+        case .recurrenceScope(let e, let a): return "scope-\(a.rawValue)-" + e.id
         }
     }
 }

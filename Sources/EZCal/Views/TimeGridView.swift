@@ -350,6 +350,10 @@ struct EventBlock: View {
                         .frame(width: 14, height: 14).background(Circle().fill(c))
                         .padding(.top, 0.5)
                 }
+                if event.isRecurring {
+                    Image(systemName: "repeat").font(.system(size: 9)).opacity(0.75).padding(.top, 1)
+                        .accessibilityHidden(true)
+                }
                 Text(titleText)
                     .font(.system(size: narrow ? 11 : 12, weight: .semibold))
                     .strikethrough(event.isDeclined)
@@ -475,7 +479,7 @@ struct EventBlock: View {
     private var accessibilityText: String {
         let who = event.ownerName.map { "\($0): " } ?? ""
         let time = event.start.formatted(date: .omitted, time: .shortened)
-        return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "")
+        return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "") + (event.isRecurring ? ", repeats" : "")
     }
 }
 

@@ -26,7 +26,8 @@ extension CalendarStore {
         var out: [String: [CalEvent]] = [:]
 
         func add(_ s: Source, week: Int, day: Int, _ start: Double, _ dur: Double, _ title: String,
-                 video: Bool = false, busy: Bool = false, allDay: Bool = false, owner: String? = nil) {
+                 video: Bool = false, busy: Bool = false, allDay: Bool = false, owner: String? = nil,
+                 recurring: Bool = false) {
             let d0 = c.date(byAdding: .day, value: week * 7 + day, to: monday)!
             let st = allDay ? d0 : c.date(byAdding: .minute, value: Int(start * 60), to: d0)!
             let en = allDay ? c.date(byAdding: .day, value: 1, to: d0)! : st.addingTimeInterval(dur * 3600)
@@ -37,12 +38,13 @@ extension CalendarStore {
                 attendees: [], htmlLink: nil,
                 meetingURL: video ? URL(string: "https://acme.zoom.us/j/123456789") : nil,
                 colorHex: s.colorHex, sourceName: s.name, ownerName: owner.map { $0.split(separator: " ").first.map(String.init) ?? $0 },
-                isOverlay: s.kind == .person, canEdit: s.canWrite, isBusyOnly: busy, isRecurring: false,
+                isOverlay: s.kind == .person, canEdit: s.canWrite, isBusyOnly: busy, isRecurring: recurring,
+                recurringEventId: recurring ? "\(s.id)|\(title)|series" : nil,
                 zoomMeetingID: nil, isTentative: false, isDeclined: false))
         }
 
         for w in -1...1 {
-            add(me, week: w, day: 0, 9.5, 0.5, "Standup", video: true)
+            add(me, week: w, day: 0, 9.5, 0.5, "Standup", video: true, recurring: true)
             add(me, week: w, day: 0, 11, 1, "Design review", video: true)
             add(home, week: w, day: 0, 13, 1, "Lunch with Priya")
             add(marcus, week: w, day: 0, 9, 1.5, "Investor prep", owner: marcus.name)
@@ -69,7 +71,7 @@ extension CalendarStore {
 }
 
 /// `EZCAL_SNAPSHOT=/path/out.png` renders a screen to a PNG (no screen-recording permission needed) and quits.
-/// `EZCAL_SNAPSHOT_VIEW` = window (default) | sidebar | editor | detail | palette | shortcuts | findtime | setup | settings,  `EZCAL_APPEARANCE` = light | dark.
+/// `EZCAL_SNAPSHOT_VIEW` = window (default) | sidebar | editor | detail | palette | shortcuts | findtime | recurrence | setup | settings,  `EZCAL_APPEARANCE` = light | dark.
 enum DebugSnapshot {
     @MainActor static func scheduleIfRequested(store: CalendarStore) {
         let env = ProcessInfo.processInfo.environment
@@ -106,6 +108,9 @@ enum DebugSnapshot {
                         onPick: { _, _, _ in }, onClose: {}
                     ))
                 case "settings": root = AnyView(SettingsView(initialTab: .general).frame(width: 520, height: 460))
+                case "recurrence":
+                    let recurring = store.displayEvents.first { $0.isRecurring } ?? e
+                    root = AnyView(RecurrenceScopeView(event: recurring, action: .delete))
                 default: root = AnyView(SetupView().frame(width: 960, height: 640))
                 }
                 let host = NSHostingView(rootView: root.environment(store).background(Theme.surface))

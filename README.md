@@ -116,6 +116,8 @@ Everything is reachable without a mouse. Press **?** in the app for the cheat sh
 | **⌥↑ / ⌥↓** | Move 15 minutes earlier / later |
 | **⌥⇧↑ / ⌥⇧↓** | Resize (bottom edge) 15 minutes shorter / longer |
 
+Editing or deleting a recurring event first asks **This event** / **This and following events** / **All events** — pick one with **↑ ↓** + **↩**, or jump straight to it with **1 / 2 / 3**.
+
 | In the editor | |
 |---|---|
 | **⌘↩** | Save |
@@ -172,7 +174,9 @@ Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swif
 
 ## Known limitations / ideas
 
-- Editing a recurring event changes only that occurrence (no "all events" option yet).
+- "This and following events" (edit or delete) on Google splits the series by truncating the old RRULE and inserting a new one; this doesn't handle all-day recurring events' `UNTIL` correctly yet.
+- Creating a recurring event only offers a few fixed patterns (daily, weekly, monthly, every weekday) — no custom RRULE builder.
+- Deleting less than the whole series never detaches its Zoom meeting (only "All events" does).
 - Moving an event to another calendar isn't supported in the editor.
 - "Remove Zoom link" recognizes the block EZCal itself appends; on a Google event whose description is HTML (rare — only happens if it already contained a `<` before Zoom was added) it may remove more than just the Zoom lines. Plain-text notes (the common case, and always the case for Apple Calendar events) aren't affected.
 - .ics subscriptions don't support per-occurrence overrides (RECURRENCE-ID) or `BYMONTHDAY`/`BYSETPOS` rules; uncommon in the sports/team/holiday feeds this targets.

@@ -104,6 +104,17 @@ struct SecondaryButtonStyle: ButtonStyle {
     }
 }
 
+/// Same weight as PrimaryButtonStyle but red, for a destructive confirm (e.g. "Delete all events").
+struct DestructiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.now.opacity(configuration.isPressed ? 0.8 : 1)))
+    }
+}
+
 struct IconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

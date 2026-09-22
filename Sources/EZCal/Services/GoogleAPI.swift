@@ -31,6 +31,7 @@ struct GEvent: Decodable {
     var hangoutLink: String?
     var iCalUID: String?
     var recurringEventId: String?
+    var recurrence: [String]?   // RRULE/EXDATE lines; only present on a master (unexpanded) event
     var start: GTime?
     var end: GTime?
     var attendees: [GAttendee]?
@@ -174,6 +175,13 @@ struct GoogleAPI: Sendable {
         _ = try await data("PATCH", c.url!, json: body)
     }
 
+    /// Fetches a single event by id, including its `recurrence` (RRULE) lines when it's a series master —
+    /// used to split a series for a "this and following" edit/delete (see RecurrenceScope).
+    func getEvent(calendarId: String, eventId: String) async throws -> GEvent {
+        let url = URL(string: "\(Self.calendarBase)/calendars/\(Self.enc(calendarId))/events/\(Self.enc(eventId))")!
+        return try JSONDecoder().decode(GEvent.self, from: try await data("GET", url))
+    }
+
     func deleteEvent(calendarId: String, eventId: String) async throws {
         var c = URLComponents(string: "\(Self.calendarBase)/calendars/\(Self.enc(calendarId))/events/\(Self.enc(eventId))")!
         c.queryItems = [.init(name: "sendUpdates", value: "all")]
@@ -285,6 +293,7 @@ enum EventMapper {
             ownerName: ownerName, isOverlay: source.kind == .person,
             canEdit: source.kind == .calendar && source.canWrite,
             isBusyOnly: false, isRecurring: g.recurringEventId != nil,
+            recurringEventId: g.recurringEventId,
             zoomMeetingID: g.extendedProperties?.private?["zoomMeetingId"],
             isTentative: me?.response == "tentative",
             isDeclined: me?.response == "declined"

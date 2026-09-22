@@ -106,9 +106,11 @@ struct EventDetailView: View {
                 }
                 Spacer()
                 if event.canEdit {
-                    Button { confirmDelete = true } label: { HStack(spacing: 6) { Text("Delete"); KeyCap("⌫") } }
+                    Button {
+                        if event.isRecurring { store.requestDelete(event) } else { confirmDelete = true }
+                    } label: { HStack(spacing: 6) { Text("Delete"); KeyCap("⌫") } }
                         .buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.delete, modifiers: [])
-                    Button { store.editDraft(event) } label: { HStack(spacing: 6) { Text("Edit"); Text("E").font(.system(size: 11)).opacity(0.7) } }
+                    Button { store.requestEdit(event) } label: { HStack(spacing: 6) { Text("Edit"); Text("E").font(.system(size: 11)).opacity(0.7) } }
                         .buttonStyle(PrimaryButtonStyle()).keyboardShortcut("e", modifiers: [])
                 }
             }
@@ -116,11 +118,12 @@ struct EventDetailView: View {
         .padding(22)
         .frame(width: 460)
         .background(Theme.surface)
-        .background { ShortcutProxy(key: .return) { if let u = event.meetingURL { NSWorkspace.shared.open(u) } else if event.canEdit { store.editDraft(event) } } }
+        .background { ShortcutProxy(key: .return) { if let u = event.meetingURL { NSWorkspace.shared.open(u) } else if event.canEdit { store.requestEdit(event) } } }
+        // Recurring events go through RecurrenceScopeView (store.requestDelete) instead of this dialog.
         .confirmationDialog("Delete “\(event.title)”?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { Task { await store.delete(event) } }
         } message: {
-            Text(event.isRecurring ? "Only this occurrence will be deleted." : "This can't be undone.")
+            Text("This can't be undone.")
         }
         .confirmationDialog("Remove the Zoom meeting?", isPresented: $confirmRemoveZoom) {
             Button("Remove", role: .destructive) { Task { await store.removeZoom(from: event) } }
@@ -133,8 +136,14 @@ struct EventDetailView: View {
         HStack(alignment: .top, spacing: 12) {
             RoundedRectangle(cornerRadius: 3).fill(event.color).frame(width: 12, height: 12).padding(.top, 7)
             VStack(alignment: .leading, spacing: 3) {
-                Text(event.isBusyOnly ? "\(event.ownerName ?? "Busy") is busy" : event.title)
-                    .font(.system(size: 20, weight: .semibold)).textSelection(.enabled)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(event.isBusyOnly ? "\(event.ownerName ?? "Busy") is busy" : event.title)
+                        .font(.system(size: 20, weight: .semibold)).textSelection(.enabled)
+                    if event.isRecurring {
+                        Image(systemName: "repeat").font(.system(size: 13)).foregroundStyle(Theme.text3)
+                            .accessibilityLabel("Repeats").help("Recurring event")
+                    }
+                }
                 Text(whenText).foregroundStyle(Theme.text2)
                 HStack(spacing: 5) {
                     Image(systemName: event.isOverlay ? "person.fill" : "calendar").font(.system(size: 11))
