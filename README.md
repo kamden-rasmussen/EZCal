@@ -7,6 +7,7 @@ A free, hackable, native macOS calendar for Google Calendar, inspired by Notion 
 - **Coworker overlay**: search your Google Workspace directory, click a person, and their calendar appears in your grid (full details if they share them with you, free/busy blocks if not)
 - **Zoom in one click**: pick "Zoom" when creating an event, or hit "Add Zoom meeting" on an existing one. Real Zoom meetings are created through the Zoom API and attached to the event. Google Meet works too.
 - **Availability check** while inviting people ("Alice is busy at this time")
+- **Find a time** (⌘F in the editor, or ⌘K → "Find a time for coworkers"): lists the best slots where every attendee you can see is free, with a per-day availability grid; people whose calendars aren't shared show as "unknown" and never block a slot
 - **Join buttons** on every event with a Zoom / Meet / Teams link, plus a menu bar item showing your next meeting
 - Click or drag on the grid to create an event
 
@@ -102,6 +103,13 @@ Everything is reachable without a mouse. Press **?** in the app for the cheat sh
 | **esc** | Cancel |
 | **⌃1 / ⌃2 / ⌃3** | Zoom / Google Meet / none |
 | **⌃A** | All-day |
+| **⌘F** | Find a time everyone is free |
+
+| In "Find a time" | |
+|---|---|
+| **↓ ↑** | Move between slots |
+| **↩** | Use the selected slot |
+| **esc** | Close |
 
 Also: **P** add coworker, **⌘\** toggle sidebar, **⌘⇧W** hide weekends, **⌘R** refresh, **⌘,** settings. Every action is in the *Calendar* and *Event* menus too. Mouse shortcuts: click the grid for a new event at that time, drag for a range, double-click a day header for day view.
 
@@ -118,11 +126,12 @@ Sources/EZCal/
   Services/GoogleAPI.swift  Calendar, FreeBusy, People (directory) + event mapping
   Services/ZoomAPI.swift    create / update / delete Zoom meetings
   Services/EventKitService.swift  iCloud & system calendars via EventKit
+  Services/SlotFinder.swift pure "find a time" slot-search logic (no I/O)
   Store/CalendarStore.swift all app state: fetching, overlay merge, save/delete/RSVP
   Core/Theme.swift          design tokens, keycaps, button styles
   Store/Commands.swift      keyboard focus navigation + command palette items
-  Views/                    TimeGridView, MonthView, Sidebar, editor, detail, palette, shortcuts, settings
-Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback tests
+  Views/                    TimeGridView, MonthView, Sidebar, editor, detail, palette, shortcuts, settings, FindTimeView
+Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback tests, slot-finder
 scripts/                    build_app.sh, make_icon.swift
 ```
 

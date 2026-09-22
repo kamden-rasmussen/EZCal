@@ -8,6 +8,7 @@ struct EventEditorView: View {
     @State private var attendeeQuery = ""
     @State private var suggestions: [DirectoryPerson] = []
     @State private var busy: [String: [Range<Date>]?] = [:]
+    @State private var showFindTime = false
     @FocusState private var titleFocused: Bool
 
     init(draft: EventDraft) { _draft = State(initialValue: draft) }
@@ -67,6 +68,14 @@ struct EventEditorView: View {
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
             busy = await store.busyRanges(emails: emails, window: window, accountId: accountId)
+        }
+        .sheet(isPresented: $showFindTime) {
+            FindTimeView(
+                initialAttendees: guests, initialDuration: draft.end.timeIntervalSince(draft.start),
+                accountId: accountId, editableAttendees: false, excludingEventId: draft.existing?.eventId,
+                onPick: { start, end, _ in draft.start = start; draft.end = end; showFindTime = false },
+                onClose: { showFindTime = false }
+            )
         }
     }
 
@@ -201,6 +210,19 @@ struct EventEditorView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                }
+
+                if !draft.isAllDay {
+                    Button { showFindTime = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar.badge.clock")
+                            Text("Find a time")
+                            Text("⌘F").font(.system(size: 11)).opacity(0.6)
+                        }
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .keyboardShortcut("f", modifiers: .command)
+                    .accessibilityLabel("Find a time everyone is free")
                 }
 
                 if !guests.isEmpty && !draft.isAllDay {

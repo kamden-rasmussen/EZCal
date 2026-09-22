@@ -35,6 +35,12 @@ struct ShortcutsView: View {
             Row(label: "Next field", keys: ["tab"]),
             Row(label: "Zoom / Meet / none", keys: ["⌃1", "⌃2", "⌃3"]),
             Row(label: "All-day", keys: ["⌃A"]),
+            Row(label: "Find a time everyone is free", keys: ["⌘", "F"]),
+        ]),
+        Section(title: "Find a time", rows: [
+            Row(label: "Move between slots", keys: ["↓", "↑"]),
+            Row(label: "Use the selected slot", keys: ["↩"]),
+            Row(label: "Close", keys: ["esc"]),
         ]),
         Section(title: "Coworkers & calendars", rows: [
             Row(label: "Add coworker", keys: ["P"]),
