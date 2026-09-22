@@ -97,7 +97,9 @@ struct EventDetailView: View {
 
             Rectangle().fill(Theme.line).frame(height: 1)
             HStack {
-                if let link = event.htmlLink { Link("Open in Google Calendar", destination: link).font(.system(size: 12)) }
+                if let link = event.htmlLink {
+                    Link(event.isICS ? "Open link" : "Open in Google Calendar", destination: link).font(.system(size: 12))
+                }
                 Spacer()
                 if event.canEdit {
                     Button { confirmDelete = true } label: { HStack(spacing: 6) { Text("Delete"); KeyCap("⌫") } }

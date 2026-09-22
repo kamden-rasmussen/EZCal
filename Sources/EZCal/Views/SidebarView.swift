@@ -22,6 +22,22 @@ struct SidebarView: View {
                     }
                 }
 
+                let subscriptions = store.calendars.filter(\.isICS)
+                if !subscriptions.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        SectionLabel("Subscribed").padding(.horizontal, 6).padding(.bottom, 4)
+                        ForEach(subscriptions) { s in
+                            SourceRow(source: s)
+                                .contextMenu {
+                                    if let sub = store.icsSubscriptions.first(where: { $0.source.id == s.id }) {
+                                        Button("Remove", role: .destructive) { store.removeICSSubscription(sub) }
+                                    }
+                                }
+                        }
+                    }
+                }
+                addSubscriptionButton
+
                 if !store.accounts.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
@@ -65,6 +81,24 @@ struct SidebarView: View {
         }
         .background(Theme.side)
         .background(alignment: .top) { WindowDragArea().frame(height: 48) }
+    }
+
+    /// Small "Add calendar by URL…" affordance, styled like the "Add coworker…" row below it.
+    private var addSubscriptionButton: some View {
+        Button { store.openAddSubscription() } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "plus").font(.system(size: 9, weight: .bold))
+                    .frame(width: 20, height: 20)
+                    .overlay(Circle().strokeBorder(Theme.text3, style: StrokeStyle(lineWidth: 1, dash: [2.5, 2])))
+                Text("Add calendar by URL…")
+                Spacer()
+            }
+            .foregroundStyle(Theme.text2)
+            .padding(.horizontal, 6).frame(height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Subscribe to a read-only .ics feed")
     }
 
     private func group<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
@@ -118,7 +152,10 @@ private struct SourceRow: View {
                 case .some(.none):
                     Image(systemName: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
                         .help("This calendar isn't visible to you")
-                default: EmptyView()
+                default:
+                    if let error = store.sourceErrors[source.id] {
+                        Image(systemName: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange).help(error)
+                    }
                 }
             }
             .padding(.horizontal, 6).frame(height: 30)

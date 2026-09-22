@@ -9,12 +9,15 @@ extension CalendarStore {
         let team = Source(id: "cal|me@example.com|team", accountId: "me@example.com", calendarId: "team", name: "Team", colorHex: "#8E4EC6", kind: .calendar, accessRole: "owner")
         let home = Source(id: "ek|demo-home", accountId: "ek:iCloud", calendarId: "home", name: "Home", colorHex: "#2F9E6E", kind: .calendar, accessRole: "owner")
         let fun = Source(id: "ek|demo-fun", accountId: "ek:iCloud", calendarId: "fun", name: "Family", colorHex: "#E5722A", kind: .calendar, accessRole: "owner")
+        let leagueSubscription = ICSSubscription(url: URL(string: "https://example.com/league.ics")!, name: "City League", colorHex: "#F76B15")
+        let league = leagueSubscription.source
         func person(_ n: String, _ c: String) -> Source {
             Source(id: "person|me@example.com|\(n)", accountId: "me@example.com", calendarId: "\(n)@example.com", name: n, colorHex: c, kind: .person)
         }
         let priya = person("Priya Shah", "#2F9E6E"), marcus = person("Marcus Lee", "#E5484D"), dana = person("Dana Cole", "#D6409F")
         accounts = [Account(email: "me@example.com", name: "Me")]
-        calendars = [me, team, home, fun]
+        calendars = [me, team, home, fun, league]
+        icsSubscriptions = [leagueSubscription]
         people = [priya, marcus, dana]
         personAccess = [priya.id: .full, marcus.id: .full, dana.id: .busyOnly]
 
@@ -34,7 +37,7 @@ extension CalendarStore {
                 attendees: [], htmlLink: nil,
                 meetingURL: video ? URL(string: "https://acme.zoom.us/j/123456789") : nil,
                 colorHex: s.colorHex, sourceName: s.name, ownerName: owner.map { $0.split(separator: " ").first.map(String.init) ?? $0 },
-                isOverlay: s.kind == .person, canEdit: s.kind == .calendar, isBusyOnly: busy, isRecurring: false,
+                isOverlay: s.kind == .person, canEdit: s.canWrite, isBusyOnly: busy, isRecurring: false,
                 zoomMeetingID: nil, isTentative: false, isDeclined: false))
         }
 
@@ -56,6 +59,7 @@ extension CalendarStore {
             add(me, week: w, day: 4, 10, 0.5, "Weekly sync", video: true)
             add(fun, week: w, day: 4, 16, 1.5, "Team social")
             add(home, week: w, day: 5, 10, 2, "Farmers market")
+            add(league, week: w, day: 5, 14, 2, "Home vs. Rivals")
         }
         eventsBySource = out
         rebuildDisplay()

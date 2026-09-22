@@ -89,6 +89,7 @@ extension CalendarStore {
 
     func openPalette(_ query: String = "") { paletteQuery = query; sheet = .palette }
     func openShortcuts() { sheet = .shortcuts }
+    func openAddSubscription() { sheet = .addSubscription }
 
     func toggleWeekends() {
         UserDefaults.standard.set(!AppSettings.showWeekends, forKey: "showWeekends")
@@ -123,6 +124,7 @@ extension CalendarStore {
         add("sidebar", "Views", "Toggle sidebar", icon: "▤", key: "⌘\\") { self.toggleSidebar() }
         add("refresh", "Actions", "Refresh calendars", icon: "↻", key: "⌘R") { Task { await self.refreshAll() } }
         add("addperson", "Coworkers", "Add coworker…", icon: "+", key: "P") { self.requestAddPerson() }
+        add("addsubscription", "Calendars", "Add calendar by URL…", icon: "+") { self.openAddSubscription() }
         add("shortcuts", "Help", "Keyboard shortcuts", icon: "?", key: "?") { self.openShortcuts() }
         add("settings", "Help", "Settings", icon: "⚙", key: "⌘,") { self.openSettings() }
 
@@ -132,12 +134,13 @@ extension CalendarStore {
         }
         for s in calendars {
             let on = isVisible(s)
-            add("cal-\(s.id)", "Calendars", "\(on ? "Hide" : "Show") \(s.name)", icon: "●", sub: s.isEventKit ? s.groupTitle : s.accountId, tint: s.color) { self.toggle(s) }
+            let sub = s.isEventKit ? s.groupTitle : (s.isICS ? "Subscribed" : s.accountId)
+            add("cal-\(s.id)", "Calendars", "\(on ? "Hide" : "Show") \(s.name)", icon: "●", sub: sub, tint: s.color) { self.toggle(s) }
         }
 
         guard !q.isEmpty else {
             let order = ["Actions", "Go to", "Views", "Coworkers", "Calendars", "Help"]
-            return items.filter { ["new", "join", "today", "workweek", "week", "day", "month", "addperson", "shortcuts"].contains($0.id) || $0.id.hasPrefix("person-") }
+            return items.filter { ["new", "join", "today", "workweek", "week", "day", "month", "addperson", "addsubscription", "shortcuts"].contains($0.id) || $0.id.hasPrefix("person-") }
                 .sorted { (order.firstIndex(of: $0.group) ?? 9) < (order.firstIndex(of: $1.group) ?? 9) }
         }
 

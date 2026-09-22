@@ -51,6 +51,7 @@ struct ContentView: View {
             case .editor(let d): EventEditorView(draft: d)
             case .palette: PaletteView()
             case .shortcuts: ShortcutsView()
+            case .addSubscription: AddICSSubscriptionView()
             }
         }
         .confirmationDialog(

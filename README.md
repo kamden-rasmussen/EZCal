@@ -4,6 +4,7 @@ A free, hackable, native macOS calendar for Google Calendar, inspired by Notion 
 
 - **Google Calendar**: multiple accounts, day / week / month views, create / edit / delete / RSVP
 - **iCloud & Apple Calendar accounts**: every calendar macOS already syncs (iCloud, Exchange, Fastmail, CalDAV) appears alongside Google, with no passwords or API keys. Events on both are de-duplicated.
+- **Subscribe to .ics calendars**: paste a `webcal://` or `https://` link (a sports schedule, a shared team calendar, a holiday list) and it shows up in the sidebar, read-only, refreshing itself in the background.
 - **Coworker overlay**: search your Google Workspace directory, click a person, and their calendar appears in your grid (full details if they share them with you, free/busy blocks if not)
 - **Zoom in one click**: pick "Zoom" when creating an event, or hit "Add Zoom meeting" on an existing one. Real Zoom meetings are created through the Zoom API and attached to the event. Google Meet works too.
 - **Availability check** while inviting people ("Alice is busy at this time")
@@ -34,6 +35,12 @@ You bring your own API credentials, so the app is free and nothing is shared wit
 Click **Use my iCloud / Apple Calendar accounts** on the welcome screen (or Settings → Accounts) and allow calendar access. EZCal reads whatever accounts you've added in System Settings → Internet Accounts, so to add iCloud, Exchange, etc., add them there.
 
 Limits versus Google calendars: EventKit doesn't let apps invite people or set your RSVP, so those controls and Google Meet are hidden for Apple calendars, and Zoom meetings on them aren't auto-deleted when you delete the event. Coworker overlay is Google-only.
+
+### 0.5 Subscribe to a calendar URL (optional, zero setup)
+
+Settings → Accounts → **Add calendar by URL…** (also in ⌘K and the Calendar menu), then paste a `webcal://` or `https://` link — a sports league's schedule, a shared team calendar, a public holiday feed. It appears in the sidebar like any other calendar, refreshes itself alongside your other calendars, and is read-only (no editor, RSVP or delete). A feed that's temporarily unreachable shows a warning icon next to its name instead of losing its events or blocking your other calendars.
+
+Recurring events (RRULE) are expanded for daily/weekly/monthly/yearly frequencies with COUNT, UNTIL, INTERVAL and BYDAY (including "2nd Tuesday of the month" style rules); very old Outlook-style time zone names (rather than IANA ones like `America/New_York`) aren't recognized and fall back to your Mac's local time zone.
 
 ### 1. Google (optional if you only use Apple Calendar, ~5 min)
 
@@ -118,11 +125,13 @@ Sources/EZCal/
   Services/GoogleAPI.swift  Calendar, FreeBusy, People (directory) + event mapping
   Services/ZoomAPI.swift    create / update / delete Zoom meetings
   Services/EventKitService.swift  iCloud & system calendars via EventKit
+  Core/ICSParser.swift      pure-Swift iCalendar (.ics) parser + RRULE expansion
+  Services/ICSService.swift .ics subscription fetch/cache (conditional GET, disk cache)
   Store/CalendarStore.swift all app state: fetching, overlay merge, save/delete/RSVP
   Core/Theme.swift          design tokens, keycaps, button styles
   Store/Commands.swift      keyboard focus navigation + command palette items
   Views/                    TimeGridView, MonthView, Sidebar, editor, detail, palette, shortcuts, settings
-Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback tests
+Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback, .ics parser/fetch tests
 scripts/                    build_app.sh, make_icon.swift
 ```
 
@@ -135,6 +144,7 @@ Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swif
 - No desktop notifications for upcoming meetings yet (the menu bar item shows the next one).
 - Zoom meetings are created with Zoom's default settings; add fields to the `settings` dictionary in `ZoomAPI.createMeeting` (waiting room, mute on entry, etc.).
 - Moving an event to another calendar isn't supported in the editor.
+- .ics subscriptions don't support per-occurrence overrides (RECURRENCE-ID) or `BYMONTHDAY`/`BYSETPOS` rules; uncommon in the sports/team/holiday feeds this targets.
 
 ## License
 
