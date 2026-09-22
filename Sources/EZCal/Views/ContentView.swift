@@ -1,0 +1,251 @@
+import SwiftUI
+
+struct ContentView: View {
+    @Environment(CalendarStore.self) private var store
+    // Observed so the grid re-renders when these settings change.
+    @AppStorage("showWeekends") private var showWeekends = true
+    @AppStorage("firstWeekday") private var firstWeekday = 0
+    @State private var lastActivation = Date.distantPast
+    @FocusState private var gridFocused: Bool
+
+    var body: some View {
+        @Bindable var store = store
+        let sidebarShown = store.columnVisibility != .detailOnly
+
+        Group {
+            if !store.hasAnyAccount {
+                SetupView()
+            } else {
+                HStack(spacing: 0) {
+                    if sidebarShown {
+                        SidebarView()
+                            .frame(width: 264)
+                            .overlay(alignment: .trailing) { Rectangle().fill(Theme.line).frame(width: 1) }
+                            .transition(.move(edge: .leading))
+                    }
+                    VStack(spacing: 0) {
+                        TopBar(leadingInset: sidebarShown ? 20 : 84)
+                        Divider().overlay(Theme.line)
+                        if let msg = store.errorMessage { errorBanner(msg) }
+                        Group {
+                            switch store.mode {
+                            case .day, .workWeek, .week: TimeGridView(days: store.visibleDays)
+                            case .month: MonthView()
+                            }
+                        }
+                        .focusable()
+                        .focused($gridFocused)
+                        .focusEffectDisabled()
+                        .onKeyPress(phases: .down) { handle($0) }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .background(Theme.bg)
+        .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.18), value: sidebarShown)
+        .sheet(item: $store.sheet) { sheet in
+            switch sheet {
+            case .detail(let e): EventDetailView(event: e)
+            case .editor(let d): EventEditorView(draft: d)
+            case .palette: PaletteView()
+            case .shortcuts: ShortcutsView()
+            }
+        }
+        .confirmationDialog(
+            "Delete “\(store.deleteRequest?.title ?? "")”?",
+            isPresented: Binding(get: { store.deleteRequest != nil }, set: { if !$0 { store.deleteRequest = nil } }),
+            presenting: store.deleteRequest
+        ) { e in
+            Button("Delete", role: .destructive) { Task { await store.delete(e) } }
+        } message: { e in
+            Text(e.isRecurring ? "Only this occurrence will be deleted." : "This can't be undone.")
+        }
+        .task { await store.bootstrap() }
+        .task {
+            // Periodic refresh so the calendar stays current while it sits open.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
+                await store.refreshAll()
+            }
+        }
+        .onAppear { gridFocused = true }
+        .onChange(of: store.sheet?.id) { _, id in if id == nil { gridFocused = true } }
+        .onChange(of: firstWeekday) { _, _ in store.scheduleReload() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard Date().timeIntervalSince(lastActivation) > 60 else { return }
+            lastActivation = Date()
+            Task { await store.refreshAll() }
+        }
+    }
+
+    // MARK: Keyboard
+
+    /// Single-key shortcuts for the calendar grid. Modified keys are handled by the menu bar.
+    private func handle(_ press: KeyPress) -> KeyPress.Result {
+        guard store.sheet == nil, store.deleteRequest == nil else { return .ignored }
+        if !press.modifiers.isDisjoint(with: [.command, .control, .option]) { return .ignored }
+
+        switch press.key {
+        case .leftArrow: store.moveFocusDay(-1); return .handled
+        case .rightArrow: store.moveFocusDay(1); return .handled
+        case .downArrow: store.moveFocus(1); return .handled
+        case .upArrow: store.moveFocus(-1); return .handled
+        case .return: store.openFocused(); return .handled
+        case .escape:
+            guard store.focusedEventID != nil else { return .ignored }
+            store.focusedEventID = nil; return .handled
+        case .delete, .deleteForward: store.deleteFocused(); return .handled
+        default: break
+        }
+
+        switch press.characters.lowercased() {
+        case "t": store.goToday()
+        case "n", "c": store.newDraft()
+        case "d": store.setMode(.day)
+        case "5": store.setMode(.workWeek)
+        case "w": store.setMode(.week)
+        case "m": store.setMode(.month)
+        case "[": store.step(-1)
+        case "]": store.step(1)
+        case "j": store.joinMeeting()
+        case "e": store.editFocused()
+        case "p": store.requestAddPerson()
+        case "g": store.openPalette("go to ")
+        case "/": store.openPalette()
+        case "?": store.openShortcuts()
+        default: return .ignored
+        }
+        return .handled
+    }
+
+    private func errorBanner(_ msg: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text(msg).font(.system(size: 12)).lineLimit(2).foregroundStyle(Theme.text)
+            Spacer()
+            Button { store.errorMessage = nil } label: { Image(systemName: "xmark") }
+                .buttonStyle(IconButtonStyle()).accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(Color.orange.opacity(0.14))
+    }
+}
+
+/// Day / Work week / Week / Month switcher (custom so it matches the design in both appearances).
+struct ModePicker: View {
+    @Environment(CalendarStore.self) private var store
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(ViewMode.allCases) { m in
+                let on = store.mode == m
+                Button { store.setMode(m) } label: {
+                    Text(m.title)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(on ? Theme.text : Theme.text2)
+                        .padding(.horizontal, 10).frame(height: 24)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(on ? Theme.surface : Color.clear)
+                            .shadow(color: .black.opacity(on ? 0.15 : 0), radius: 1, y: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+                .help(help(m))
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.hover))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("View")
+    }
+
+    private func help(_ m: ViewMode) -> String {
+        switch m {
+        case .day: return "Day (D)"
+        case .workWeek: return "Work week, Mon–Fri (5)"
+        case .week: return "Week (W)"
+        case .month: return "Month (M)"
+        }
+    }
+}
+
+/// Lets a plain region of a hidden-title-bar window drag the window.
+struct WindowDragArea: NSViewRepresentable {
+    final class DragView: NSView { override var mouseDownCanMoveWindow: Bool { true } }
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// Navigation, range title, command search, view switcher and New event, per the design canvas.
+struct TopBar: View {
+    @Environment(CalendarStore.self) private var store
+    let leadingInset: CGFloat
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            bar(wideSearch: true)
+            bar(wideSearch: false)
+        }
+        .frame(height: 56)
+        .background(WindowDragArea())
+    }
+
+    private func bar(wideSearch: Bool) -> some View {
+        let parts = store.titleParts
+        return HStack(spacing: 12) {
+            HStack(spacing: 2) {
+                Button { store.step(-1) } label: { Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold)) }
+                    .buttonStyle(IconButtonStyle()).accessibilityLabel("Previous").help("Previous ([)")
+                Button { store.step(1) } label: { Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)) }
+                    .buttonStyle(IconButtonStyle()).accessibilityLabel("Next").help("Next (])")
+            }
+            Button("Today") { store.goToday() }.buttonStyle(SecondaryButtonStyle()).help("Jump to today (T)")
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(parts.main).font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.text)
+                Text(parts.year).font(.system(size: 20)).foregroundStyle(Theme.text3)
+            }
+            .lineLimit(1).fixedSize()
+            .padding(.leading, 4)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(store.title)
+
+            Spacer(minLength: 12)
+
+            if store.isLoading { ProgressView().controlSize(.small) }
+
+            Button { store.openPalette() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 12))
+                    if wideSearch {
+                        Text("Search or run a command").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    KeyCap("⌘K")
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.text2)
+                .padding(.horizontal, 10).frame(width: wideSearch ? 230 : nil, height: 30)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.surface))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help("Search or run a command (⌘K)")
+            .accessibilityLabel("Search or run a command")
+
+            ModePicker()
+
+            Button { store.newDraft() } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "plus").font(.system(size: 11, weight: .bold))
+                    Text("New event")
+                    Text("N").font(.system(size: 11, weight: .medium)).opacity(0.75)
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .help("New event (N or ⌘N)")
+        }
+        .padding(.leading, leadingInset).padding(.trailing, 20)
+    }
+}
