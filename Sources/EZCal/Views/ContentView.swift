@@ -37,9 +37,9 @@ struct ContentView: View {
                         .focused($gridFocused)
                         .focusEffectDisabled()
                         .onKeyPress(phases: .down) { handle($0) }
-                        .background(HorizontalSwipeNavigator { delta in
+                        .background(HorizontalSwipeNavigator { days in
                             guard store.sheet == nil, store.deleteRequest == nil else { return }
-                            store.step(delta)
+                            store.stepDay(days)
                         })
                     }
                     .frame(maxWidth: .infinity)

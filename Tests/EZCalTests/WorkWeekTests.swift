@@ -32,4 +32,20 @@ final class WorkWeekTests: XCTestCase {
         XCTAssertEqual(Calendar.current.component(.day, from: store.visibleDays.first!), 28)  // Mon Sep 28
         XCTAssertEqual(store.title, "Sep 28 – Oct 2, 2026")
     }
+
+    /// Swipe/scroll navigation should glide a day at a time, never a whole week or month, regardless
+    /// of which view is showing.
+    func testStepDayMovesExactlyOneDayRegardlessOfMode() {
+        let cal = Calendar.current
+        let wednesday = cal.date(from: DateComponents(year: 2026, month: 9, day: 23))!
+        for mode: ViewMode in [.day, .workWeek, .week, .month] {
+            let store = CalendarStore()
+            store.mode = mode
+            store.anchor = wednesday
+            store.stepDay(1)
+            XCTAssertEqual(cal.dateComponents([.day], from: wednesday, to: store.anchor).day, 1, "\(mode)")
+            store.stepDay(-3)
+            XCTAssertEqual(cal.dateComponents([.day], from: wednesday, to: store.anchor).day, -2, "\(mode)")
+        }
+    }
 }

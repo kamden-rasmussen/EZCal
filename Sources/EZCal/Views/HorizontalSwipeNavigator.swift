@@ -1,22 +1,26 @@
 import SwiftUI
 import AppKit
 
-/// Two-finger trackpad swipe left/right = previous/next period, the way Calendar.app and Notion
-/// Calendar behave. A plain `scrollWheel` override on a background NSView won't see these events:
+/// Two-finger trackpad swipe (or a horizontal scroll wheel) glides through the calendar a day at a
+/// time — the further you pull, the more days it advances, rather than snapping a whole week or
+/// month per gesture. A plain `scrollWheel` override on a background NSView won't see these events:
 /// SwiftUI's `ScrollView` is backed by a real `NSScrollView`, and AppKit hit-tests scroll events
 /// straight to it (or a descendant), so an ancestor/sibling never gets first crack at them. Tapping
 /// a local `NSEvent` monitor sidesteps hit-testing entirely — it sees every scroll event bound for
 /// this window before normal dispatch, and we forward anything that isn't a clear horizontal swipe
 /// unchanged, so the grid's own vertical scrolling is untouched.
 struct HorizontalSwipeNavigator: NSViewRepresentable {
-    /// -1 = previous period, +1 = next period.
-    let onSwipe: (Int) -> Void
+    /// Called once per day advanced: -1 = one day back, +1 = one day forward.
+    let onStepDay: (Int) -> Void
+
+    /// Points of accumulated horizontal delta per day advanced. Small on purpose — this should read
+    /// as a smooth, continuous pull, not a springy threshold you have to shove past.
+    private static let pointsPerDay: CGFloat = 28
 
     final class Coordinator {
         var monitor: Any?
         weak var window: NSWindow?
         var accumulated: CGFloat = 0
-        var triggered = false
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -51,20 +55,22 @@ struct HorizontalSwipeNavigator: NSViewRepresentable {
 
         if event.phase == [] {
             // A plain scroll wheel with no gesture phases (rare on modern trackpads/mice): each
-            // qualifying tick is its own swipe, no accumulation needed.
-            guard abs(dx) > 10 else { return false }
-            onSwipe(dx < 0 ? 1 : -1)
+            // qualifying tick advances one day, no accumulation needed.
+            guard abs(dx) > 4 else { return false }
+            onStepDay(dx < 0 ? 1 : -1)
             return true
         }
 
-        if event.phase.contains(.began) { c.accumulated = 0; c.triggered = false }
-        defer { if event.phase.contains(.ended) || event.phase.contains(.cancelled) { c.accumulated = 0; c.triggered = false } }
-        guard !c.triggered else { return true }
+        if event.phase.contains(.began) { c.accumulated = 0 }
+        defer { if event.phase.contains(.ended) || event.phase.contains(.cancelled) { c.accumulated = 0 } }
 
+        // Consume the delta in whole-day chunks, carrying any remainder — a long, fast swipe can
+        // advance several days in one gesture, same as dragging further would in a paged scroller.
         c.accumulated += dx
-        let threshold: CGFloat = 70
-        if c.accumulated < -threshold { c.triggered = true; onSwipe(1) }
-        else if c.accumulated > threshold { c.triggered = true; onSwipe(-1) }
+        while abs(c.accumulated) >= Self.pointsPerDay {
+            if c.accumulated < 0 { c.accumulated += Self.pointsPerDay; onStepDay(1) }
+            else { c.accumulated -= Self.pointsPerDay; onStepDay(-1) }
+        }
         return true
     }
 }

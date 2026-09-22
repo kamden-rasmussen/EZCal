@@ -222,6 +222,13 @@ final class CalendarStore {
         scheduleReload()
     }
 
+    /// Moves the anchor by exactly one calendar day, regardless of view mode — used by swipe/scroll
+    /// navigation, which should feel like gliding day by day rather than jumping a whole week or month.
+    func stepDay(_ n: Int) {
+        anchor = cal.date(byAdding: .day, value: n, to: anchor)!
+        scheduleReload()
+    }
+
     func goToday() { anchor = Date(); scheduleReload() }
     func goTo(_ d: Date) { anchor = d; scheduleReload() }
     func setMode(_ m: ViewMode) {
