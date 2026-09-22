@@ -34,6 +34,14 @@ struct SettingsView: View {
     @AppStorage("defaultDuration") private var defaultDuration = 60
     @AppStorage("defaultVideo") private var defaultVideo = "none"
     @AppStorage("hourHeight") private var hourHeight = 56.0
+    // Zoom meeting defaults — read into a fresh `ZoomMeetingOptions` wherever a meeting is created
+    // without going through the editor (Settings itself doesn't need the struct, just the raw keys).
+    @AppStorage("zoomWaitingRoom") private var zoomWaitingRoom = true
+    @AppStorage("zoomMuteOnEntry") private var zoomMuteOnEntry = false
+    @AppStorage("zoomJoinBeforeHost") private var zoomJoinBeforeHost = false
+    @AppStorage("zoomHostVideo") private var zoomHostVideo = true
+    @AppStorage("zoomParticipantVideo") private var zoomParticipantVideo = false
+    @AppStorage("zoomPasscodeEnabled") private var zoomPasscodeEnabled = true
 
     var body: some View {
         TabView {
@@ -82,13 +90,27 @@ struct SettingsView: View {
                             Spacer()
                             Button("Disconnect", role: .destructive) { store.disconnectZoom() }
                         } else {
-                            Button("Connect Zoom") { Task { await store.connectZoom() } }
+                            Button(store.zoomNeedsReconnect ? "Reconnect Zoom" : "Connect Zoom") { Task { await store.connectZoom() } }
                                 .disabled(zoomClientID.isEmpty)
                         }
+                    }
+                    if store.zoomNeedsReconnect {
+                        Label("Zoom's sign-in expired — reconnect to keep creating meetings.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption).foregroundStyle(.orange)
                     }
                     Text("Create a “General app” (user-managed OAuth) in the Zoom App Marketplace, add the scope meeting:write:meeting (plus meeting:update:meeting and meeting:delete:meeting), and register http://localhost:48291/callback as the redirect URL.")
                         .font(.caption).foregroundStyle(.secondary)
                     Link("Open Zoom App Marketplace", destination: URL(string: "https://marketplace.zoom.us/develop/create")!).font(.caption)
+                }
+                Section("Meeting defaults") {
+                    Toggle("Waiting room", isOn: $zoomWaitingRoom)
+                    Toggle("Mute participants on entry", isOn: $zoomMuteOnEntry)
+                    Toggle("Join before host", isOn: $zoomJoinBeforeHost)
+                    Toggle("Host video on", isOn: $zoomHostVideo)
+                    Toggle("Participant video on", isOn: $zoomParticipantVideo)
+                    Toggle("Require passcode", isOn: $zoomPasscodeEnabled)
+                    Text("Used for new Zoom meetings; each event can override them before creating one.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 if let e = store.errorMessage { Text(e).font(.caption).foregroundStyle(.red) }
             }

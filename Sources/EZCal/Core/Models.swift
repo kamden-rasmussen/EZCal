@@ -149,6 +149,8 @@ struct EventDraft: Identifiable {
     var notes = ""
     var attendees: [Attendee] = []
     var video: Video = .none
+    /// Only used when creating a new Zoom meeting; starts from Settings → Zoom's defaults.
+    var zoomOptions: ZoomMeetingOptions = .defaults
 }
 
 enum ViewMode: String, CaseIterable, Identifiable {

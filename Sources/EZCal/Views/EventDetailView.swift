@@ -16,6 +16,7 @@ struct EventDetailView: View {
     @Environment(CalendarStore.self) private var store
     let event: CalEvent
     @State private var confirmDelete = false
+    @State private var confirmRemoveZoom = false
     @State private var busy = false
 
     var body: some View {
@@ -38,6 +39,9 @@ struct EventDetailView: View {
                         NSPasteboard.general.setString(url.absoluteString, forType: .string)
                     }
                     .buttonStyle(SecondaryButtonStyle())
+                    if event.meetingProvider == .zoom && event.canEdit {
+                        Button("Remove") { confirmRemoveZoom = true }.buttonStyle(SecondaryButtonStyle())
+                    }
                 }
             } else if event.canEdit && !event.isAllDay {
                 Button {
@@ -115,6 +119,11 @@ struct EventDetailView: View {
             Button("Delete", role: .destructive) { Task { await store.delete(event) } }
         } message: {
             Text(event.isRecurring ? "Only this occurrence will be deleted." : "This can't be undone.")
+        }
+        .confirmationDialog("Remove the Zoom meeting?", isPresented: $confirmRemoveZoom) {
+            Button("Remove", role: .destructive) { Task { await store.removeZoom(from: event) } }
+        } message: {
+            Text("This deletes the Zoom meeting and removes its link from the event.")
         }
     }
 

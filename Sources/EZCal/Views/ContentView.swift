@@ -125,7 +125,10 @@ struct ContentView: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             Text(msg).font(.system(size: 12)).lineLimit(2).foregroundStyle(Theme.text)
             Spacer()
-            Button { store.errorMessage = nil } label: { Image(systemName: "xmark") }
+            if store.zoomNeedsReconnect {
+                Button("Reconnect Zoom") { Task { await store.connectZoom() } }.buttonStyle(SecondaryButtonStyle())
+            }
+            Button { store.errorMessage = nil; store.zoomNeedsReconnect = false } label: { Image(systemName: "xmark") }
                 .buttonStyle(IconButtonStyle()).accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
