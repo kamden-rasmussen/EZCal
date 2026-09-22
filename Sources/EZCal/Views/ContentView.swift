@@ -67,6 +67,7 @@ struct ContentView: View {
                     },
                     onClose: { store.sheet = nil }
                 )
+            case .addSubscription: AddICSSubscriptionView()
             }
         }
         .confirmationDialog(

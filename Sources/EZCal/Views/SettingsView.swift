@@ -89,6 +89,25 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     if let e = store.errorMessage, !store.eventKitEnabled { Text(e).font(.caption).foregroundStyle(.red) }
                 }
+                Section("Calendar subscriptions") {
+                    ForEach(store.icsSubscriptions) { sub in
+                        HStack {
+                            Circle().fill(Color(hex: sub.colorHex)).frame(width: 10, height: 10)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(sub.name)
+                                Text(sub.url.absoluteString).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            if let error = store.sourceErrors[sub.source.id] {
+                                Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(error)
+                            }
+                            Button("Remove", role: .destructive) { store.removeICSSubscription(sub) }
+                        }
+                    }
+                    Button { store.openAddSubscription() } label: { Label("Add calendar by URL…", systemImage: "link.badge.plus") }
+                    Text("Read-only .ics feeds — sports schedules, team calendars, holiday lists. Accepts webcal:// and https:// links.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Google OAuth client") { GoogleCredentialsForm() }
             }
             .formStyle(.grouped)

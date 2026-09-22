@@ -23,6 +23,8 @@ struct Source: Codable, Identifiable, Hashable, Sendable {
     var color: Color { Color(hex: colorHex) }
     /// Calendars that come from macOS (iCloud etc.) via EventKit rather than the Google API.
     var isEventKit: Bool { id.hasPrefix("ek|") }
+    /// Read-only .ics URL subscriptions (see `ICSSubscription`).
+    var isICS: Bool { id.hasPrefix("ics|") }
     var groupTitle: String { accountId.hasPrefix("ek:") ? String(accountId.dropFirst(3)) : accountId }
 
     var initials: String {
@@ -83,6 +85,7 @@ struct CalEvent: Identifiable, Hashable, Sendable {
 
     var color: Color { Color(hex: colorHex) }
     var isEventKit: Bool { sourceId.hasPrefix("ek|") }
+    var isICS: Bool { sourceId.hasPrefix("ics|") }
     var meetingProvider: MeetingProvider? { meetingURL.map(MeetingProvider.init(url:)) }
     var selfAttendee: Attendee? { attendees.first { $0.isSelf } }
 }
@@ -173,12 +176,14 @@ enum ActiveSheet: Identifiable {
     case shortcuts
     /// Standalone "Find a time" (opened from the ⌘K palette, not tied to an open editor).
     case findTime
+    case addSubscription
 
     var id: String {
         switch self {
         case .palette: return "palette"
         case .shortcuts: return "shortcuts"
         case .findTime: return "findTime"
+        case .addSubscription: return "addSubscription"
         case .detail(let e): return "detail-" + e.id
         case .editor(let d): return "editor-" + d.id.uuidString
         }

@@ -4,6 +4,7 @@ A free, hackable, native macOS calendar for Google Calendar, inspired by Notion 
 
 - **Google Calendar**: multiple accounts, day / week / month views, create / edit / delete / RSVP
 - **iCloud & Apple Calendar accounts**: every calendar macOS already syncs (iCloud, Exchange, Fastmail, CalDAV) appears alongside Google, with no passwords or API keys. Events on both are de-duplicated.
+- **Subscribe to .ics calendars**: paste a `webcal://` or `https://` link (a sports schedule, a shared team calendar, a holiday list) and it shows up in the sidebar, read-only, refreshing itself in the background.
 - **Coworker overlay**: search your Google Workspace directory, click a person, and their calendar appears in your grid (full details if they share them with you, free/busy blocks if not)
 - **Zoom in one click**: pick "Zoom" when creating an event, or hit "Add Zoom meeting" on an existing one, with your own defaults (waiting room, mute on entry, join before host, host/participant video, passcode) editable per event. Real Zoom meetings are created through the Zoom API and attached to the event, deleted when you delete the event or remove the link, and updated if you move the event's time. Google Meet works too.
 - **Availability check** while inviting people ("Alice is busy at this time")
@@ -36,6 +37,12 @@ You bring your own API credentials, so the app is free and nothing is shared wit
 Click **Use my iCloud / Apple Calendar accounts** on the welcome screen (or Settings → Accounts) and allow calendar access. EZCal reads whatever accounts you've added in System Settings → Internet Accounts, so to add iCloud, Exchange, etc., add them there.
 
 Limits versus Google calendars: EventKit doesn't let apps invite people or set your RSVP, so those controls and Google Meet are hidden for Apple calendars. Coworker overlay is Google-only.
+
+### 0.5 Subscribe to a calendar URL (optional, zero setup)
+
+Settings → Accounts → **Add calendar by URL…** (also in ⌘K and the Calendar menu), then paste a `webcal://` or `https://` link — a sports league's schedule, a shared team calendar, a public holiday feed. It appears in the sidebar like any other calendar, refreshes itself alongside your other calendars, and is read-only (no editor, RSVP or delete). A feed that's temporarily unreachable shows a warning icon next to its name instead of losing its events or blocking your other calendars.
+
+Recurring events (RRULE) are expanded for daily/weekly/monthly/yearly frequencies with COUNT, UNTIL, INTERVAL and BYDAY (including "2nd Tuesday of the month" style rules); very old Outlook-style time zone names (rather than IANA ones like `America/New_York`) aren't recognized and fall back to your Mac's local time zone.
 
 ### 1. Google (optional if you only use Apple Calendar, ~5 min)
 
@@ -149,13 +156,15 @@ Sources/EZCal/
   Services/SlotFinder.swift pure "find a time" slot-search logic (no I/O)
   Services/NotificationPlanner.swift  pure "which events get which reminder" logic (unit tested)
   Services/NotificationService.swift  UNUserNotificationCenter: permission, scheduling, Join/Open actions
+  Core/ICSParser.swift      pure-Swift iCalendar (.ics) parser + RRULE expansion
+  Services/ICSService.swift .ics subscription fetch/cache (conditional GET, disk cache)
   Store/CalendarStore.swift all app state: fetching, overlay merge, save/delete/RSVP
   Core/Theme.swift          design tokens, keycaps, button styles
   Core/EventDragMath.swift  snap/time math for dragging & resizing events
   Store/Commands.swift      keyboard focus navigation + command palette items
   Store/EventDrag.swift     drag-to-move/resize commit, rollback, keyboard nudge
   Views/                    TimeGridView, MonthView, Sidebar, editor, detail, palette, shortcuts, settings, FindTimeView
-Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback tests, slot-finder
+Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback, .ics parser/fetch, slot-finder tests
 scripts/                    build_app.sh, make_icon.swift
 ```
 
@@ -166,6 +175,7 @@ Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swif
 - Editing a recurring event changes only that occurrence (no "all events" option yet).
 - Moving an event to another calendar isn't supported in the editor.
 - "Remove Zoom link" recognizes the block EZCal itself appends; on a Google event whose description is HTML (rare — only happens if it already contained a `<` before Zoom was added) it may remove more than just the Zoom lines. Plain-text notes (the common case, and always the case for Apple Calendar events) aren't affected.
+- .ics subscriptions don't support per-occurrence overrides (RECURRENCE-ID) or `BYMONTHDAY`/`BYSETPOS` rules; uncommon in the sports/team/holiday feeds this targets.
 
 ## License
 

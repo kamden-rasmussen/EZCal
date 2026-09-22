@@ -39,6 +39,7 @@ struct EZCalApp: App {
                 Button("Show / Hide Sidebar") { store.toggleSidebar() }.keyboardShortcut("\\")
                 Divider()
                 Button("Add Coworker…") { store.requestAddPerson() }.keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Add Calendar by URL…") { store.openAddSubscription() }
                 Button("Refresh") { Task { await store.refreshAll() } }.keyboardShortcut("r")
             }
 

@@ -15,6 +15,7 @@ final class CalendarStore {
     // Persisted
     var accounts: [Account] = []
     var people: [Source] = []
+    var icsSubscriptions: [ICSSubscription] = []
     private(set) var hidden: Set<String> = []
     private var knownCalendars: Set<String> = []
 
@@ -24,6 +25,10 @@ final class CalendarStore {
     private(set) var displayEvents: [CalEvent] = []
     var upcoming: [CalEvent] = []
     var personAccess: [String: PersonAccess] = [:]
+    /// Latest per-source fetch error, keyed by `Source.id`. Currently only populated for .ics
+    /// subscriptions (Google/EventKit surface failures through `errorMessage` instead); a subscription
+    /// with an entry here shows a warning in the sidebar and Settings without blocking other calendars.
+    var sourceErrors: [String: String] = [:]
 
     // UI state
     var mode: ViewMode
@@ -55,7 +60,7 @@ final class CalendarStore {
     /// because a self-updating view inside a MenuBarExtra label makes SwiftUI spin at 100% CPU.
     var menuBarText = ""
 
-    var hasAnyAccount: Bool { !accounts.isEmpty || eventKitEnabled }
+    var hasAnyAccount: Bool { !accounts.isEmpty || eventKitEnabled || !icsSubscriptions.isEmpty }
 
     private var generation = 0
     private let defaults = UserDefaults.standard
@@ -64,6 +69,7 @@ final class CalendarStore {
         mode = ViewMode(rawValue: defaults.string(forKey: "viewMode") ?? "") ?? .week
         accounts = Self.load("accounts", [Account].self) ?? []
         people = Self.load("people", [Source].self) ?? []
+        icsSubscriptions = Self.load("icsSubscriptions", [ICSSubscription].self) ?? []
         hidden = Set(Self.load("hidden", [String].self) ?? [])
         knownCalendars = Set(Self.load("knownCalendars", [String].self) ?? [])
         eventKitEnabled = (defaults.bool(forKey: "eventKitEnabled") && EventKitService.shared.isAuthorized) || isDemo
@@ -119,7 +125,7 @@ final class CalendarStore {
         defaults.set(try? JSONEncoder().encode(v), forKey: key)
     }
     private func persist() {
-        save(accounts, "accounts"); save(people, "people")
+        save(accounts, "accounts"); save(people, "people"); save(icsSubscriptions, "icsSubscriptions")
         save(Array(hidden), "hidden"); save(Array(knownCalendars), "knownCalendars")
     }
 
@@ -273,6 +279,37 @@ final class CalendarStore {
         rebuildDisplay()
     }
 
+    // MARK: - .ics subscriptions
+
+    /// Adds (or, for a URL already subscribed to, updates the name/color of) a read-only .ics feed.
+    /// `raw` accepts `webcal://` or `https://`/`http://`; validation failures are thrown so the caller
+    /// (a form) can show them inline rather than through the global error banner.
+    func addICSSubscription(urlString raw: String, name: String, colorHex: String) throws {
+        guard let url = ICSService.normalizeURL(raw) else {
+            throw APIError.invalid("That doesn't look like a webcal:// or https:// calendar link.")
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let sub = ICSSubscription(url: url, name: trimmedName.isEmpty ? url.host ?? "Calendar" : trimmedName, colorHex: colorHex)
+        icsSubscriptions.removeAll { $0.id == sub.id }
+        icsSubscriptions.append(sub)
+        hidden.remove(sub.source.id)
+        persist()
+        scheduleReload()
+    }
+
+    func removeICSSubscription(_ sub: ICSSubscription) {
+        icsSubscriptions.removeAll { $0.id == sub.id }
+        let sourceId = sub.source.id
+        calendars.removeAll { $0.id == sourceId }
+        eventsBySource[sourceId] = nil
+        hidden.remove(sourceId)
+        sourceErrors[sourceId] = nil
+        knownCalendars.remove(sourceId)
+        ICSService.shared.forget(sub)
+        persist()
+        rebuildDisplay()
+    }
+
     // MARK: - Accounts
 
     func signIn() async {
@@ -355,6 +392,11 @@ final class CalendarStore {
                 result.append(s)
             }
         }
+        for sub in icsSubscriptions {
+            let s = sub.source
+            knownCalendars.insert(s.id)
+            result.append(s)
+        }
         if !result.isEmpty || accounts.isEmpty { calendars = result }
         persist()
     }
@@ -378,7 +420,12 @@ final class CalendarStore {
             for await r in group {
                 fresh[r.sourceId] = r.events
                 if let a = r.access { access[r.sourceId] = a }
-                if let e = r.error, firstError == nil { firstError = e }
+                if let e = r.error {
+                    if firstError == nil { firstError = e }
+                    sourceErrors[r.sourceId] = e
+                } else {
+                    sourceErrors.removeValue(forKey: r.sourceId)
+                }
             }
         }
         guard gen == generation else { return }
@@ -448,6 +495,10 @@ final class CalendarStore {
     nonisolated private static func fetch(_ s: Source, _ range: Range<Date>) async -> FetchResult {
         if s.isEventKit {
             return FetchResult(sourceId: s.id, events: EventKitService.shared.events(for: s, range: range))
+        }
+        if s.isICS {
+            let (events, error) = await ICSService.shared.fetchAndParse(s, range: range)
+            return FetchResult(sourceId: s.id, events: events, error: error)
         }
         let api = GoogleAPI(accountId: s.accountId)
         switch s.kind {
