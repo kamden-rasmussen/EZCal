@@ -397,6 +397,34 @@ final class CalendarStore {
             .filter { !$0.isAllDay && !$0.isDeclined && $0.end > now && seen.insert($0.uid + "\($0.start.timeIntervalSince1970)").inserted }
             .sorted { $0.start < $1.start }
         updateMenuBarText()
+        await rescheduleNotifications()
+    }
+
+    // MARK: - Meeting notifications
+
+    /// Recomputes which meeting reminders should be pending (NotificationPlanner.plan) and hands them to
+    /// NotificationService, which diffs against what's already scheduled. Called after every refresh, edit
+    /// and external EventKit change via `refreshUpcoming`, so reminders reschedule automatically and drop
+    /// for deleted/declined events; a no-op if the user has notifications turned off.
+    func rescheduleNotifications() async {
+        guard !isDemo else { return } // demo data shouldn't queue real system notifications; see sendTestNotification
+        let planned = AppSettings.notificationsEnabled
+            ? NotificationPlanner.plan(events: upcoming, now: Date(),
+                                        leadMinutes: AppSettings.notificationLeadMinutes,
+                                        videoOnly: AppSettings.notificationVideoOnly)
+            : []
+        await NotificationService.shared.reschedule(planned)
+    }
+
+    /// Settings → General "Send test notification". Returns false if notification permission is denied.
+    func sendTestNotification() async -> Bool {
+        await NotificationService.shared.sendTest()
+    }
+
+    /// A meeting notification's "Open" action (or a plain click) asks to focus this event; it may have
+    /// scrolled out of `upcoming` by now, so also check the currently displayed events.
+    func focusEvent(_ id: String) {
+        if let e = (upcoming + displayEvents).first(where: { $0.id == id }) { sheet = .detail(e) }
     }
 
     func updateMenuBarText(now: Date = Date()) {

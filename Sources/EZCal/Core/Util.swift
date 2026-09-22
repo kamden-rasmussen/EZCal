@@ -125,4 +125,13 @@ enum AppSettings {
     static var defaultDuration: Int { let d = defaults.integer(forKey: "defaultDuration"); return d > 0 ? d : 60 }
     static var defaultVideo: String { defaults.string(forKey: "defaultVideo") ?? "none" }
     static var hourHeight: Double { let h = defaults.double(forKey: "hourHeight"); return h > 0 ? h : 56 }
+
+    /// Off by default: notifications are opt-in, requested only once the user turns this on (see
+    /// NotificationService.ensureAuthorized), never at launch.
+    static var notificationsEnabled: Bool { defaults.bool(forKey: "notificationsEnabled") }
+    static var notificationLeadMinutes: Int {
+        let v = defaults.integer(forKey: "notificationLeadMinutes")
+        return [1, 5, 10, 15].contains(v) ? v : 5
+    }
+    static var notificationVideoOnly: Bool { defaults.bool(forKey: "notificationVideoOnly") }
 }
