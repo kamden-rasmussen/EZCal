@@ -51,6 +51,22 @@ struct ContentView: View {
             case .editor(let d): EventEditorView(draft: d)
             case .palette: PaletteView()
             case .shortcuts: ShortcutsView()
+            case .findTime:
+                FindTimeView(
+                    initialAttendees: [], initialDuration: TimeInterval(AppSettings.defaultDuration * 60),
+                    accountId: store.accounts.first?.id, editableAttendees: true,
+                    onPick: { start, end, people in
+                        store.sheet = nil
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 200_000_000)   // let the sheet finish closing
+                            guard let src = store.defaultSource else { return }
+                            var d = EventDraft(start: start, end: end, sourceId: src.id)
+                            d.attendees = people
+                            store.sheet = .editor(d)
+                        }
+                    },
+                    onClose: { store.sheet = nil }
+                )
             }
         }
         .confirmationDialog(

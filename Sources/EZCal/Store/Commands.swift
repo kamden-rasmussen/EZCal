@@ -89,6 +89,10 @@ extension CalendarStore {
 
     func openPalette(_ query: String = "") { paletteQuery = query; sheet = .palette }
     func openShortcuts() { sheet = .shortcuts }
+    func openFindTime() {
+        guard !accounts.isEmpty else { errorMessage = "Connect Google to check attendees' availability."; return }
+        sheet = .findTime
+    }
 
     func toggleWeekends() {
         UserDefaults.standard.set(!AppSettings.showWeekends, forKey: "showWeekends")
@@ -112,6 +116,7 @@ extension CalendarStore {
 
         add("new", "Actions", "New event", icon: "+", key: "N") { self.newDraft() }
         add("join", "Actions", "Join next meeting", icon: "▶", key: "J") { self.joinMeeting() }
+        add("findtime", "Actions", "Find a time for coworkers", icon: "⏱", sub: "Best slot across everyone's calendar") { self.openFindTime() }
         add("today", "Go to", "Today", icon: "T", key: "T") { self.goToday() }
         add("next", "Go to", "Next \(mode.title.lowercased())", icon: "→", key: "]") { self.step(1) }
         add("prev", "Go to", "Previous \(mode.title.lowercased())", icon: "←", key: "[") { self.step(-1) }
@@ -137,7 +142,7 @@ extension CalendarStore {
 
         guard !q.isEmpty else {
             let order = ["Actions", "Go to", "Views", "Coworkers", "Calendars", "Help"]
-            return items.filter { ["new", "join", "today", "workweek", "week", "day", "month", "addperson", "shortcuts"].contains($0.id) || $0.id.hasPrefix("person-") }
+            return items.filter { ["new", "join", "findtime", "today", "workweek", "week", "day", "month", "addperson", "shortcuts"].contains($0.id) || $0.id.hasPrefix("person-") }
                 .sorted { (order.firstIndex(of: $0.group) ?? 9) < (order.firstIndex(of: $1.group) ?? 9) }
         }
 
