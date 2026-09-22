@@ -11,6 +11,7 @@ struct ContentView: View {
     var body: some View {
         @Bindable var store = store
         let sidebarShown = store.columnVisibility != .detailOnly
+        let detailEvent: CalEvent? = { if case .detail(let e) = store.sheet { return e }; return nil }()
 
         Group {
             if !store.hasAnyAccount {
@@ -43,15 +44,24 @@ struct ContentView: View {
                         })
                     }
                     .frame(maxWidth: .infinity)
+
+                    if let event = detailEvent {
+                        EventDetailView(event: event)
+                            .id(event.id)
+                            .frame(width: 420)
+                            .overlay(alignment: .leading) { Rectangle().fill(Theme.line).frame(width: 1) }
+                            .transition(.move(edge: .trailing))
+                    }
                 }
             }
         }
         .background(Theme.bg)
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.18), value: sidebarShown)
-        .sheet(item: $store.sheet) { sheet in
+        .animation(.easeInOut(duration: 0.2), value: detailEvent?.id)
+        .sheet(item: modalSheetBinding) { sheet in
             switch sheet {
-            case .detail(let e): EventDetailView(event: e)
+            case .detail: EmptyView()   // shown as a docked panel above, not a modal
             case .editor(let d): EventEditorView(draft: d)
             case .palette: PaletteView()
             case .shortcuts: ShortcutsView()
@@ -101,6 +111,14 @@ struct ContentView: View {
             lastActivation = Date()
             Task { await store.refreshAll() }
         }
+    }
+
+    /// `store.sheet` minus `.detail`, which is presented as a docked side panel instead of a modal sheet.
+    private var modalSheetBinding: Binding<ActiveSheet?> {
+        Binding(
+            get: { if case .detail = store.sheet { return nil } else { return store.sheet } },
+            set: { store.sheet = $0 }
+        )
     }
 
     // MARK: Keyboard

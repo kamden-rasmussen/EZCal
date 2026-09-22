@@ -20,83 +20,87 @@ struct EventDetailView: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             header
+                .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 18)
 
-            if let url = event.meetingURL {
-                HStack(spacing: 8) {
-                    Button { NSWorkspace.shared.open(url) } label: {
+            Rectangle().fill(Theme.line).frame(height: 1)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let url = event.meetingURL {
                         HStack(spacing: 8) {
-                            Image(systemName: "video.fill")
-                            Text("Join \(event.meetingProvider?.name ?? "meeting")")
-                            Text("J").font(.system(size: 11)).opacity(0.7)
-                        }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .keyboardShortcut("j", modifiers: [])
-                    Button("Copy link") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(url.absoluteString, forType: .string)
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    if event.meetingProvider == .zoom && event.canEdit {
-                        Button("Remove") { confirmRemoveZoom = true }.buttonStyle(SecondaryButtonStyle())
-                    }
-                }
-            } else if event.canEdit && !event.isAllDay {
-                Button {
-                    busy = true
-                    Task { await store.attachZoom(to: event); busy = false }
-                } label: {
-                    HStack(spacing: 8) { Image(systemName: "video.badge.plus"); Text("Add Zoom meeting"); KeyCap("Z") }
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                .keyboardShortcut("z", modifiers: [])
-                .disabled(!store.zoomConnected || busy)
-                .help(store.zoomConnected ? "Create a Zoom meeting and attach it (Z)" : "Connect Zoom in Settings first")
-            }
-
-            if !event.location.isEmpty && event.location != event.meetingURL?.absoluteString {
-                info("mappin.and.ellipse") { Text(event.location).textSelection(.enabled) }
-            }
-
-            let notes = event.notes.strippingHTML
-            if !notes.isEmpty {
-                info("text.alignleft") {
-                    ScrollView { Text(notes).font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }
-                        .frame(maxHeight: 130)
-                }
-            }
-
-            let people = event.attendees.filter { !$0.isResource }
-            if !people.isEmpty {
-                info("person.2") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("\(people.count) \(people.count == 1 ? "guest" : "guests")").font(.system(size: 13, weight: .semibold))
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 4) {
-                                ForEach(people, id: \.email) { a in
-                                    HStack(spacing: 7) {
-                                        Image(systemName: icon(a.response)).foregroundStyle(color(a.response)).font(.system(size: 12))
-                                        Text(a.display + (a.isSelf ? " (you)" : ""))
-                                        if a.isOrganizer { Text("organizer").font(.system(size: 11)).foregroundStyle(Theme.text3) }
-                                    }
-                                    .accessibilityElement(children: .combine)
+                            Button { NSWorkspace.shared.open(url) } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "video.fill")
+                                    Text("Join \(event.meetingProvider?.name ?? "meeting")")
+                                    Text("J").font(.system(size: 11)).opacity(0.7)
                                 }
-                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .keyboardShortcut("j", modifiers: [])
+                            Button("Copy link") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            if event.meetingProvider == .zoom && event.canEdit {
+                                Button("Remove") { confirmRemoveZoom = true }.buttonStyle(SecondaryButtonStyle())
+                            }
                         }
-                        .frame(maxHeight: 100)
+                    } else if event.canEdit && !event.isAllDay {
+                        Button {
+                            busy = true
+                            Task { await store.attachZoom(to: event); busy = false }
+                        } label: {
+                            HStack(spacing: 8) { Image(systemName: "video.badge.plus"); Text("Add Zoom meeting"); KeyCap("Z") }
+                        }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .keyboardShortcut("z", modifiers: [])
+                        .disabled(!store.zoomConnected || busy)
+                        .help(store.zoomConnected ? "Create a Zoom meeting and attach it (Z)" : "Connect Zoom in Settings first")
+                    }
+
+                    if !event.location.isEmpty && event.location != event.meetingURL?.absoluteString {
+                        info("mappin.and.ellipse") { Text(event.location).textSelection(.enabled) }
+                    }
+
+                    let notes = event.notes.strippingHTML
+                    if !notes.isEmpty {
+                        info("text.alignleft") {
+                            Text(notes).font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                        }
+                    }
+
+                    let people = event.attendees.filter { !$0.isResource }
+                    if !people.isEmpty {
+                        info("person.2") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("\(people.count) \(people.count == 1 ? "guest" : "guests")").font(.system(size: 13, weight: .semibold))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(people, id: \.email) { a in
+                                        HStack(spacing: 7) {
+                                            Image(systemName: icon(a.response)).foregroundStyle(color(a.response)).font(.system(size: 12))
+                                            Text(a.display + (a.isSelf ? " (you)" : ""))
+                                            if a.isOrganizer { Text("organizer").font(.system(size: 11)).foregroundStyle(Theme.text3) }
+                                        }
+                                        .accessibilityElement(children: .combine)
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+
+                    if event.selfAttendee != nil && !event.isOverlay && !event.isEventKit {
+                        HStack(spacing: 8) {
+                            Text("Going?").foregroundStyle(Theme.text2)
+                            rsvp("Yes", "accepted", "y")
+                            rsvp("Maybe", "tentative", "m")
+                            rsvp("No", "declined", "n")
+                        }
                     }
                 }
-            }
-
-            if event.selfAttendee != nil && !event.isOverlay && !event.isEventKit {
-                HStack(spacing: 8) {
-                    Text("Going?").foregroundStyle(Theme.text2)
-                    rsvp("Yes", "accepted", "y")
-                    rsvp("Maybe", "tentative", "m")
-                    rsvp("No", "declined", "n")
-                }
+                .padding(20)
             }
 
             Rectangle().fill(Theme.line).frame(height: 1)
@@ -114,10 +118,10 @@ struct EventDetailView: View {
                         .buttonStyle(PrimaryButtonStyle()).keyboardShortcut("e", modifiers: [])
                 }
             }
+            .padding(.horizontal, 20).padding(.vertical, 14)
         }
-        .padding(22)
-        .frame(width: 460)
-        .background(Theme.surface)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Theme.side)
         .background { ShortcutProxy(key: .return) { if let u = event.meetingURL { NSWorkspace.shared.open(u) } else if event.canEdit { store.requestEdit(event) } } }
         // Recurring events go through RecurrenceScopeView (store.requestDelete) instead of this dialog.
         .confirmationDialog("Delete “\(event.title)”?", isPresented: $confirmDelete) {
