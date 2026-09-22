@@ -44,6 +44,10 @@ final class CalendarStore {
     var columnVisibility: NavigationSplitViewVisibility = .all
     var paletteQuery = ""
 
+    // Drag-to-move/resize (see Store/EventDrag.swift). Transient, never persisted.
+    var dragPreview: EventDragPreview?
+    var dragCancelled = false
+
     /// Text shown next to the menu-bar icon, e.g. "Standup · 12m". Kept as plain state (updated by a timer)
     /// because a self-updating view inside a MenuBarExtra label makes SwiftUI spin at 100% CPU.
     var menuBarText = ""
@@ -501,6 +505,14 @@ final class CalendarStore {
         let hit = displayEvents.filter { $0.start < e && max($0.end, $0.start.addingTimeInterval(1)) > s }
         return (hit.filter(\.isAllDay).sorted { $0.start < $1.start },
                 hit.filter { !$0.isAllDay }.sorted { $0.start < $1.start })
+    }
+
+    /// Optimistically patches one displayed event's time while a drag/save is in flight (`Store/EventDrag.swift`
+    /// rolls it back on failure). `displayEvents` is otherwise only ever rebuilt wholesale by `rebuildDisplay()`.
+    func setDisplayedTime(eventID: String, start: Date, end: Date) {
+        guard let i = displayEvents.firstIndex(where: { $0.id == eventID }) else { return }
+        displayEvents[i].start = start
+        displayEvents[i].end = end
     }
 
     var nextMeeting: CalEvent? {

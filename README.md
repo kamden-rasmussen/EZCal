@@ -98,6 +98,11 @@ Everything is reachable without a mouse. Press **?** in the app for the cheat sh
 | **⌫** | Delete |
 | **esc** | Close |
 
+| Move or resize the focused event | |
+|---|---|
+| **⌥↑ / ⌥↓** | Move 15 minutes earlier / later |
+| **⌥⇧↑ / ⌥⇧↓** | Resize (bottom edge) 15 minutes shorter / longer |
+
 | In the editor | |
 |---|---|
 | **⌘↩** | Save |
@@ -112,7 +117,7 @@ Everything is reachable without a mouse. Press **?** in the app for the cheat sh
 | **↩** | Use the selected slot |
 | **esc** | Close |
 
-Also: **P** add coworker, **⌘\** toggle sidebar, **⌘⇧W** hide weekends, **⌘R** refresh, **⌘,** settings. Every action is in the *Calendar* and *Event* menus too. Mouse shortcuts: click the grid for a new event at that time, drag for a range, double-click a day header for day view.
+Also: **P** add coworker, **⌘\** toggle sidebar, **⌘⇧W** hide weekends, **⌘R** refresh, **⌘,** settings. Every action is in the *Calendar* and *Event* menus too. Mouse shortcuts: click the grid for a new event at that time, drag for a range, double-click a day header for day view, drag an event block to move it (snaps to 15 minutes, drag onto another day column in day/work week/week view to move it there) or drag its bottom edge to resize it (15-minute minimum); **esc** cancels a drag mid-gesture. Read-only events and coworker overlays aren't draggable, and moving a recurring event only moves that occurrence.
 
 Colors, spacing and type live in `Sources/EZCal/Core/Theme.swift`; the design source is the "EZCal Design" canvas. Light and dark mode follow the system.
 
@@ -132,7 +137,9 @@ Sources/EZCal/
   Services/NotificationService.swift  UNUserNotificationCenter: permission, scheduling, Join/Open actions
   Store/CalendarStore.swift all app state: fetching, overlay merge, save/delete/RSVP
   Core/Theme.swift          design tokens, keycaps, button styles
+  Core/EventDragMath.swift  snap/time math for dragging & resizing events
   Store/Commands.swift      keyboard focus navigation + command palette items
+  Store/EventDrag.swift     drag-to-move/resize commit, rollback, keyboard nudge
   Views/                    TimeGridView, MonthView, Sidebar, editor, detail, palette, shortcuts, settings, FindTimeView
 Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback tests, slot-finder
 scripts/                    build_app.sh, make_icon.swift
@@ -143,7 +150,6 @@ Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swif
 ## Known limitations / ideas
 
 - Editing a recurring event changes only that occurrence (no "all events" option yet).
-- No drag-to-move / resize of existing events yet.
 - Zoom meetings are created with Zoom's default settings; add fields to the `settings` dictionary in `ZoomAPI.createMeeting` (waiting room, mute on entry, etc.).
 - Moving an event to another calendar isn't supported in the editor.
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Overlap layout
 
@@ -191,7 +192,8 @@ struct DayColumn: View {
                     let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
                     let h = max(p.end.timeIntervalSince(p.start) / 3600 * hourHeight - 2, 18)
                     let colW = geo.size.width / CGFloat(p.columns)
-                    EventBlock(event: p.event, height: h, narrow: p.columns > 1)
+                    EventBlock(event: p.event, height: h, narrow: p.columns > 1,
+                               hourHeight: hourHeight, dayWidth: geo.size.width)
                         .frame(width: max(colW - 4, 4), height: h)
                         .offset(x: colW * CGFloat(p.column) + 2, y: top)
                 }
@@ -204,6 +206,16 @@ struct DayColumn: View {
                         .overlay(alignment: .topLeading) {
                             Text(timeLabel(top, h)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.accent).padding(5)
                         }
+                        .frame(width: geo.size.width - 4, height: h)
+                        .offset(x: 2, y: top)
+                        .allowsHitTesting(false)
+                }
+
+                // Ghost preview while an event is being dragged (moved or resized) into this day.
+                if let dp = store.dragPreview, store.cal.isDate(dp.day, inSameDayAs: day) {
+                    let top = dp.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
+                    let h = max(dp.end.timeIntervalSince(dp.start) / 3600 * hourHeight - 2, 18)
+                    DragGhost(event: dp.event, start: dp.start, end: dp.end)
                         .frame(width: geo.size.width - 4, height: h)
                         .offset(x: 2, y: top)
                         .allowsHitTesting(false)
@@ -273,7 +285,16 @@ struct EventBlock: View {
     let event: CalEvent
     let height: Double
     var narrow = false
+    /// Needed to convert drag translation into minutes/days; 0 when a caller (e.g. previews) doesn't drag.
+    var hourHeight: Double = 56
+    var dayWidth: CGFloat = 0
     @State private var hovering = false
+    /// The event's own time when the current drag gesture began, captured on the first `onChanged`.
+    @State private var dragOrigin: (start: Date, end: Date)?
+
+    /// Read-only events, coworker overlays and busy blocks can't be dragged (issue #1 scope).
+    private var canDrag: Bool { event.canEdit && !event.isOverlay && !event.isBusyOnly && !event.isAllDay }
+    private var isBeingDragged: Bool { store.dragPreview?.event.id == event.id }
 
     var body: some View {
         let c = event.color
@@ -321,14 +342,80 @@ struct EventBlock: View {
             if event.isOverlay { shape.strokeBorder(c.opacity(0.6), lineWidth: event.isBusyOnly ? 1 : 1.5) }
         }
         .overlay { if focused { shape.inset(by: -1.5).strokeBorder(Theme.accent, lineWidth: 2) } }
-        .opacity(event.isDeclined ? 0.5 : 1)
+        .overlay(alignment: .bottom) { if canDrag { resizeHandle } }
+        .opacity(event.isDeclined ? 0.5 : (isBeingDragged ? 0.35 : 1))
         .contentShape(shape)
         .onHover { hovering = $0 }
         .help(event.ownerName.map { "\($0) · \(titleText)" } ?? titleText)
-        .onTapGesture { store.focusedEventID = event.id; store.sheet = .detail(event) }
+        .gesture(moveGesture)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// A thin strip along the bottom edge that resizes the event instead of moving it; layered on top so it
+    /// wins hit-testing over `moveGesture` in that sliver.
+    private var resizeHandle: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(height: 7)
+            .contentShape(Rectangle())
+            .gesture(resizeGesture)
+            .onHover { hovering in
+                if hovering { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() }
+            }
+            .accessibilityHidden(true)
+    }
+
+    /// Drag the block to move it (snap to 15 minutes, including across day columns); a plain click (no
+    /// meaningful movement) opens the event instead, matching the previous `onTapGesture` behavior.
+    private var moveGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                guard canDrag, abs(v.translation.height) > 3 || abs(v.translation.width) > 3 else { return }
+                if dragOrigin == nil { dragOrigin = (event.start, event.end); store.dragCancelled = false }
+                guard !store.dragCancelled, let origin = dragOrigin else { return }
+                let minutesDelta = EventDragMath.snap(minutes: Double(v.translation.height) / hourHeight * 60)
+                let dayDelta = dayWidth > 1 ? Int((Double(v.translation.width) / Double(dayWidth)).rounded()) : 0
+                let (s, e) = EventDragMath.moved(start: origin.start, end: origin.end,
+                                                 minutesDelta: minutesDelta, dayDelta: dayDelta, cal: store.cal)
+                store.dragPreview = EventDragPreview(kind: .move, event: event, day: store.cal.startOfDay(for: s), start: s, end: e)
+            }
+            .onEnded { v in
+                defer { dragOrigin = nil }
+                if canDrag, let preview = store.dragPreview, preview.event.id == event.id, preview.kind == .move {
+                    store.dragPreview = nil
+                    Task { await store.applyTimeChange(to: event, start: preview.start, end: preview.end) }
+                    return
+                }
+                store.dragPreview = nil
+                if abs(v.translation.width) < 3, abs(v.translation.height) < 3 {
+                    store.focusedEventID = event.id; store.sheet = .detail(event)
+                }
+            }
+    }
+
+    /// Drag the bottom edge to resize (snap to 15 minutes, 15-minute minimum). Esc (handled in
+    /// `ContentView`) clears `dragPreview` and sets `dragCancelled`, which this checks before every update.
+    private var resizeGesture: some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { v in
+                guard canDrag else { return }
+                if dragOrigin == nil { dragOrigin = (event.start, event.end); store.dragCancelled = false }
+                guard !store.dragCancelled, let origin = dragOrigin else { return }
+                let minutesDelta = EventDragMath.snap(minutes: Double(v.translation.height) / hourHeight * 60)
+                let (s, e) = EventDragMath.resized(start: origin.start, end: origin.end, minutesDelta: minutesDelta, cal: store.cal)
+                store.dragPreview = EventDragPreview(kind: .resize, event: event, day: store.cal.startOfDay(for: s), start: s, end: e)
+            }
+            .onEnded { _ in
+                defer { dragOrigin = nil }
+                guard canDrag, let preview = store.dragPreview, preview.event.id == event.id, preview.kind == .resize else {
+                    store.dragPreview = nil
+                    return
+                }
+                store.dragPreview = nil
+                Task { await store.applyTimeChange(to: event, start: preview.start, end: preview.end) }
+            }
     }
 
     private var titleText: String {
@@ -340,6 +427,29 @@ struct EventBlock: View {
         let who = event.ownerName.map { "\($0): " } ?? ""
         let time = event.start.formatted(date: .omitted, time: .shortened)
         return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "")
+    }
+}
+
+/// Live "new time range" preview shown in place of the real block while an event is dragged (move or resize).
+struct DragGhost: View {
+    let event: CalEvent
+    let start: Date
+    let end: Date
+
+    var body: some View {
+        let c = event.color
+        RoundedRectangle(cornerRadius: 7)
+            .fill(c.opacity(0.24))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(c, lineWidth: 1.5))
+            .overlay(alignment: .topLeading) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(event.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Text("\(start.formatted(date: .omitted, time: .shortened)) – \(end.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 11).monospacedDigit()).opacity(0.8)
+                }
+                .foregroundStyle(Theme.eventText(c))
+                .padding(.horizontal, 7).padding(.vertical, 4)
+            }
     }
 }
 
