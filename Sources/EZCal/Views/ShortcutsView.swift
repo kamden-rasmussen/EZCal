@@ -29,6 +29,11 @@ struct ShortcutsView: View {
             Row(label: "Delete", keys: ["⌫"]),
             Row(label: "Close", keys: ["esc"]),
         ]),
+        Section(title: "Move or resize the focused event", rows: [
+            Row(label: "Move 15 minutes", keys: ["⌥", "↑", "↓"]),
+            Row(label: "Resize (bottom edge)", keys: ["⌥", "⇧", "↑", "↓"]),
+            Row(label: "Cancel a drag", keys: ["esc"]),
+        ]),
         Section(title: "In the editor", rows: [
             Row(label: "Save", keys: ["⌘", "↩"]),
             Row(label: "Cancel", keys: ["esc"]),

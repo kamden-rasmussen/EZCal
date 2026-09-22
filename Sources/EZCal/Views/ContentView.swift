@@ -85,6 +85,20 @@ struct ContentView: View {
     /// Single-key shortcuts for the calendar grid. Modified keys are handled by the menu bar.
     private func handle(_ press: KeyPress) -> KeyPress.Result {
         guard store.sheet == nil, store.deleteRequest == nil else { return .ignored }
+
+        // Esc cancels a drag in progress (mouse still down) before anything else claims it.
+        if store.dragPreview != nil, press.key == .escape { store.cancelDrag(); return .handled }
+
+        // ⌥↑/↓ moves the focused event 15 minutes; ⌥⇧↑/↓ resizes it (bottom edge). Keyboard drag equivalent.
+        if press.modifiers == [.option] || press.modifiers == [.option, .shift] {
+            let resize = press.modifiers.contains(.shift)
+            switch press.key {
+            case .upArrow: store.nudgeFocused(minutes: -15, resize: resize); return .handled
+            case .downArrow: store.nudgeFocused(minutes: 15, resize: resize); return .handled
+            default: break
+            }
+        }
+
         if !press.modifiers.isDisjoint(with: [.command, .control, .option]) { return .ignored }
 
         switch press.key {
