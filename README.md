@@ -121,6 +121,12 @@ Also: **P** add coworker, **⌘\** toggle sidebar, **⌘⇧W** hide weekends, **
 
 Colors, spacing and type live in `Sources/EZCal/Core/Theme.swift`; the design source is the "EZCal Design" canvas. Light and dark mode follow the system.
 
+## Working hours & a second time zone
+
+Settings → **Hours & zones** sets your working days and hours (default Mon–Fri 9:00–17:00): hours outside that range are shaded in the day/week grid, and the grid opens scrolled to the start of your working day instead of the top of the clock.
+
+The same tab picks an optional **secondary time zone** (e.g. "PT" or "CET"), shown as a second hour gutter next to the usual one; hovering an event also shows its time in that zone. Toggle it on/off quickly from **⌘K** → "Show/Hide time zone".
+
 ## Project layout
 
 ```
@@ -128,6 +134,8 @@ Sources/EZCal/
   EZCalApp.swift            app entry, window, menu commands, menu bar item
   Core/Models.swift         Source / CalEvent / EventDraft, meeting-link detection
   Core/Util.swift           colors, RFC3339, Keychain, AppSettings
+  Core/WorkingHours.swift   working days/hours model + grid shading math
+  Core/TimeZoneMath.swift   secondary time zone conversion, labels, DST-safe offsets
   Services/OAuth.swift      PKCE + loopback redirect, token refresh (Google & Zoom)
   Services/GoogleAPI.swift  Calendar, FreeBusy, People (directory) + event mapping
   Services/ZoomAPI.swift    create / update / delete Zoom meetings

@@ -92,7 +92,7 @@ enum DebugSnapshot {
                     d.attendees = [Attendee(email: "priya@example.com", name: "Priya Shah"), Attendee(email: "marcus@example.com", name: "Marcus Lee")]
                     root = AnyView(EventEditorView(draft: d))
                 case "detail": root = AnyView(EventDetailView(event: e))
-                case "palette": store.paletteQuery = "we"; root = AnyView(PaletteView())
+                case "palette": store.paletteQuery = env["EZCAL_PALETTE_QUERY"] ?? "we"; root = AnyView(PaletteView())
                 case "shortcuts": root = AnyView(ShortcutsView())
                 case "findtime":
                     root = AnyView(FindTimeView(

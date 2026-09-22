@@ -9,8 +9,8 @@ import SwiftUI
 /// - From the ⌘K palette (`ActiveSheet.findTime`), presented standalone with no attendees yet;
 ///   picking a slot opens a new event draft seeded with the chosen people and time.
 ///
-/// Working hours are an injectable parameter (`WorkingHours`, default 9:00–18:00) so issue #5
-/// (working-hours settings) can pass a user's real hours here without this view changing.
+/// Working hours are an injectable parameter (`WorkingHours`, default `AppSettings.workingHours` —
+/// see Settings → Hours & zones) so a caller can override the search window without this view changing.
 struct FindTimeView: View {
     @Environment(CalendarStore.self) private var store
 
@@ -40,7 +40,7 @@ struct FindTimeView: View {
          accountId: String?,
          editableAttendees: Bool,
          excludingEventId: String? = nil,
-         workingHours: WorkingHours = .default,
+         workingHours: WorkingHours = AppSettings.workingHours,
          onPick: @escaping (Date, Date, [Attendee]) -> Void,
          onClose: @escaping () -> Void) {
         self.accountId = accountId

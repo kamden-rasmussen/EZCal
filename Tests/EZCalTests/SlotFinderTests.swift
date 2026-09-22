@@ -60,16 +60,17 @@ final class SlotFinderTests: XCTestCase {
     }
 
     func testOrganizersOwnBusyRangesBlockEvenWithNoGuests() {
+        // Busy for all but the last hour of the default (.standard, 9:00–17:00) working day.
         let slots = SlotFinder.findSlots(
             emails: [],
             busy: [:],
-            myBusy: [at(2026, 9, 21, 9)..<at(2026, 9, 21, 17)],
+            myBusy: [at(2026, 9, 21, 9)..<at(2026, 9, 21, 16)],
             duration: 3600,
             days: [monday],
             calendar: cal
         )
         XCTAssertEqual(slots.count, 1)
-        XCTAssertEqual(slots.first?.start, at(2026, 9, 21, 17))
+        XCTAssertEqual(slots.first?.start, at(2026, 9, 21, 16))
     }
 
     func testUnknownAttendeeNeverBlocksASlotButIsReported() {
@@ -116,7 +117,7 @@ final class SlotFinderTests: XCTestCase {
     }
 
     func testRespectsCustomWorkingHours() {
-        let hours = WorkingHours(startHour: 7, endHour: 8)
+        let hours = WorkingHours(days: Set(1...7), startMinute: 7 * 60, endMinute: 8 * 60)
         let slots = SlotFinder.findSlots(
             emails: [],
             busy: [:],

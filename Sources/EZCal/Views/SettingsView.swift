@@ -37,11 +37,17 @@ struct SettingsView: View {
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("notificationLeadMinutes") private var notificationLeadMinutes = 5
     @AppStorage("notificationVideoOnly") private var notificationVideoOnly = false
-    /// Which tab opens first; only overridden by the "settings" debug snapshot so it can land on General.
+    @AppStorage(WorkingHours.Keys.days) private var workDaysRaw = WorkingHours.defaultDaysRaw
+    @AppStorage(WorkingHours.Keys.start) private var workStart = WorkingHours.standard.startMinute
+    @AppStorage(WorkingHours.Keys.end) private var workEnd = WorkingHours.standard.endMinute
+    @AppStorage("showSecondaryZone") private var showSecondaryZone = true
+    @AppStorage("secondaryZoneID") private var secondaryZoneID = ""
+    /// Which tab opens first; overridden by the "settings" debug snapshot (`EZCAL_SETTINGS_TAB` = accounts|zoom|general|hours)
+    /// so a screenshot can land on any tab.
     var initialTab: Tab = .accounts
     @State private var tab: Tab = .accounts
 
-    enum Tab { case accounts, zoom, general }
+    enum Tab { case accounts, zoom, general, hours }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -151,9 +157,117 @@ struct SettingsView: View {
             .formStyle(.grouped)
             .tabItem { Label("General", systemImage: "gearshape") }
             .tag(Tab.general)
+
+            Form {
+                Section("Working hours") {
+                    WorkDaysPicker(daysRaw: $workDaysRaw)
+                    LabeledContent("Starts") {
+                        MinutePicker(minute: $workStart)
+                            .onChange(of: workStart) { _, new in if workEnd <= new { workEnd = min(new + WorkingHours.minuteStep, 24 * 60) } }
+                    }
+                    LabeledContent("Ends") {
+                        MinutePicker(minute: $workEnd)
+                            .onChange(of: workEnd) { _, new in if new <= workStart { workStart = max(new - WorkingHours.minuteStep, 0) } }
+                    }
+                    Text("Hours outside this range are shaded in the grid, and the day starts scrolled to the beginning of your working day.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Secondary time zone") {
+                    Toggle("Show a second hour column", isOn: $showSecondaryZone)
+                    Picker("Time zone", selection: $secondaryZoneID) {
+                        Text("None").tag("")
+                        ForEach(SecondaryZoneList.all, id: \.self) { id in
+                            Text(SecondaryZoneList.label(id)).tag(id)
+                        }
+                    }
+                    .disabled(!showSecondaryZone)
+                    Text("Shown as a second gutter next to the hours, and event times hover-tooltip in this zone too. Toggle quickly with “Show time zone” in ⌘K.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .tabItem { Label("Hours & zones", systemImage: "clock") }
+            .tag(Tab.hours)
         }
         .frame(width: 520, height: 460)
-        .onAppear { tab = initialTab }
+        .onAppear {
+            switch ProcessInfo.processInfo.environment["EZCAL_SETTINGS_TAB"] {
+            case "zoom": tab = .zoom
+            case "general": tab = .general
+            case "hours": tab = .hours
+            case "accounts": tab = .accounts
+            default: tab = initialTab
+            }
+        }
+    }
+}
+
+/// Seven day-of-week toggle chips (Sun…Sat order follows the user's locale start-of-week for familiarity,
+/// but the underlying storage always uses Calendar weekday numbers 1...7 so it's locale-independent).
+struct WorkDaysPicker: View {
+    @Binding var daysRaw: String
+    private let symbols = Calendar.current.veryShortWeekdaySymbols   // index 0 = Sunday, matching weekday 1
+
+    var body: some View {
+        let days = WorkingHours.decodeDays(daysRaw)
+        HStack(spacing: 6) {
+            ForEach(1...7, id: \.self) { weekday in
+                let on = days.contains(weekday)
+                Button {
+                    var d = days
+                    if on { d.remove(weekday) } else { d.insert(weekday) }
+                    daysRaw = WorkingHours.encodeDays(d)
+                } label: {
+                    Text(symbols[weekday - 1])
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 26, height: 26)
+                        .foregroundStyle(on ? Theme.accentText : Theme.text2)
+                        .background(Circle().fill(on ? Theme.accent : Theme.hover))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Calendar.current.weekdaySymbols[weekday - 1])
+                .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+    }
+}
+
+/// Half-hour time-of-day picker bound to minutes-since-midnight, so it stores cleanly in UserDefaults/AppSettings.
+struct MinutePicker: View {
+    @Binding var minute: Int
+
+    private var asDate: Binding<Date> {
+        Binding(
+            get: { Calendar.current.date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: Date()) ?? Date() },
+            set: { d in
+                let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+                minute = (c.hour ?? 0) * 60 + (((c.minute ?? 0) / WorkingHours.minuteStep) * WorkingHours.minuteStep)
+            })
+    }
+
+    var body: some View {
+        DatePicker("", selection: asDate, displayedComponents: .hourAndMinute)
+            .labelsHidden()
+            .datePickerStyle(.stepperField)
+            .frame(width: 100)
+    }
+}
+
+/// Common IANA zone identifiers for the secondary-zone picker, grouped loosely by region.
+enum SecondaryZoneList {
+    static let all: [String] = [
+        "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York", "America/Halifax",
+        "America/Anchorage", "Pacific/Honolulu", "America/Sao_Paulo", "America/Mexico_City",
+        "Europe/London", "Europe/Dublin", "Europe/Lisbon", "Europe/Paris", "Europe/Berlin", "Europe/Madrid",
+        "Europe/Rome", "Europe/Amsterdam", "Europe/Zurich", "Europe/Stockholm", "Europe/Athens", "Europe/Helsinki",
+        "Europe/Istanbul", "Europe/Moscow",
+        "Asia/Dubai", "Asia/Kolkata", "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Singapore", "Asia/Tokyo", "Asia/Seoul",
+        "Australia/Perth", "Australia/Sydney", "Australia/Melbourne", "Pacific/Auckland", "UTC",
+    ]
+
+    static func label(_ id: String) -> String {
+        let city = id.split(separator: "/").last.map { $0.replacingOccurrences(of: "_", with: " ") } ?? id
+        return "\(city) (\(ZoneMath.shortName(TimeZone(identifier: id) ?? .current)))"
     }
 }
 

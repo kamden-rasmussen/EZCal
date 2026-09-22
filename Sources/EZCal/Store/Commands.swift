@@ -125,6 +125,7 @@ extension CalendarStore {
         add("day", "Views", "Day view", icon: "D", key: "D") { self.setMode(.day) }
         add("month", "Views", "Month view", icon: "M", key: "M") { self.setMode(.month) }
         add("weekends", "Views", AppSettings.showWeekends ? "Hide weekends" : "Show weekends", icon: "◫", key: "⌘⇧W") { self.toggleWeekends() }
+        add("tz", "Views", secondaryZoneShown ? "Hide time zone" : "Show time zone", icon: "◔") { self.toggleSecondaryZone() }
         add("sidebar", "Views", "Toggle sidebar", icon: "▤", key: "⌘\\") { self.toggleSidebar() }
         add("refresh", "Actions", "Refresh calendars", icon: "↻", key: "⌘R") { Task { await self.refreshAll() } }
         add("addperson", "Coworkers", "Add coworker…", icon: "+", key: "P") { self.requestAddPerson() }
@@ -142,7 +143,7 @@ extension CalendarStore {
 
         guard !q.isEmpty else {
             let order = ["Actions", "Go to", "Views", "Coworkers", "Calendars", "Help"]
-            return items.filter { ["new", "join", "findtime", "today", "workweek", "week", "day", "month", "addperson", "shortcuts"].contains($0.id) || $0.id.hasPrefix("person-") }
+            return items.filter { ["new", "join", "findtime", "today", "workweek", "week", "day", "month", "addperson", "shortcuts", "tz"].contains($0.id) || $0.id.hasPrefix("person-") }
                 .sorted { (order.firstIndex(of: $0.group) ?? 9) < (order.firstIndex(of: $1.group) ?? 9) }
         }
 

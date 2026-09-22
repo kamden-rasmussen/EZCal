@@ -1,23 +1,5 @@
 import Foundation
 
-/// Working hours considered when searching for a shared slot.
-///
-/// Issue #5 (working-hours settings) will supply a user-configured value through this same type;
-/// until it lands every caller here uses `.default` (9:00–18:00). Keeping it as a plain injectable
-/// parameter (rather than reading `AppSettings` directly) means `SlotFinder` never has to change
-/// once that setting exists.
-struct WorkingHours: Sendable, Equatable {
-    var startHour: Int
-    var endHour: Int
-
-    static let `default` = WorkingHours(startHour: 9, endHour: 18)
-
-    init(startHour: Int = 9, endHour: Int = 18) {
-        self.startHour = startHour
-        self.endHour = endHour
-    }
-}
-
 /// One attendee's availability at a candidate slot.
 struct SlotAttendeeStatus: Sendable, Equatable {
     let email: String
@@ -50,8 +32,10 @@ enum SlotFinder {
     ///     `nil` value both mean "not visible to us" (unknown), never "free all day".
     ///   - myBusy: the organizer's own busy ranges. Always known, so it does block candidate slots.
     ///   - duration: meeting length in seconds. Non-positive durations produce no results.
-    ///   - days: the calendar days to search; only the day component of each date is used.
-    ///   - workingHours: the window of each day to search within.
+    ///   - days: the calendar days to search; only the day component of each date is used. A day that
+    ///     isn't a working day per `workingHours` (see Settings → Hours & zones) is skipped entirely.
+    ///   - workingHours: the days/window to search within; defaults to `.standard` (Mon–Fri 9:00–17:00).
+    ///     Pass `AppSettings.workingHours` to honor the user's own setting.
     ///   - granularity: spacing between candidate start times.
     ///   - limit: maximum number of slots returned.
     ///   - calendar: used to compute each day's working-hours window.
@@ -64,7 +48,7 @@ enum SlotFinder {
         myBusy: [Range<Date>],
         duration: TimeInterval,
         days: [Date],
-        workingHours: WorkingHours = .default,
+        workingHours: WorkingHours = .standard,
         granularity: TimeInterval = 15 * 60,
         limit: Int = 40,
         calendar: Calendar = .current
@@ -73,8 +57,9 @@ enum SlotFinder {
 
         var out: [TimeSlot] = []
         for day in days {
-            guard let dayStart = calendar.date(bySettingHour: workingHours.startHour, minute: 0, second: 0, of: day),
-                  let dayEnd = calendar.date(bySettingHour: workingHours.endHour, minute: 0, second: 0, of: day),
+            guard let range = workingHours.workingRange(on: day, cal: calendar),
+                  let dayStart = calendar.date(bySettingHour: range.lowerBound / 60, minute: range.lowerBound % 60, second: 0, of: day),
+                  let dayEnd = calendar.date(bySettingHour: range.upperBound / 60, minute: range.upperBound % 60, second: 0, of: day),
                   dayStart < dayEnd else { continue }
 
             var t = dayStart
