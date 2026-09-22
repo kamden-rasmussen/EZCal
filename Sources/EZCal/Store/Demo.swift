@@ -65,7 +65,7 @@ extension CalendarStore {
 }
 
 /// `EZCAL_SNAPSHOT=/path/out.png` renders a screen to a PNG (no screen-recording permission needed) and quits.
-/// `EZCAL_SNAPSHOT_VIEW` = window (default) | sidebar | editor | detail | palette | shortcuts | setup,  `EZCAL_APPEARANCE` = light | dark.
+/// `EZCAL_SNAPSHOT_VIEW` = window (default) | sidebar | editor | detail | palette | shortcuts | setup | settings,  `EZCAL_APPEARANCE` = light | dark.
 enum DebugSnapshot {
     @MainActor static func scheduleIfRequested(store: CalendarStore) {
         let env = ProcessInfo.processInfo.environment
@@ -94,6 +94,7 @@ enum DebugSnapshot {
                 case "detail": root = AnyView(EventDetailView(event: e))
                 case "palette": store.paletteQuery = "we"; root = AnyView(PaletteView())
                 case "shortcuts": root = AnyView(ShortcutsView())
+                case "settings": root = AnyView(SettingsView(initialTab: .general).frame(width: 520, height: 460))
                 default: root = AnyView(SetupView().frame(width: 960, height: 640))
                 }
                 let host = NSHostingView(rootView: root.environment(store).background(Theme.surface))

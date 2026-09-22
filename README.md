@@ -8,6 +8,7 @@ A free, hackable, native macOS calendar for Google Calendar, inspired by Notion 
 - **Zoom in one click**: pick "Zoom" when creating an event, or hit "Add Zoom meeting" on an existing one. Real Zoom meetings are created through the Zoom API and attached to the event. Google Meet works too.
 - **Availability check** while inviting people ("Alice is busy at this time")
 - **Join buttons** on every event with a Zoom / Meet / Teams link, plus a menu bar item showing your next meeting
+- **Meeting reminders**: opt-in notifications a few minutes before each meeting, with a Join button when it has a video link and Open to jump to it in EZCal. Turn on in Settings → General; works while the window is closed as long as EZCal is running (menu bar item).
 - Click or drag on the grid to create an event
 
 Pure SwiftUI, no dependencies. Tokens live in your macOS Keychain and requests go straight from your Mac to Google/Zoom; there's no server.
@@ -118,6 +119,8 @@ Sources/EZCal/
   Services/GoogleAPI.swift  Calendar, FreeBusy, People (directory) + event mapping
   Services/ZoomAPI.swift    create / update / delete Zoom meetings
   Services/EventKitService.swift  iCloud & system calendars via EventKit
+  Services/NotificationPlanner.swift  pure "which events get which reminder" logic (unit tested)
+  Services/NotificationService.swift  UNUserNotificationCenter: permission, scheduling, Join/Open actions
   Store/CalendarStore.swift all app state: fetching, overlay merge, save/delete/RSVP
   Core/Theme.swift          design tokens, keycaps, button styles
   Store/Commands.swift      keyboard focus navigation + command palette items
@@ -132,7 +135,6 @@ Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swif
 
 - Editing a recurring event changes only that occurrence (no "all events" option yet).
 - No drag-to-move / resize of existing events yet.
-- No desktop notifications for upcoming meetings yet (the menu bar item shows the next one).
 - Zoom meetings are created with Zoom's default settings; add fields to the `settings` dictionary in `ZoomAPI.createMeeting` (waiting room, mute on entry, etc.).
 - Moving an event to another calendar isn't supported in the editor.
 

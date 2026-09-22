@@ -34,9 +34,17 @@ struct SettingsView: View {
     @AppStorage("defaultDuration") private var defaultDuration = 60
     @AppStorage("defaultVideo") private var defaultVideo = "none"
     @AppStorage("hourHeight") private var hourHeight = 56.0
+    @AppStorage("notificationsEnabled") private var notificationsEnabled = false
+    @AppStorage("notificationLeadMinutes") private var notificationLeadMinutes = 5
+    @AppStorage("notificationVideoOnly") private var notificationVideoOnly = false
+    /// Which tab opens first; only overridden by the "settings" debug snapshot so it can land on General.
+    var initialTab: Tab = .accounts
+    @State private var tab: Tab = .accounts
+
+    enum Tab { case accounts, zoom, general }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             Form {
                 Section("Google accounts") {
                     ForEach(store.accounts) { a in
@@ -71,6 +79,7 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
             .tabItem { Label("Accounts", systemImage: "person.crop.circle") }
+            .tag(Tab.accounts)
 
             Form {
                 Section("Zoom") {
@@ -94,6 +103,7 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
             .tabItem { Label("Zoom", systemImage: "video") }
+            .tag(Tab.zoom)
 
             Form {
                 Toggle("Show weekends", isOn: $showWeekends)
@@ -114,11 +124,36 @@ struct SettingsView: View {
                 LabeledContent("Hour height") {
                     Slider(value: $hourHeight, in: 36...120).frame(width: 180)
                 }
+                Section("Meeting reminders") {
+                    Toggle("Notify me before meetings", isOn: $notificationsEnabled)
+                        .onChange(of: notificationsEnabled) { _, _ in Task { await store.rescheduleNotifications() } }
+                    Picker("Remind me", selection: $notificationLeadMinutes) {
+                        Text("1 minute before").tag(1)
+                        Text("5 minutes before").tag(5)
+                        Text("10 minutes before").tag(10)
+                        Text("15 minutes before").tag(15)
+                    }
+                    .disabled(!notificationsEnabled)
+                    .onChange(of: notificationLeadMinutes) { _, _ in Task { await store.rescheduleNotifications() } }
+                    Toggle("Only for events with a video link", isOn: $notificationVideoOnly)
+                        .disabled(!notificationsEnabled)
+                        .onChange(of: notificationVideoOnly) { _, _ in Task { await store.rescheduleNotifications() } }
+                    Button("Send test notification") {
+                        Task {
+                            let ok = await store.sendTestNotification()
+                            if !ok { store.errorMessage = "Notifications permission denied. Enable EZCal in System Settings → Notifications." }
+                        }
+                    }
+                    Text("A system notification appears a few minutes before each upcoming meeting, with a Join button when it has a Zoom/Meet/Teams link and Open to jump to it in EZCal. Works while the window is closed, as long as EZCal is running (menu bar item).")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
             .tabItem { Label("General", systemImage: "gearshape") }
+            .tag(Tab.general)
         }
         .frame(width: 520, height: 460)
+        .onAppear { tab = initialTab }
     }
 }
 
