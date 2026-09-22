@@ -108,6 +108,16 @@ extension CalendarStore {
 
     func paletteItems(for raw: String) -> [PaletteItem] {
         let q = raw.trimmingCharacters(in: .whitespaces).lowercased()
+
+        // Quick-add: "task: call dentist tomorrow 3pm" creates an Apple Reminders task via EventKit.
+        if let parsed = TaskQuickAdd.parse(raw) {
+            let title = parsed.title.isEmpty ? "New task" : parsed.title
+            let sub = parsed.due.map { "Due " + $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()) }
+                ?? "No due date — add one like “tomorrow 3pm”"
+            return [PaletteItem(id: "quicktask", group: "Tasks", title: "Create task “\(title)”", subtitle: sub, icon: "☐", key: "↩",
+                                run: { self.quickAddTask(title: title, due: parsed.due, hasDueTime: parsed.hasTime) })]
+        }
+
         var items: [PaletteItem] = []
 
         func add(_ id: String, _ group: String, _ title: String, icon: String, key: String = "", sub: String = "",
@@ -142,6 +152,10 @@ extension CalendarStore {
             let on = isVisible(s)
             let sub = s.isEventKit ? s.groupTitle : (s.isICS ? "Subscribed" : s.accountId)
             add("cal-\(s.id)", "Calendars", "\(on ? "Hide" : "Show") \(s.name)", icon: "●", sub: sub, tint: s.color) { self.toggle(s) }
+        }
+        for l in tasks.lists {
+            let on = tasks.isVisible(l)
+            add("tasklist-\(l.id)", "Tasks", "\(on ? "Hide" : "Show") \(l.name)", icon: "☐", tint: l.color) { self.tasks.toggle(l) }
         }
 
         guard !q.isEmpty else {

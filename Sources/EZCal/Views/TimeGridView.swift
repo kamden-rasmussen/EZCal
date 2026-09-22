@@ -125,7 +125,9 @@ struct TimeGridView: View {
 
     private var allDayRow: some View {
         let perDay = days.map { store.events(on: $0).allDay }
-        let rows = perDay.map(\.count).max() ?? 0
+        // Tasks due that day with no specific time ride along in the all-day row too.
+        let perDayTasks = days.map { store.tasks.tasks(on: $0, cal: store.cal).allDay }
+        let rows = zip(perDay, perDayTasks).map { $0.count + $1.count }.max() ?? 0
         return Group {
             if rows > 0 {
                 HStack(alignment: .top, spacing: 0) {
@@ -135,6 +137,7 @@ struct TimeGridView: View {
                     ForEach(Array(days.enumerated()), id: \.offset) { i, _ in
                         VStack(spacing: 2) {
                             ForEach(perDay[i]) { e in AllDayChip(event: e) }
+                            ForEach(perDayTasks[i]) { t in TaskChip(task: t) }
                         }
                         .frame(maxWidth: .infinity, alignment: .top)
                         .padding(.horizontal, 3).padding(.vertical, 4)
@@ -212,6 +215,7 @@ struct DayColumn: View {
         let placed = EventLayout.place(store.events(on: day).timed, day: day, cal: store.cal)
         let dayStart = store.cal.startOfDay(for: day)
         let isToday = Calendar.current.isDateInToday(day)
+        let dueTasks = store.tasks.tasks(on: day, cal: store.cal).timed
 
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
@@ -237,6 +241,11 @@ struct DayColumn: View {
                                hourHeight: hourHeight, dayWidth: geo.size.width)
                         .frame(width: max(colW - 4, 4), height: h)
                         .offset(x: colW * CGFloat(p.column) + 2, y: top)
+                }
+
+                ForEach(dueTasks) { t in
+                    let top = (t.dueDate ?? dayStart).timeIntervalSince(dayStart) / 3600 * hourHeight
+                    TimedTaskMarker(task: t).offset(x: 2, y: top)
                 }
 
                 if let (a, b) = dragRange {

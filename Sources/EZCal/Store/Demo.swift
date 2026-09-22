@@ -67,6 +67,30 @@ extension CalendarStore {
         rebuildDisplay()
         upcoming = displayEvents.filter { !$0.isOverlay && !$0.isAllDay && $0.end > Date() }.sorted { $0.start < $1.start }
         updateMenuBarText()
+
+        // Sample tasks (Reminders/EventKit), so ⌘K quick-add and the grid's task chips have something to show
+        // without needing real Reminders access.
+        tasks.enabled = true
+        let personal = TaskList(id: "ektl|demo-personal", listId: "demo-personal", name: "Personal", colorHex: "#3E63DD")
+        let work = TaskList(id: "ektl|demo-work", listId: "demo-work", name: "Work", colorHex: "#E5722A")
+        tasks.lists = [personal, work]
+        func task(_ list: TaskList, _ title: String, dayOffset: Int, hour: Double?, completed: Bool = false) -> EZTask {
+            let day = c.date(byAdding: .day, value: dayOffset, to: c.startOfDay(for: monday))!
+            let due = hour.map { c.date(byAdding: .minute, value: Int($0 * 60), to: day)! } ?? day
+            let id = "\(list.id)|\(title)"
+            return EZTask(id: id, taskId: id, listId: list.id, title: title, dueDate: due,
+                          hasDueTime: hour != nil, isCompleted: completed, colorHex: list.colorHex)
+        }
+        tasks.byList = [
+            personal.id: [
+                task(personal, "Call dentist", dayOffset: 1, hour: 15),
+                task(personal, "Pack for trip", dayOffset: 3, hour: nil),
+            ],
+            work.id: [
+                task(work, "Send invoice", dayOffset: 0, hour: 11),
+                task(work, "Review PR", dayOffset: 2, hour: nil, completed: true),
+            ],
+        ]
     }
 }
 

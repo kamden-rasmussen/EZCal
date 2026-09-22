@@ -65,7 +65,12 @@ struct ShortcutsView: View {
             Row(label: "This cheat sheet", keys: ["?"]),
             Row(label: "Settings", keys: ["⌘", ","]),
             Row(label: "New event (anywhere)", keys: ["⌘", "N"]),
+            Row(label: "New window", keys: ["⌘", "⇧", "N"]),
             Row(label: "Join next meeting", keys: ["J"]),
+        ]),
+        Section(title: "Tasks", rows: [
+            Row(label: "Quick-add a task, via ⌘K", keys: ["task:"]),
+            Row(label: "Toggle a task done", keys: ["click"]),
         ]),
     ]
 

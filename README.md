@@ -12,6 +12,8 @@ A free, hackable, native macOS calendar for Google Calendar, inspired by Notion 
 - **Join buttons** on every event with a Zoom / Meet / Teams link, plus a menu bar item showing your next meeting
 - **Meeting reminders**: opt-in notifications a few minutes before each meeting, with a Join button when it has a video link and Open to jump to it in EZCal. Turn on in Settings → General; works while the window is closed as long as EZCal is running (menu bar item).
 - Click or drag on the grid to create an event
+- **Tasks**: due-dated Apple Reminders show up right in the grid (a chip in the all-day row, or a small timed marker), with a checkbox to complete them and quick-add via ⌘K (`task: call dentist tomorrow 3pm`)
+- **Multi-window**: ⌘⇧N opens a second window (e.g. to compare two weeks) with its own date/view/selection state
 
 Pure SwiftUI, no dependencies. Tokens live in your macOS Keychain and requests go straight from your Mac to Google/Zoom; there's no server.
 
@@ -73,6 +75,12 @@ Meeting defaults (waiting room, mute on entry, join before host, host/participan
 
 EventKit (iCloud/Apple Calendar) has no field for arbitrary app metadata, so there's nowhere obvious to store "this event's Zoom meeting is #123". EZCal keeps the id in a single hidden line appended to the event's notes — two zero-width spaces bracketing `EZCAL-ZOOM:<id>` — which `EventKitService` strips out before showing notes anywhere in the app or re-adds when saving. This was chosen over a local id-to-event map (keyed by EventKit's `eventIdentifier`) because the marker travels with the event itself: it survives EZCal being reinstalled, another device editing the same iCloud event, and EventKit occasionally reassigning identifiers, all of which would silently orphan a local map. The formatting/parsing lives in `ZoomNotes` (`Services/ZoomAPI.swift`) and is unit-tested in `Tests/EZCalTests/ZoomTests.swift`.
 
+### 3. Reminders (optional, for tasks in the grid)
+
+Settings → Accounts → **Enable Reminders access** (or wait for the prompt the first time you quick-add a task). EZCal reads every list from Reminders.app the same way it reads Apple Calendar, via EventKit — no setup, no API keys. Toggle lists on/off from the sidebar's **Tasks** section, same as calendars.
+
+Tasks with no due date aren't shown in the grid (there's nowhere to put them); give a task a due date in Reminders, or via quick-add, to see it. There's no dedicated task editor yet — quick-add and the checkbox cover creating and completing a task, anything else (notes, priority, moving lists) happens in Reminders.app.
+
 ## How coworker overlay works
 
 Add people with the **+** next to *Coworkers* in the sidebar. For each person EZCal tries, in order:
@@ -132,7 +140,18 @@ Editing or deleting a recurring event first asks **This event** / **This and fol
 | **↩** | Use the selected slot |
 | **esc** | Close |
 
-Also: **P** add coworker, **⌘\** toggle sidebar, **⌘⇧W** hide weekends, **⌘R** refresh, **⌘,** settings. Every action is in the *Calendar* and *Event* menus too. Mouse shortcuts: click the grid for a new event at that time, drag for a range, double-click a day header for day view, drag an event block to move it (snaps to 15 minutes, drag onto another day column in day/work week/week view to move it there) or drag its bottom edge to resize it (15-minute minimum); **esc** cancels a drag mid-gesture. Read-only events and coworker overlays aren't draggable, and moving a recurring event only moves that occurrence.
+| Tasks | |
+|---|---|
+| `task: <text>` in **⌘K** | Quick-add a task, e.g. `task: call dentist tomorrow 3pm` (the date/time is optional) |
+| click | Toggle a task's checkbox to complete / reopen it |
+
+Also: **P** add coworker, **⌘\** toggle sidebar, **⌘⇧W** hide weekends, **⌘R** refresh, **⌘,** settings, **⌘⇧N** new window. Every action is in the *Calendar* and *Event* menus too. Mouse shortcuts: click the grid for a new event at that time, drag for a range, double-click a day header for day view, drag an event block to move it (snaps to 15 minutes, drag onto another day column in day/work week/week view to move it there) or drag its bottom edge to resize it (15-minute minimum); **esc** cancels a drag mid-gesture. Read-only events and coworker overlays aren't draggable, and moving a recurring event only moves that occurrence.
+
+## Multi-window
+
+**⌘⇧N** (or File → New Window) opens another EZCal window. Each window gets its own `CalendarStore`, so the anchor date, view mode (day/week/month), keyboard focus and any open sheet are independent per window — handy for comparing two weeks side by side. Accounts, Google/Zoom credentials, calendar and Reminders-list selections are shared, because they're all persisted to the same `UserDefaults`/Keychain/EventKit store and each window reads them on launch; what *isn't* shared live is the in-memory event cache — each window fetches its own copy of events, so an edit made in one window shows up in the other after its next periodic refresh (or **⌘R**) rather than instantly. Sidebar show/hide state is technically per-window state too (each store has its own `hidden` set), but since it's persisted, a freshly opened window starts from whatever was last saved.
+
+This trades a little memory/network duplication for a much smaller, more reviewable change than splitting `CalendarStore` into a shared-data object plus a separate per-window navigation object — that split is the natural next step if the duplicate fetches become a real problem.
 
 Colors, spacing and type live in `Sources/EZCal/Core/Theme.swift`; the design source is the "EZCal Design" canvas. Light and dark mode follow the system.
 
@@ -154,18 +173,20 @@ Sources/EZCal/
   Services/OAuth.swift      PKCE + loopback redirect, token refresh (Google & Zoom)
   Services/GoogleAPI.swift  Calendar, FreeBusy, People (directory) + event mapping
   Services/ZoomAPI.swift    create / update / delete Zoom meetings
-  Services/EventKitService.swift  iCloud & system calendars via EventKit
+  Services/EventKitService.swift  iCloud & system calendars, and Reminders/tasks, via EventKit
   Services/SlotFinder.swift pure "find a time" slot-search logic (no I/O)
   Services/NotificationPlanner.swift  pure "which events get which reminder" logic (unit tested)
   Services/NotificationService.swift  UNUserNotificationCenter: permission, scheduling, Join/Open actions
   Core/ICSParser.swift      pure-Swift iCalendar (.ics) parser + RRULE expansion
   Services/ICSService.swift .ics subscription fetch/cache (conditional GET, disk cache)
   Store/CalendarStore.swift all app state: fetching, overlay merge, save/delete/RSVP
+  Store/TasksStore.swift    tasks data model + behavior (permission, fetch, quick-add, completion)
+  Store/TaskQuickAdd.swift  pure "task: …" text parser used by the command palette
   Core/Theme.swift          design tokens, keycaps, button styles
   Core/EventDragMath.swift  snap/time math for dragging & resizing events
   Store/Commands.swift      keyboard focus navigation + command palette items
   Store/EventDrag.swift     drag-to-move/resize commit, rollback, keyboard nudge
-  Views/                    TimeGridView, MonthView, Sidebar, editor, detail, palette, shortcuts, settings, FindTimeView
+  Views/                    TimeGridView, MonthView, Sidebar, editor, detail, palette, shortcuts, settings, FindTimeView, tasks
 Tests/EZCalTests/           layout, parsing, mapping, OAuth loopback, .ics parser/fetch, slot-finder tests
 scripts/                    build_app.sh, make_icon.swift
 ```
@@ -180,6 +201,9 @@ Handy places to tweak: overlay/event styling in `EventBlock` (`TimeGridView.swif
 - Moving an event to another calendar isn't supported in the editor.
 - "Remove Zoom link" recognizes the block EZCal itself appends; on a Google event whose description is HTML (rare — only happens if it already contained a `<` before Zoom was added) it may remove more than just the Zoom lines. Plain-text notes (the common case, and always the case for Apple Calendar events) aren't affected.
 - .ics subscriptions don't support per-occurrence overrides (RECURRENCE-ID) or `BYMONTHDAY`/`BYSETPOS` rules; uncommon in the sports/team/holiday feeds this targets.
+- No dedicated task editor: quick-add and the checkbox cover creating and completing a task; edit notes, priority or its list in Reminders.app.
+- A timed task marker doesn't participate in the event overlap layout (`EventLayout`), so a very busy hour can show it overlapping an event block.
+- Multi-window shares accounts/calendars/Reminders lists (via UserDefaults/Keychain/EventKit) but not a live in-memory event cache — each window fetches its own copy of events (see "Multi-window" above).
 
 ## License
 

@@ -14,6 +14,8 @@
     <key>NSHighResolutionCapable</key><true/>
     <key>NSCalendarsFullAccessUsageDescription</key><string>EZCal shows and edits the calendars synced to your Mac, such as iCloud.</string>
     <key>NSCalendarsUsageDescription</key><string>EZCal shows and edits the calendars synced to your Mac, such as iCloud.</string>
+    <key>NSRemindersFullAccessUsageDescription</key><string>EZCal shows tasks due from your Reminders lists and lets you check them off.</string>
+    <key>NSRemindersUsageDescription</key><string>EZCal shows tasks due from your Reminders lists and lets you check them off.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
 </dict>

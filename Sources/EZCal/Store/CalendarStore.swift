@@ -29,6 +29,8 @@ final class CalendarStore {
     /// subscriptions (Google/EventKit surface failures through `errorMessage` instead); a subscription
     /// with an entry here shows a warning in the sidebar and Settings without blocking other calendars.
     var sourceErrors: [String: String] = [:]
+    /// Reminders/tasks (EventKit). Kept in its own observable object — see `Store/TasksStore.swift`.
+    let tasks = TasksState()
 
     // UI state
     var mode: ViewMode
@@ -88,6 +90,7 @@ final class CalendarStore {
                 await self.loadCalendars()
                 await self.reload()
                 await self.refreshUpcoming()
+                if self.tasks.enabled { await self.loadTaskLists(); await self.reloadTasks() }
             }
         }
     }
@@ -356,6 +359,8 @@ final class CalendarStore {
         await loadCalendars()
         await reload()
         await refreshUpcoming()
+        await loadTaskLists()
+        await reloadTasks()
     }
 
     func loadCalendars() async {
