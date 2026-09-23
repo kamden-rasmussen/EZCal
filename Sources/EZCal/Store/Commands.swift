@@ -19,6 +19,9 @@ extension CalendarStore {
 
     var focusedEvent: CalEvent? { focusedEventID.flatMap { id in displayEvents.first { $0.id == id } } }
 
+    /// Whether the docked event-detail panel (`ContentView`'s right-hand column) is currently open.
+    var isShowingDetail: Bool { if case .detail = sheet { return true }; return false }
+
     var navigableEvents: [CalEvent] {
         let days = visibleDays
         guard let first = days.first, let last = days.last else { return [] }
