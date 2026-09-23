@@ -18,6 +18,11 @@ final class CalendarStore {
     var icsSubscriptions: [ICSSubscription] = []
     private(set) var hidden: Set<String> = []
     private var knownCalendars: Set<String> = []
+    /// User's drag-to-reorder ranking for sidebar rows (calendars, people), by `Source.id`. Sparse —
+    /// only ever contains ids someone has actually dragged; anything missing sorts after by its
+    /// natural (server/EventKit) order. Shared across every sidebar group since `ordered(_:)` only
+    /// ever compares ids within whatever group it's handed.
+    private(set) var sourceOrder: [String] = []
 
     // Loaded
     var calendars: [Source] = []
@@ -74,6 +79,7 @@ final class CalendarStore {
         icsSubscriptions = Self.load("icsSubscriptions", [ICSSubscription].self) ?? []
         hidden = Set(Self.load("hidden", [String].self) ?? [])
         knownCalendars = Set(Self.load("knownCalendars", [String].self) ?? [])
+        sourceOrder = Self.load("sourceOrder", [String].self) ?? []
         eventKitEnabled = (defaults.bool(forKey: "eventKitEnabled") && EventKitService.shared.isAuthorized) || isDemo
         if let m = ProcessInfo.processInfo.environment["EZCAL_MODE"], let mm = ViewMode(rawValue: m) { mode = mm }
 
@@ -130,6 +136,7 @@ final class CalendarStore {
     private func persist() {
         save(accounts, "accounts"); save(people, "people"); save(icsSubscriptions, "icsSubscriptions")
         save(Array(hidden), "hidden"); save(Array(knownCalendars), "knownCalendars")
+        save(sourceOrder, "sourceOrder")
     }
 
     // MARK: - Calendar math
@@ -243,6 +250,48 @@ final class CalendarStore {
 
     var allSources: [Source] { calendars + people }
     func isVisible(_ s: Source) -> Bool { !hidden.contains(s.id) }
+
+    /// Sorts `items` by the saved drag order, leaving any id that's never been dragged (new calendars,
+    /// or on first launch before anyone's dragged anything) in its incoming relative order at the end.
+    func ordered(_ items: [Source]) -> [Source] {
+        guard !sourceOrder.isEmpty else { return items }
+        let rank = Dictionary(uniqueKeysWithValues: sourceOrder.enumerated().map { ($1, $0) })
+        return items.enumerated().sorted { a, b in
+            switch (rank[a.element.id], rank[b.element.id]) {
+            case let (ra?, rb?): return ra < rb
+            case (.some, nil): return true
+            case (nil, .some): return false
+            case (nil, nil): return a.offset < b.offset
+            }
+        }.map(\.element)
+    }
+
+    /// Moves `id` to `newIndex` within `group` (the group's current on-screen order — i.e. already
+    /// `store.ordered(...)`), called once when a sidebar drag ends (see `ReorderableSourceList`).
+    /// `sourceOrder` is a single flat ranking shared by every group, so this works out the group's new
+    /// relative order locally, then splices it back into `sourceOrder` in place of the group's old
+    /// positions — leaving every other group's relative order (interleaved throughout the same array)
+    /// untouched, and placing any of the group's ids `sourceOrder` didn't know about yet (a calendar
+    /// nobody's ever dragged) alongside the rest of their group instead of at the very end.
+    func moveCalendar(_ id: String, toIndex newIndex: Int, within group: [Source]) {
+        var ids = group.map(\.id)
+        guard let from = ids.firstIndex(of: id) else { return }
+        let to = min(max(newIndex, 0), ids.count - 1)
+        guard to != from else { return }
+        ids.remove(at: from)
+        ids.insert(id, at: to)
+
+        let groupSet = Set(ids)
+        var result: [String] = []
+        var spliced = false
+        for existing in sourceOrder {
+            guard groupSet.contains(existing) else { result.append(existing); continue }
+            if !spliced { result.append(contentsOf: ids); spliced = true }
+        }
+        if !spliced { result.append(contentsOf: ids) }
+        sourceOrder = result
+        persist()
+    }
 
     func toggle(_ s: Source) {
         if hidden.contains(s.id) {

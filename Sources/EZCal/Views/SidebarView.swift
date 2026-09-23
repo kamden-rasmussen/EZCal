@@ -12,21 +12,21 @@ struct SidebarView: View {
 
                 ForEach(store.accounts) { acct in
                     group(acct.email) {
-                        ForEach(store.calendars.filter { $0.accountId == acct.id }) { s in SourceRow(source: s) }
+                        ReorderableSourceList(sources: store.ordered(store.calendars.filter { $0.accountId == acct.id }))
                     }
                 }
                 let apple = Dictionary(grouping: store.calendars.filter(\.isEventKit), by: \.accountId)
                 ForEach(apple.keys.sorted(), id: \.self) { key in
                     group(apple[key]?.first?.groupTitle ?? key) {
-                        ForEach(apple[key] ?? []) { s in SourceRow(source: s) }
+                        ReorderableSourceList(sources: store.ordered(apple[key] ?? []))
                     }
                 }
 
-                let subscriptions = store.calendars.filter(\.isICS)
+                let subscriptions = store.ordered(store.calendars.filter(\.isICS))
                 if !subscriptions.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         SectionLabel("Subscribed").padding(.horizontal, 6).padding(.bottom, 4)
-                        ForEach(subscriptions) { s in
+                        ReorderableSourceList(sources: subscriptions) { s in
                             SourceRow(source: s)
                                 .contextMenu {
                                     if let sub = store.icsSubscriptions.first(where: { $0.source.id == s.id }) {
@@ -123,6 +123,74 @@ struct SectionLabel: View {
             .font(.system(size: 11, weight: .semibold)).tracking(0.5)
             .foregroundStyle(Theme.text3)
             .lineLimit(1)
+    }
+}
+
+/// A group of sidebar rows that can be drag-reordered among themselves (e.g. one Google account's
+/// calendars, or the .ics subscriptions list). `sources` should already be in `store.ordered(...)`
+/// order. `row` defaults to a plain `SourceRow` but can add its own modifiers (e.g. the subscriptions
+/// list's "Remove" context menu) while keeping the same drag handling.
+///
+/// Reordering is done with a plain `DragGesture` rather than `.onDrag`/`.onDrop`: those go through
+/// AppKit's system drag session, which on macOS both (a) never starts when the gesture originates on a
+/// `Button` — its click gesture wins the mouse-down first — and (b) is unreliable inside a `ScrollView`,
+/// which tends to claim the same mouse-drag for scrolling instead. A local `DragGesture` on our own grip
+/// view sidesteps both: it's SwiftUI-only, has no AppKit drag session to fumble, and lives on a plain
+/// `Image`, not the row's `Button`.
+private struct ReorderableSourceList<RowContent: View>: View {
+    @Environment(CalendarStore.self) private var store
+    let sources: [Source]
+    @ViewBuilder var row: (Source) -> RowContent
+    @State private var draggingId: String?
+    @State private var dragStartIndex: Int?
+    @State private var dragOffset: CGFloat = 0
+    @State private var hoveringId: String?
+
+    /// `SourceRow`/`TaskListRow` are a fixed 30pt tall, in a `VStack(spacing: 2)` — see `group(_:)` in
+    /// `SidebarView`. Used to turn a drag's vertical distance into "how many rows over".
+    private let rowStep: CGFloat = 32
+
+    init(sources: [Source], @ViewBuilder row: @escaping (Source) -> RowContent = { SourceRow(source: $0) }) {
+        self.sources = sources
+        self.row = row
+    }
+
+    var body: some View {
+        ForEach(Array(sources.enumerated()), id: \.element.id) { index, s in
+            HStack(spacing: 0) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.text3)
+                    .frame(width: 16)
+                    .opacity(hoveringId == s.id || draggingId == s.id ? 1 : 0)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture(for: s, index: index))
+                row(s)
+            }
+            .onHover { hoveringId = $0 ? s.id : nil }
+            .zIndex(draggingId == s.id ? 1 : 0)
+            .shadow(color: .black.opacity(draggingId == s.id ? 0.25 : 0), radius: 6, y: 2)
+            .offset(y: draggingId == s.id ? dragOffset : 0)
+        }
+    }
+
+    private func dragGesture(for s: Source, index: Int) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+            .onChanged { value in
+                if draggingId != s.id { draggingId = s.id; dragStartIndex = index }
+                dragOffset = value.translation.height
+            }
+            .onEnded { value in
+                defer { draggingId = nil; dragStartIndex = nil; dragOffset = 0 }
+                guard let start = dragStartIndex else { return }
+                let shift = Int((value.translation.height / rowStep).rounded())
+                let target = min(max(start + shift, 0), sources.count - 1)
+                if target != start {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        store.moveCalendar(s.id, toIndex: target, within: sources)
+                    }
+                }
+            }
     }
 }
 
