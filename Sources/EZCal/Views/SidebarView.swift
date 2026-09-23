@@ -270,54 +270,58 @@ struct MiniMonthView: View {
     @State private var month = Date()
 
     var body: some View {
-        let c = store.cal
-        let first = c.date(from: c.dateComponents([.year, .month], from: month))!
-        let start = store.weekStart(first)
-        let days = (0..<42).map { c.date(byAdding: .day, value: $0, to: start)! }
-        let rows = c.isDate(days[35], equalTo: first, toGranularity: .month) ? 6 : 5
-        let visible = Set(store.visibleDays.map { c.startOfDay(for: $0) })
-        let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+        // .everyMinute keeps "today" correct across a midnight rollover on a long-running window,
+        // rather than relying on some unrelated re-render to happen to refresh it.
+        TimelineView(.everyMinute) { _ in
+            let c = store.cal
+            let first = c.date(from: c.dateComponents([.year, .month], from: month))!
+            let start = store.weekStart(first)
+            let days = (0..<42).map { c.date(byAdding: .day, value: $0, to: start)! }
+            let rows = c.isDate(days[35], equalTo: first, toGranularity: .month) ? 6 : 5
+            let visible = Set(store.visibleDays.map { c.startOfDay(for: $0) })
+            let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
 
-        VStack(spacing: 6) {
-            HStack {
-                Text(month.formatted(.dateTime.month(.wide).year())).font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Button { month = c.date(byAdding: .month, value: -1, to: month)! } label: { Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold)) }
-                    .buttonStyle(IconButtonStyle()).accessibilityLabel("Previous month")
-                Button { month = c.date(byAdding: .month, value: 1, to: month)! } label: { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)) }
-                    .buttonStyle(IconButtonStyle()).accessibilityLabel("Next month")
-            }
-            .padding(.leading, 4)
+            VStack(spacing: 6) {
+                HStack {
+                    Text(month.formatted(.dateTime.month(.wide).year())).font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Button { month = c.date(byAdding: .month, value: -1, to: month)! } label: { Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold)) }
+                        .buttonStyle(IconButtonStyle()).accessibilityLabel("Previous month")
+                    Button { month = c.date(byAdding: .month, value: 1, to: month)! } label: { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)) }
+                        .buttonStyle(IconButtonStyle()).accessibilityLabel("Next month")
+                }
+                .padding(.leading, 4)
 
-            HStack(spacing: 0) {
-                ForEach(Array(days.prefix(7).enumerated()), id: \.offset) { _, d in
-                    Text(d.formatted(.dateTime.weekday(.narrow))).font(.system(size: 11)).foregroundStyle(Theme.text3)
-                        .frame(maxWidth: .infinity).frame(height: 18)
+                HStack(spacing: 0) {
+                    ForEach(Array(days.prefix(7).enumerated()), id: \.offset) { _, d in
+                        Text(d.formatted(.dateTime.weekday(.narrow))).font(.system(size: 11)).foregroundStyle(Theme.text3)
+                            .frame(maxWidth: .infinity).frame(height: 18)
+                    }
+                }
+                .accessibilityHidden(true)
+
+                LazyVGrid(columns: cols, spacing: 2) {
+                    ForEach(days.prefix(rows * 7), id: \.self) { d in
+                        let today = c.isDateInToday(d)
+                        let inMonth = c.isDate(d, equalTo: first, toGranularity: .month)
+                        let sel = visible.contains(c.startOfDay(for: d))
+                        Text(d.formatted(.dateTime.day()))
+                            .font(.system(size: 11, weight: today ? .bold : .regular).monospacedDigit())
+                            .foregroundStyle(today ? Theme.accentText : (inMonth ? Theme.text : Theme.text3))
+                            .frame(width: 24, height: 24)
+                            .background { if today { Circle().fill(Theme.accent) } }
+                            .frame(maxWidth: .infinity).frame(height: 26)
+                            .background { if sel && store.mode != .month { Theme.selection } }
+                            .contentShape(Rectangle())
+                            .onTapGesture { store.goTo(d) }
+                            .accessibilityLabel(d.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                            .accessibilityAddTraits(.isButton)
+                    }
                 }
             }
-            .accessibilityHidden(true)
-
-            LazyVGrid(columns: cols, spacing: 2) {
-                ForEach(days.prefix(rows * 7), id: \.self) { d in
-                    let today = c.isDateInToday(d)
-                    let inMonth = c.isDate(d, equalTo: first, toGranularity: .month)
-                    let sel = visible.contains(c.startOfDay(for: d))
-                    Text(d.formatted(.dateTime.day()))
-                        .font(.system(size: 11, weight: today ? .bold : .regular).monospacedDigit())
-                        .foregroundStyle(today ? Theme.accentText : (inMonth ? Theme.text : Theme.text3))
-                        .frame(width: 24, height: 24)
-                        .background { if today { Circle().fill(Theme.accent) } }
-                        .frame(maxWidth: .infinity).frame(height: 26)
-                        .background { if sel && store.mode != .month { Theme.selection } }
-                        .contentShape(Rectangle())
-                        .onTapGesture { store.goTo(d) }
-                        .accessibilityLabel(d.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .accessibilityAddTraits(.isButton)
-                }
+            .onChange(of: store.anchor) { _, new in
+                if !c.isDate(new, equalTo: month, toGranularity: .month) { month = new }
             }
-        }
-        .onChange(of: store.anchor) { _, new in
-            if !c.isDate(new, equalTo: month, toGranularity: .month) { month = new }
         }
     }
 }

@@ -46,45 +46,49 @@ private struct MonthCell: View {
     let maxItems: Int
 
     var body: some View {
-        let isToday = Calendar.current.isDateInToday(day)
-        let evs = store.events(on: day)
-        let all = evs.allDay + evs.timed
-        let shown = all.prefix(all.count > maxItems ? maxItems - 1 : maxItems)
+        // .everyMinute keeps "today" correct across a midnight rollover on a long-running window,
+        // rather than relying on some unrelated re-render to happen to refresh it.
+        TimelineView(.everyMinute) { _ in
+            let isToday = Calendar.current.isDateInToday(day)
+            let evs = store.events(on: day)
+            let all = evs.allDay + evs.timed
+            let shown = all.prefix(all.count > maxItems ? maxItems - 1 : maxItems)
 
-        VStack(alignment: .leading, spacing: 2) {
-            Text(day.formatted(.dateTime.day()))
-                .font(.system(size: 12, weight: isToday ? .bold : .regular).monospacedDigit())
-                .foregroundStyle(isToday ? Theme.accentText : (inMonth ? Theme.text : Theme.text3.opacity(0.7)))
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(isToday ? Theme.accent : .clear))
-            ForEach(Array(shown)) { e in
-                let focused = store.focusedEventID == e.id
-                HStack(spacing: 5) {
-                    Circle().fill(e.color).frame(width: 6, height: 6)
-                    Text(label(e)).font(.system(size: 11)).foregroundStyle(e.isOverlay ? Theme.text2 : Theme.text).lineLimit(1)
-                    Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(day.formatted(.dateTime.day()))
+                    .font(.system(size: 12, weight: isToday ? .bold : .regular).monospacedDigit())
+                    .foregroundStyle(isToday ? Theme.accentText : (inMonth ? Theme.text : Theme.text3.opacity(0.7)))
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(isToday ? Theme.accent : .clear))
+                ForEach(Array(shown)) { e in
+                    let focused = store.focusedEventID == e.id
+                    HStack(spacing: 5) {
+                        Circle().fill(e.color).frame(width: 6, height: 6)
+                        Text(label(e)).font(.system(size: 11)).foregroundStyle(e.isOverlay ? Theme.text2 : Theme.text).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 4).frame(height: 17)
+                    .background(RoundedRectangle(cornerRadius: 4).stroke(focused ? Theme.accent : .clear, lineWidth: 2))
+                    .contentShape(Rectangle())
+                    .onTapGesture { store.focusedEventID = e.id; store.sheet = .detail(e) }
+                    .accessibilityLabel(e.title)
+                    .accessibilityAddTraits(.isButton)
                 }
-                .padding(.horizontal, 4).frame(height: 17)
-                .background(RoundedRectangle(cornerRadius: 4).stroke(focused ? Theme.accent : .clear, lineWidth: 2))
-                .contentShape(Rectangle())
-                .onTapGesture { store.focusedEventID = e.id; store.sheet = .detail(e) }
-                .accessibilityLabel(e.title)
-                .accessibilityAddTraits(.isButton)
+                if all.count > shown.count {
+                    Text("\(all.count - shown.count) more").font(.system(size: 10)).foregroundStyle(Theme.text3).padding(.horizontal, 6)
+                }
+                Spacer(minLength: 0)
             }
-            if all.count > shown.count {
-                Text("\(all.count - shown.count) more").font(.system(size: 10)).foregroundStyle(Theme.text3).padding(.horizontal, 6)
+            .padding(3)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(isToday ? Theme.todayBg : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                let start = store.cal.date(bySettingHour: 9, minute: 0, second: 0, of: day)!
+                store.newDraft(start: start)
             }
-            Spacer(minLength: 0)
+            .onTapGesture { store.anchor = day; store.setMode(.day) }
         }
-        .padding(3)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(isToday ? Theme.todayBg : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            let start = store.cal.date(bySettingHour: 9, minute: 0, second: 0, of: day)!
-            store.newDraft(start: start)
-        }
-        .onTapGesture { store.anchor = day; store.setMode(.day) }
     }
 
     private func label(_ e: CalEvent) -> String {

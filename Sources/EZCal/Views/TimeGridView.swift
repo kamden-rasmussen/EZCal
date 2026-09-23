@@ -93,33 +93,37 @@ struct TimeGridView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: gutter, height: 1)
-            if let zone = secondaryZone {
-                Text(ZoneMath.shortName(zone))
-                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.text3)
-                    .frame(width: secondaryWidth, height: 1, alignment: .center)
-                    .help("Secondary time zone: \(zone.identifier)")
-            }
-            ForEach(days, id: \.self) { day in
-                let isToday = Calendar.current.isDateInToday(day)
-                HStack(spacing: 8) {
-                    Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
-                        .font(.system(size: 12, weight: .medium)).tracking(0.5)
-                        .foregroundStyle(isToday ? Theme.accent : Theme.text2)
-                    Text(day.formatted(.dateTime.day()))
-                        .font(.system(size: 16, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(isToday ? Theme.accentText : Theme.text)
-                        .frame(minWidth: 28, minHeight: 28)
-                        .background(Circle().fill(isToday ? Theme.accent : .clear))
+        // .everyMinute (not just whatever else happens to re-render this view) is what keeps the
+        // "today" circle correct across a midnight rollover on a long-running window.
+        TimelineView(.everyMinute) { _ in
+            HStack(spacing: 0) {
+                Color.clear.frame(width: gutter, height: 1)
+                if let zone = secondaryZone {
+                    Text(ZoneMath.shortName(zone))
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.text3)
+                        .frame(width: secondaryWidth, height: 1, alignment: .center)
+                        .help("Secondary time zone: \(zone.identifier)")
                 }
-                .frame(maxWidth: .infinity).frame(height: 48)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { store.anchor = day; store.setMode(.day) }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                ForEach(days, id: \.self) { day in
+                    let isToday = Calendar.current.isDateInToday(day)
+                    HStack(spacing: 8) {
+                        Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
+                            .font(.system(size: 12, weight: .medium)).tracking(0.5)
+                            .foregroundStyle(isToday ? Theme.accent : Theme.text2)
+                        Text(day.formatted(.dateTime.day()))
+                            .font(.system(size: 16, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(isToday ? Theme.accentText : Theme.text)
+                            .frame(minWidth: 28, minHeight: 28)
+                            .background(Circle().fill(isToday ? Theme.accent : .clear))
+                    }
+                    .frame(maxWidth: .infinity).frame(height: 48)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) { store.anchor = day; store.setMode(.day) }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                }
+                Color.clear.frame(width: 8, height: 1)
             }
-            Color.clear.frame(width: 8, height: 1)
         }
     }
 
