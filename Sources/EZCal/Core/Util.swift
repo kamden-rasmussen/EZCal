@@ -142,6 +142,9 @@ enum AppSettings {
     static var defaultDuration: Int { let d = defaults.integer(forKey: "defaultDuration"); return d > 0 ? d : 60 }
     static var defaultVideo: String { defaults.string(forKey: "defaultVideo") ?? "none" }
     static var hourHeight: Double { let h = defaults.double(forKey: "hourHeight"); return h > 0 ? h : 56 }
+    /// Min/max pixel height for one hour row, shared by the Settings slider and pinch-to-zoom on the
+    /// time grid, so hours never collapse to unreadable slivers or stretch to absurd heights.
+    static let hourHeightRange: ClosedRange<Double> = 36...120
 
     /// Off by default: notifications are opt-in, requested only once the user turns this on (see
     /// NotificationService.ensureAuthorized), never at launch.
