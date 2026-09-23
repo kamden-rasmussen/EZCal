@@ -191,7 +191,7 @@ struct SettingsView: View {
                     Text("Fit side by side when possible").tag(OverlapLayoutMode.auto.rawValue)
                     Text("Always overlap (cascade)").tag(OverlapLayoutMode.cascade.rawValue)
                 }
-                Text("When same-time events can't all fit as side-by-side columns, hover the stack to cycle through what's underneath every few seconds.")
+                Text("When same-time events can't all fit as side-by-side columns, they're cascaded instead — every one keeps its own visible sliver, click any of them to open it.")
                     .font(.caption).foregroundStyle(.secondary)
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)
