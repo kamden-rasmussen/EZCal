@@ -4,11 +4,12 @@ import XCTest
 final class LogicTests: XCTestCase {
     private let cal = Calendar(identifier: .gregorian)
 
-    private func event(_ id: String, _ start: Date, minutes: Int) -> CalEvent {
-        CalEvent(id: id, eventId: id, sourceId: "s", calendarId: "c", accountId: "a", uid: id, title: id,
+    private func event(_ id: String, _ start: Date, minutes: Int, source: String = "s", title: String? = nil,
+                        isOverlay: Bool = false, isBusyOnly: Bool = false) -> CalEvent {
+        CalEvent(id: id, eventId: id, sourceId: source, calendarId: source, accountId: "a", uid: id, title: title ?? id,
                  start: start, end: start.addingTimeInterval(Double(minutes) * 60), isAllDay: false,
                  location: "", notes: "", attendees: [], htmlLink: nil, meetingURL: nil, colorHex: "#fff",
-                 sourceName: "", ownerName: nil, isOverlay: false, canEdit: true, isBusyOnly: false,
+                 sourceName: source, ownerName: nil, isOverlay: isOverlay, canEdit: true, isBusyOnly: isBusyOnly,
                  isRecurring: false, zoomMeetingID: nil, isTentative: false, isDeclined: false)
     }
 
@@ -25,6 +26,43 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(byId["b"]!.columns, 2)
         XCTAssertNotEqual(byId["a"]!.column, byId["b"]!.column)
         XCTAssertEqual(byId["c"]!.columns, 1)
+    }
+
+    func testSameMeetingOnDifferentCalendarsStacks() {
+        let day = cal.date(from: DateComponents(year: 2026, month: 3, day: 2))!
+        let nine = cal.date(bySettingHour: 9, minute: 0, second: 0, of: day)!
+        let placed = EventLayout.place([
+            event("g", nine, minutes: 30, source: "google", title: "Team standup"),
+            event("i", nine.addingTimeInterval(60), minutes: 30, source: "icloud", title: "  Team Standup "),
+            event("f", nine.addingTimeInterval(-120), minutes: 30, source: "family", title: "team standup"),
+        ], day: day, cal: cal)
+        XCTAssertEqual(placed.count, 1)
+        guard case .stack(let events) = placed[0].item else { return XCTFail("expected a stack") }
+        XCTAssertEqual(Set(events.map(\.id)), Set(["g", "i", "f"]))
+        XCTAssertEqual(placed[0].columns, 1)   // stacked into one block, not packed into side-by-side columns
+    }
+
+    func testSameCalendarDuplicateDoesNotStack() {
+        // Two distinct events that happen to share a title on the SAME calendar aren't a cross-calendar duplicate.
+        let day = cal.date(from: DateComponents(year: 2026, month: 3, day: 2))!
+        let nine = cal.date(bySettingHour: 9, minute: 0, second: 0, of: day)!
+        let placed = EventLayout.place([
+            event("a", nine, minutes: 30, source: "google", title: "Sync"),
+            event("b", nine, minutes: 30, source: "google", title: "Sync"),
+        ], day: day, cal: cal)
+        XCTAssertEqual(placed.count, 2)
+        for p in placed { if case .single = p.item {} else { XCTFail("expected singles") } }
+    }
+
+    func testOverlayAndBusyEventsNeverStack() {
+        let day = cal.date(from: DateComponents(year: 2026, month: 3, day: 2))!
+        let nine = cal.date(bySettingHour: 9, minute: 0, second: 0, of: day)!
+        let placed = EventLayout.place([
+            event("mine", nine, minutes: 30, source: "google", title: "Sync"),
+            event("theirs", nine, minutes: 30, source: "coworker", title: "Sync", isOverlay: true),
+        ], day: day, cal: cal)
+        XCTAssertEqual(placed.count, 2)
+        for p in placed { if case .single = p.item {} else { XCTFail("expected singles") } }
     }
 
     func testMeetingLinkDetection() {
