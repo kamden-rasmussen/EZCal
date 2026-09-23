@@ -59,9 +59,9 @@ struct PlacedEvent: Identifiable {
     let item: TimeGridItem
     let start: Date
     let end: Date
-    /// Arrival order (by start time) within this event's overlap cluster — drives z-order and the small
-    /// cascading offset `DayColumn` uses to keep overlapping cards distinguishable while each still spans
-    /// (almost) the full column width. Not a side-by-side slot index.
+    /// Arrival order (by start time) within this event's overlap cluster — drives z-order and the waterfall
+    /// offset `DayColumn` uses to keep every overlapping card its own distinct, visible sliver. Not a
+    /// side-by-side slot index.
     var column: Int
     /// How many events (after folding same-slot duplicates via `EventGrouping`) overlap in this cluster.
     var columns: Int
@@ -74,7 +74,7 @@ struct PlacedEvent: Identifiable {
     /// yet still fit in 2 slots).
     var sideSlots: Int
     /// Shared by every `PlacedEvent` produced from the same overlap cluster, so `DayColumn` can regroup a flat
-    /// placement list back into per-cluster views (each owning its own hover-cycle state).
+    /// placement list back into per-cluster views.
     var clusterID: String
     var id: String { item.id }
 }
@@ -88,17 +88,42 @@ enum OverlapLayoutMode: String {
 }
 
 enum EventLayout {
-    /// Cascade offset for a card `behind` layers back in a cluster of `columns` overlapping events — used by
-    /// `DayColumn` to fan overlapping full-width event cards so each one's title row stays visible and
-    /// clickable. The step shrinks once a cluster is larger than the common case (more than 4 events
-    /// overlapping) so a big pile of same-time conflicts still roughly fits the column — but it's never
-    /// capped: capping used to give a 4th+ layer the exact same offset as the 3rd, landing it on an
-    /// identical rect — 100% covered, invisible and unclickable, not just visually tight. See
-    /// `EventLayoutCascadeTests` for the property this guarantees (every layer in a cluster gets a distinct
-    /// offset, however large the cluster).
-    static func cascadeOffset(behind: Int, columns: Int) -> (x: CGFloat, y: CGFloat) {
-        let step: (x: CGFloat, y: CGFloat) = columns > 4 ? (8, 14) : (10, 18)
-        return (CGFloat(behind) * step.x, CGFloat(behind) * step.y)
+    /// Ideal per-layer reveal width in a cascaded (non-side-by-side) cluster: how much of each earlier-starting
+    /// card stays visible along its left edge before the next, later-starting card covers the rest of it. Wide
+    /// enough to show a card's color, rounded corner and a few characters of its title.
+    static let cascadeStep: CGFloat = 40
+    /// Absolute floor on a cascaded card's own width, however many events are piled into the cluster or however
+    /// narrow the day column — guarantees every layer stays a distinct, clickable rect and never gets pushed
+    /// past the column's right edge. See `EventLayoutCascadeTests`.
+    static let cascadeMinCardWidth: CGFloat = 24
+    /// Small per-layer vertical nudge, capped after a few layers. Its whole job is to keep two cascaded cards
+    /// that happen to start at the very same time from putting their title rows on the exact same line — with
+    /// only `waterfallOffset`'s horizontal step between them, a later card's title/avatar would butt directly
+    /// up against the earlier card's exposed title with no separation, reading as one crowded, half-garbled
+    /// label instead of two distinct stacked cards. A few points of vertical fan makes the layering unmistakable
+    /// without meaningfully misrepresenting a card's true start time.
+    static let cascadeYNudge: CGFloat = 7
+    private static let cascadeYNudgeMaxLayers = 3
+
+    /// Horizontal offset for the `index`-th (0 = earliest start, i.e. bottommost/leftmost) of `count` events
+    /// cascaded across a `dayWidth`-wide column. Every layer gets the *same* step — unlike the old design (one
+    /// full-width "front" card with everything else collapsed onto one identical, nearly-invisible offset), so
+    /// each event keeps its own uniformly-sized, always-visible sliver instead of most of the space being
+    /// spent on a single card while the rest sit fully hidden behind it. The step shrinks (never grows) so the
+    /// last (topmost, fully visible) card's width never drops below `cascadeMinCardWidth` — which also means an
+    /// offset can never push a card's frame past the column's own right edge, whatever `count` is.
+    static func waterfallOffset(index: Int, count: Int, dayWidth: CGFloat) -> CGFloat {
+        guard count > 1 else { return 0 }
+        let maxOffset = max(dayWidth - 4 - cascadeMinCardWidth, 0)
+        let step = min(cascadeStep, maxOffset / CGFloat(count - 1))
+        return CGFloat(index) * step
+    }
+
+    /// Vertical companion to `waterfallOffset` — see `cascadeYNudge`. Caps out after a few layers instead of
+    /// growing with `count`, since its only job is breaking up same-instant title rows, not fanning out a big
+    /// pileup (that's what the horizontal step and each layer's own distinct rect are for).
+    static func waterfallYNudge(index: Int) -> CGFloat {
+        CGFloat(min(index, cascadeYNudgeMaxLayers)) * cascadeYNudge
     }
 
     /// Each event spans the full day-column width; overlapping events overlay one another (cascaded/z-ordered
@@ -150,15 +175,15 @@ enum EventLayout {
         return result
     }
 
-    /// Below this per-card width, side-by-side columns stop being worth it — a cascade of full-width cards
-    /// (each revealed in turn via hover-cycle) reads better than a sliver too narrow for its own title.
+    /// Below this per-card width, side-by-side columns stop being worth it — a waterfall cascade (see
+    /// `waterfallOffset`) reads better than a sliver too narrow for its own title.
     static let minSideBySideSliceWidth: CGFloat = 100
     /// Below this width a card switches to its compact style (drops the avatar/recurring icon, smaller title).
     static let compactCardWidth: CGFloat = 130
 
     /// Whether a cluster should be sliced into real side-by-side columns rather than cascaded. `.cascade` mode
     /// always says no; `.auto` says yes only if every resulting slice would stay at least
-    /// `minSideBySideSliceWidth` wide — otherwise it falls back to cascade+hover-cycle for that cluster, even
+    /// `minSideBySideSliceWidth` wide — otherwise it falls back to a waterfall cascade for that cluster, even
     /// if other clusters on the same day are wide enough to slice.
     static func useSideBySide(sideSlots: Int, availableWidth: CGFloat, mode: OverlapLayoutMode) -> Bool {
         guard mode == .auto, sideSlots > 1 else { return false }
@@ -167,8 +192,8 @@ enum EventLayout {
     }
 
     /// Regroups a flat placement list back into contiguous per-cluster arrays. Relies on `place` appending one
-    /// cluster at a time, so `DayColumn` can render each cluster as its own `OverlapCluster` view with its own
-    /// hover-cycle state, instead of one flat `ForEach` that can't tell where one cluster ends and the next begins.
+    /// cluster at a time, so `DayColumn` can render each cluster as its own `OverlapCluster` view, instead of
+    /// one flat `ForEach` that can't tell where one cluster ends and the next begins.
     static func clusters(of placed: [PlacedEvent]) -> [[PlacedEvent]] {
         var result: [[PlacedEvent]] = []
         for p in placed {
@@ -486,10 +511,11 @@ struct DayColumn: View {
     }
 }
 
-/// Renders one overlap cluster (1+ same-time events, post `EventGrouping` folding) and owns the state for it:
-/// whether it's currently sliced into side-by-side columns or cascaded, and — when cascaded — the hover-cycle
-/// that rotates which card sits on top every few seconds so a big pileup doesn't permanently bury everything
-/// behind the most-recently-started event.
+/// Renders one overlap cluster (1+ same-time events, post `EventGrouping` folding), either sliced into
+/// side-by-side columns or, when the column's too narrow for that to stay readable, cascaded: every card gets
+/// its own uniformly-sized visible sliver (`EventLayout.waterfallOffset`) along its left edge, later-starting
+/// events layered on top. Nothing is ever fully hidden — however big the pileup, each event stays its own
+/// distinct, clickable rect, so there's no need to hover-and-wait to bring a buried card to the front.
 struct OverlapCluster: View {
     let cluster: [PlacedEvent]   // sorted ascending by `column` (arrival order); all share one `clusterID`
     let dayStart: Date
@@ -497,16 +523,7 @@ struct OverlapCluster: View {
     let dayWidth: CGFloat
     let mode: OverlapLayoutMode
 
-    /// Per-card hover state, keyed by event id. Only the currently topmost card actually receives hover in the
-    /// region it shares with the rest of the cluster (AppKit hit-tests to the top of the z-order), so this is
-    /// effectively "is the visible card under the cursor" even though several cards are wired up to report it —
-    /// a background card can only ever set this from its own uncovered peeking sliver.
-    @State private var hoverStates: [String: Bool] = [:]
-    /// Advances by one every 3s while `anyHovering` — rotates which natural index renders on top (see `front`).
-    @State private var tick = 0
-
     private var n: Int { cluster.count }
-    private var anyHovering: Bool { hoverStates.values.contains(true) }
     private var sideBySide: Bool {
         guard let first = cluster.first else { return false }
         return EventLayout.useSideBySide(sideSlots: first.sideSlots, availableWidth: dayWidth, mode: mode)
@@ -526,34 +543,16 @@ struct OverlapCluster: View {
                         .offset(x: 2 + slotW * CGFloat(p.sideSlot), y: top)
                         .zIndex(Double(i))
                 } else {
-                    // `frontIndex` is which natural index currently renders on top; it steps back by one every
-                    // tick, wrapping around, so hovering sends the current front card to join the rest of the
-                    // stack and brings the next one up front. Every non-front card sits at the same one-layer
-                    // offset regardless of cluster size — cycling reveals each in turn, so nothing needs its own
-                    // ever-larger offset to stay reachable (unlike the un-hovered, static cascade cap this
-                    // replaced, which had to fan every layer out to keep each one clickable).
-                    let frontIndex = n > 0 ? ((n - 1 - tick) % n + n) % n : i
-                    let isFront = i == frontIndex
-                    let cascade = EventLayout.cascadeOffset(behind: isFront ? 0 : 1, columns: n)
-                    let w = max(dayWidth - 4 - cascade.x, 24)
-                    card(p, height: h, compact: false)
+                    let offsetX = EventLayout.waterfallOffset(index: i, count: n, dayWidth: dayWidth)
+                    let offsetY = EventLayout.waterfallYNudge(index: i)
+                    let w = max(dayWidth - 4 - offsetX, 24)
+                    card(p, height: h, compact: w < EventLayout.compactCardWidth)
                         .frame(width: w, height: h)
-                        .offset(x: 2 + cascade.x, y: top + cascade.y)
-                        .zIndex(isFront ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.2), value: isFront)
-                        .onHover { hoverStates[p.id] = $0 }
+                        .offset(x: 2 + offsetX, y: top + offsetY)
+                        .zIndex(Double(i))
                 }
             }
         }
-        .task(id: anyHovering) {
-            guard anyHovering, n > 1 else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                guard !Task.isCancelled else { return }
-                tick += 1
-            }
-        }
-        .onChange(of: anyHovering) { _, hovering in if !hovering { tick = 0 } }
     }
 
     @ViewBuilder

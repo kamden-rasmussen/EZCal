@@ -15,6 +15,10 @@ final class CalendarStore {
     // Persisted
     var accounts: [Account] = []
     var people: [Source] = []
+    /// Ids (within `people`) added via a plain "p" — shown as a live overlay for this session only,
+    /// never written to `UserDefaults`, so they vanish next launch instead of cluttering the sidebar
+    /// permanently. `⇧P` skips this and adds straight to `people` for good.
+    private(set) var temporaryPeople: Set<String> = []
     var icsSubscriptions: [ICSSubscription] = []
     private(set) var hidden: Set<String> = []
     private var knownCalendars: Set<String> = []
@@ -56,6 +60,8 @@ final class CalendarStore {
     var focusedEventID: String?
     var deleteRequest: CalEvent?
     var showAddPerson = false
+    /// Whether the currently-open add-coworker popover will add temporarily (plain "p") or for good (⇧P).
+    var addPersonTemporary = false
     var columnVisibility: NavigationSplitViewVisibility = .all
     var paletteQuery = ""
 
@@ -134,7 +140,9 @@ final class CalendarStore {
         defaults.set(try? JSONEncoder().encode(v), forKey: key)
     }
     private func persist() {
-        save(accounts, "accounts"); save(people, "people"); save(icsSubscriptions, "icsSubscriptions")
+        save(accounts, "accounts")
+        save(people.filter { !temporaryPeople.contains($0.id) }, "people")
+        save(icsSubscriptions, "icsSubscriptions")
         save(Array(hidden), "hidden"); save(Array(knownCalendars), "knownCalendars")
         save(sourceOrder, "sourceOrder")
     }
@@ -311,22 +319,37 @@ final class CalendarStore {
         if visible { scheduleReload() } else { rebuildDisplay() }
     }
 
-    func addPerson(_ p: DirectoryPerson) {
+    /// `temporary: true` (plain "p") overlays the person's calendar for this session only, without
+    /// persisting them to the sidebar; `temporary: false` (⇧P) adds them for good.
+    func addPerson(_ p: DirectoryPerson, temporary: Bool = false) {
         guard let acct = accounts.first else { return }
-        addPerson(name: p.name, email: p.email, accountId: acct.id)
+        addPerson(name: p.name, email: p.email, accountId: acct.id, temporary: temporary)
     }
 
-    func addPerson(name: String, email: String, accountId: String? = nil) {
+    func addPerson(name: String, email: String, accountId: String? = nil, temporary: Bool = false) {
         guard let acct = accountId ?? accounts.first?.id else { return }
         let email = email.lowercased().trimmingCharacters(in: .whitespaces)
         let id = Source.personID(account: acct, email: email)
-        guard !people.contains(where: { $0.id == id }) else { hidden.remove(id); persist(); scheduleReload(); return }
+        if people.contains(where: { $0.id == id }) {
+            hidden.remove(id)
+            if !temporary { temporaryPeople.remove(id) }   // ⇧P on an existing overlay makes it stick
+            persist()
+            scheduleReload()
+            return
+        }
         let color = Palette.people[people.count % Palette.people.count]
         people.append(Source(id: id, accountId: acct, calendarId: email,
                              name: name.isEmpty ? email : name, colorHex: color, kind: .person))
         hidden.remove(id)
+        if temporary { temporaryPeople.insert(id) } else { temporaryPeople.remove(id) }
         persist()
         scheduleReload()
+    }
+
+    /// Keeps a temporary overlay (added via plain "p") in the sidebar for good.
+    func makePersonPermanent(_ s: Source) {
+        guard temporaryPeople.remove(s.id) != nil else { return }
+        persist()
     }
 
     func removePerson(_ s: Source) {
@@ -334,6 +357,7 @@ final class CalendarStore {
         eventsBySource[s.id] = nil
         hidden.remove(s.id)
         personAccess[s.id] = nil
+        temporaryPeople.remove(s.id)
         persist()
         rebuildDisplay()
     }
