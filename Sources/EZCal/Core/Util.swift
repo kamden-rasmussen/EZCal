@@ -111,8 +111,17 @@ enum Keychain {
 enum AppSettings {
     static let defaults = UserDefaults.standard
 
-    static var googleClientID: String { defaults.string(forKey: "googleClientID") ?? "" }
-    static var googleClientSecret: String { Keychain.get("googleClientSecret") ?? "" }
+    // Falls back to Secrets.swift (gitignored, see Secrets.swift.example) so a distributed build
+    // works without each recipient creating their own Google Cloud project. Settings → Accounts
+    // still wins if someone pastes their own client ID/secret there.
+    static var googleClientID: String {
+        let v = defaults.string(forKey: "googleClientID") ?? ""
+        return v.isEmpty ? Secrets.googleClientID : v
+    }
+    static var googleClientSecret: String {
+        let v = Keychain.get("googleClientSecret") ?? ""
+        return v.isEmpty ? Secrets.googleClientSecret : v
+    }
     static var zoomClientID: String { defaults.string(forKey: "zoomClientID") ?? "" }
     static var zoomClientSecret: String { Keychain.get("zoomClientSecret") ?? "" }
 

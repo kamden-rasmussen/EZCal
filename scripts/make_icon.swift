@@ -8,7 +8,7 @@ func render(_ px: Int) -> Data {
     let inset = s * 0.06
     let rect = NSRect(x: inset, y: inset, width: s - inset * 2, height: s - inset * 2)
     let path = NSBezierPath(roundedRect: rect, xRadius: s * 0.22, yRadius: s * 0.22)
-    NSGradient(colors: [NSColor(red: 0.30, green: 0.45, blue: 0.98, alpha: 1), NSColor(red: 0.45, green: 0.30, blue: 0.95, alpha: 1)])!
+    NSGradient(colors: [NSColor(red: 0.16, green: 0.86, blue: 0.46, alpha: 1), NSColor(red: 0.02, green: 0.58, blue: 0.52, alpha: 1)])!
         .draw(in: path, angle: -60)
 
     // header strip
