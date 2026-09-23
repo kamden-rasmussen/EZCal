@@ -69,6 +69,19 @@ struct PlacedEvent: Identifiable {
 }
 
 enum EventLayout {
+    /// Cascade offset for a card `behind` layers back in a cluster of `columns` overlapping events — used by
+    /// `DayColumn` to fan overlapping full-width event cards so each one's title row stays visible and
+    /// clickable. The step shrinks once a cluster is larger than the common case (more than 4 events
+    /// overlapping) so a big pile of same-time conflicts still roughly fits the column — but it's never
+    /// capped: capping used to give a 4th+ layer the exact same offset as the 3rd, landing it on an
+    /// identical rect — 100% covered, invisible and unclickable, not just visually tight. See
+    /// `EventLayoutCascadeTests` for the property this guarantees (every layer in a cluster gets a distinct
+    /// offset, however large the cluster).
+    static func cascadeOffset(behind: Int, columns: Int) -> (x: CGFloat, y: CGFloat) {
+        let step: (x: CGFloat, y: CGFloat) = columns > 4 ? (8, 14) : (10, 18)
+        return (CGFloat(behind) * step.x, CGFloat(behind) * step.y)
+    }
+
     /// Each event spans the full day-column width; overlapping events overlay one another (cascaded/z-ordered
     /// in `DayColumn`) instead of being packed into narrow side-by-side slices. Same-slot duplicates across
     /// calendars are first folded into a single stacked item by `EventGrouping`.
@@ -320,12 +333,11 @@ struct DayColumn: View {
                     // rather than being squeezed into equal side-by-side slices. The card on top (the last to
                     // start, highest z) sits at its natural position; earlier-starting cards behind it cascade
                     // down and to the right so their own title row peeks out below the card(s) covering them,
-                    // instead of every title rendering at the same spot on top of each other.
+                    // instead of every title rendering at the same spot on top of each other — see
+                    // `EventLayout.cascadeOffset` for why the step is never capped.
                     let behind = max(p.columns - 1 - p.column, 0)
-                    let peek = min(CGFloat(behind), 3)
-                    let xCascade = peek * 10
-                    let yCascade = peek * 18
-                    let w = max(geo.size.width - 4 - xCascade, 24)
+                    let cascade = EventLayout.cascadeOffset(behind: behind, columns: p.columns)
+                    let w = max(geo.size.width - 4 - cascade.x, 24)
                     Group {
                         switch p.item {
                         case .single(let event):
@@ -336,7 +348,7 @@ struct DayColumn: View {
                         }
                     }
                     .frame(width: w, height: h)
-                    .offset(x: 2 + xCascade, y: top + yCascade)
+                    .offset(x: 2 + cascade.x, y: top + cascade.y)
                     .zIndex(Double(p.column))
                 }
 

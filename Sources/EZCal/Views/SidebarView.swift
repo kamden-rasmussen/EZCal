@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// Pure math behind `ReorderableSourceList`'s live drag preview — split out (rather than left as a
+/// private method on that view) so it's directly unit-testable without any SwiftUI view inspection.
+enum SidebarReorder {
+    /// How many row-steps a row NOT being dragged should shift, given the dragged row's original index
+    /// `start` and its live "if you let go now" landing index `target` (both within the same array,
+    /// `CalendarStore.moveCalendar(_:toIndex:within:)`'s "final index" meaning). The rows strictly
+    /// between `start` and `target` shift by one row's worth of space to close/open the gap — everything
+    /// else, including `index == start` itself, doesn't move.
+    static func rowShift(for index: Int, start: Int, target: Int) -> Int {
+        if start < target { return (index > start && index <= target) ? -1 : 0 }
+        if start > target { return (index >= target && index < start) ? 1 : 0 }
+        return 0
+    }
+}
+
 struct SidebarView: View {
     @Environment(CalendarStore.self) private var store
 
@@ -134,9 +149,22 @@ struct SectionLabel: View {
 /// Reordering is done with a plain `DragGesture` rather than `.onDrag`/`.onDrop`: those go through
 /// AppKit's system drag session, which on macOS both (a) never starts when the gesture originates on a
 /// `Button` — its click gesture wins the mouse-down first — and (b) is unreliable inside a `ScrollView`,
-/// which tends to claim the same mouse-drag for scrolling instead. A local `DragGesture` on our own grip
-/// view sidesteps both: it's SwiftUI-only, has no AppKit drag session to fumble, and lives on a plain
-/// `Image`, not the row's `Button`.
+/// which tends to claim the same mouse-drag for scrolling instead. A local `DragGesture` has no AppKit
+/// drag session to fumble, sidestepping (b) — but (a) still applies to a plain `.gesture()`, which takes
+/// exclusive priority over a view's own gesture recognizers and would swallow the row's `Button` clicks
+/// entirely. `.simultaneousGesture()` instead runs alongside the `Button`: a plain click (no meaningful
+/// movement) still toggles the calendar, since the drag never exceeds `minimumDistance` and the click
+/// recognizes normally; a real drag exceeds it and takes over, which also cancels the `Button`'s own
+/// press so a drag never *also* fires a toggle. Attaching it to the whole row (not just a small handle)
+/// is what lets a drag start from anywhere on the row, not only a narrow sliver — the previous
+/// grip-only version was hard to reliably grab.
+///
+/// While dragging, the dragged row floats and follows the cursor 1:1 (`dragOffset`, unanimated — any
+/// animation there would make it visibly lag behind the pointer); everything else is driven off
+/// `previewTarget`, the row's current live "if you let go now" landing slot: the rows between its old and
+/// new position slide out of the way (`rowShift`), and an accent line (`lineAboveId`/`lineBelowLastId`)
+/// marks exactly where it'll land. None of that touches the store — only `dragGesture`'s `onEnded` calls
+/// `store.moveCalendar`, once, so letting go back where you started (or canceling) never writes.
 private struct ReorderableSourceList<RowContent: View>: View {
     @Environment(CalendarStore.self) private var store
     let sources: [Source]
@@ -144,6 +172,11 @@ private struct ReorderableSourceList<RowContent: View>: View {
     @State private var draggingId: String?
     @State private var dragStartIndex: Int?
     @State private var dragOffset: CGFloat = 0
+    /// Where the dragged row would land if released right now — index into `sources` (0...count-1),
+    /// same "final position" meaning as `CalendarStore.moveCalendar(_:toIndex:within:)` expects. Updated
+    /// live as the drag crosses a row boundary; only actually committed to the store on drop, so a
+    /// canceled drag (or just dragging around and letting go back where it started) never writes.
+    @State private var previewTarget: Int?
     @State private var hoveringId: String?
 
     /// `SourceRow`/`TaskListRow` are a fixed 30pt tall, in a `VStack(spacing: 2)` — see `group(_:)` in
@@ -155,40 +188,82 @@ private struct ReorderableSourceList<RowContent: View>: View {
         self.row = row
     }
 
+    /// `sources` with the row currently being dragged lifted out — i.e. the order the *other* rows are
+    /// already in, which is what `previewTarget` indexes into for the insertion line.
+    private var others: [Source] {
+        guard let draggingId else { return sources }
+        return sources.filter { $0.id != draggingId }
+    }
+    /// The line renders directly above this row (target lands before it).
+    private var lineAboveId: String? {
+        guard let target = previewTarget, target < others.count else { return nil }
+        return others[target].id
+    }
+    /// Only used for "drop at the very end": the line renders below the last row instead.
+    private var lineBelowLastId: String? {
+        guard let target = previewTarget, target == others.count else { return nil }
+        return others.last?.id
+    }
+
     var body: some View {
         ForEach(Array(sources.enumerated()), id: \.element.id) { index, s in
             HStack(spacing: 0) {
+                // Purely a visual hint that the row can be dragged — the draggable area is the whole
+                // row (see `.simultaneousGesture` below), not just this icon.
                 Image(systemName: "line.3.horizontal")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.text3)
                     .frame(width: 16)
                     .opacity(hoveringId == s.id || draggingId == s.id ? 1 : 0)
-                    .contentShape(Rectangle())
-                    .gesture(dragGesture(for: s, index: index))
                 row(s)
             }
+            .contentShape(Rectangle())
             .onHover { hoveringId = $0 ? s.id : nil }
+            .overlay(alignment: .top) {
+                if lineAboveId == s.id { insertionLine }
+            }
+            .overlay(alignment: .bottom) {
+                if lineBelowLastId == s.id { insertionLine }
+            }
             .zIndex(draggingId == s.id ? 1 : 0)
             .shadow(color: .black.opacity(draggingId == s.id ? 0.25 : 0), radius: 6, y: 2)
-            .offset(y: draggingId == s.id ? dragOffset : 0)
+            .offset(y: draggingId == s.id ? dragOffset : rowShift(for: index))
+            .simultaneousGesture(dragGesture(for: s, index: index))
         }
     }
 
+    private var insertionLine: some View {
+        Capsule().fill(Theme.accent).frame(height: 2).padding(.horizontal, 4).offset(y: -1)
+            .allowsHitTesting(false)
+    }
+
+    /// How far a row NOT being dragged should slide to make room, given where the dragged row currently
+    /// previews landing — the rows strictly between its old and new slot shift by one row's worth of
+    /// space to close/open the gap, exactly like a card physically sliding past them.
+    private func rowShift(for index: Int) -> CGFloat {
+        guard let start = dragStartIndex, let target = previewTarget else { return 0 }
+        return CGFloat(SidebarReorder.rowShift(for: index, start: start, target: target)) * rowStep
+    }
+
     private func dragGesture(for s: Source, index: Int) -> some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+        DragGesture(minimumDistance: 5, coordinateSpace: .local)
             .onChanged { value in
-                if draggingId != s.id { draggingId = s.id; dragStartIndex = index }
+                if draggingId != s.id { draggingId = s.id; dragStartIndex = index; previewTarget = index }
                 dragOffset = value.translation.height
-            }
-            .onEnded { value in
-                defer { draggingId = nil; dragStartIndex = nil; dragOffset = 0 }
                 guard let start = dragStartIndex else { return }
                 let shift = Int((value.translation.height / rowStep).rounded())
-                let target = min(max(start + shift, 0), sources.count - 1)
-                if target != start {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        store.moveCalendar(s.id, toIndex: target, within: sources)
+                let newTarget = min(max(start + shift, 0), sources.count - 1)
+                if newTarget != previewTarget {
+                    withAnimation(.interactiveSpring(response: 0.25, dampingFraction: 0.8)) {
+                        previewTarget = newTarget
                     }
+                }
+            }
+            .onEnded { _ in
+                defer { draggingId = nil; dragStartIndex = nil; dragOffset = 0; previewTarget = nil }
+                guard let start = dragStartIndex, let target = previewTarget, target != start else { return }
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    store.moveCalendar(s.id, toIndex: target, within: sources)
                 }
             }
     }
