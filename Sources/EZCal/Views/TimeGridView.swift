@@ -108,6 +108,10 @@ struct TimeGridView: View {
     @AppStorage("secondaryZoneID") private var secondaryZoneID = ""
     let days: [Date]
 
+    /// Hour height captured when a pinch gesture begins, so `MagnificationGesture`'s cumulative scale
+    /// factor is applied against a fixed base rather than compounding every frame.
+    @State private var hourHeightAtPinchStart: Double?
+
     private let gutter: CGFloat = 56
     private var secondaryZone: TimeZone? { AppSettings.effectiveZone(id: secondaryZoneID, show: showSecondaryZone) }
     private var secondaryWidth: CGFloat { secondaryZone == nil ? 0 : 44 }
@@ -130,6 +134,11 @@ struct TimeGridView: View {
                     .background(alignment: .topLeading) { hourLines }
                 }
                 .scrollIndicators(.hidden)
+                // Pinch-to-zoom (trackpad) on the time grid: spreading expands the vertical space between
+                // hour marks (more detail), pinching in collapses it (more hours visible at once).
+                // `hourHeight` is @AppStorage-backed, so the zoom level is sticky across view opens and
+                // app restarts for free, and the Settings slider stays in sync with pinch adjustments.
+                .gesture(pinchToZoomGesture)
                 .task {
                     try? await Task.sleep(nanoseconds: 60_000_000)   // let the grid lay out first
                     let start = AppSettings.workingHours.startHour        // grid opens at the beginning of the working day
@@ -256,6 +265,17 @@ struct TimeGridView: View {
     private func hourLabel(_ h: Int) -> String {
         let d = Calendar.current.date(bySettingHour: h, minute: 0, second: 0, of: Date())!
         return d.formatted(.dateTime.hour())
+    }
+
+    private var pinchToZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                let base = hourHeightAtPinchStart ?? hourHeight
+                if hourHeightAtPinchStart == nil { hourHeightAtPinchStart = base }
+                let range = AppSettings.hourHeightRange
+                hourHeight = min(max(base * scale, range.lowerBound), range.upperBound)
+            }
+            .onEnded { _ in hourHeightAtPinchStart = nil }
     }
 }
 
