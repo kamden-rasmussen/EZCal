@@ -59,14 +59,19 @@ struct PlacedEvent: Identifiable {
     let item: TimeGridItem
     let start: Date
     let end: Date
+    /// Arrival order (by start time) within this event's overlap cluster — drives z-order and the small
+    /// cascading offset `DayColumn` uses to keep overlapping cards distinguishable while each still spans
+    /// (almost) the full column width. Not a side-by-side slot index.
     var column: Int
+    /// How many events (after folding same-slot duplicates via `EventGrouping`) overlap in this cluster.
     var columns: Int
     var id: String { item.id }
 }
 
 enum EventLayout {
-    /// Packs overlapping events side by side (Google-Calendar style clusters), after first folding same-slot
-    /// duplicates across calendars into single stacked items (`EventGrouping`).
+    /// Each event spans the full day-column width; overlapping events overlay one another (cascaded/z-ordered
+    /// in `DayColumn`) instead of being packed into narrow side-by-side slices. Same-slot duplicates across
+    /// calendars are first folded into a single stacked item by `EventGrouping`.
     static func place(_ events: [CalEvent], day: Date, cal: Calendar) -> [PlacedEvent] {
         let dayStart = cal.startOfDay(for: day)
         let dayEnd = cal.endOfDay(day)
@@ -76,22 +81,20 @@ enum EventLayout {
         items.sort { $0.s != $1.s ? $0.s < $1.s : $0.en > $1.en }
 
         var result: [PlacedEvent] = []
-        var cluster: [PlacedEvent] = []
-        var colEnds: [Date] = []
+        var cluster: [(item: TimeGridItem, s: Date, en: Date)] = []
         var clusterEnd = Date.distantPast
 
         func flush() {
-            let n = max(colEnds.count, 1)
-            result += cluster.map { var p = $0; p.columns = n; return p }
-            cluster = []; colEnds = []; clusterEnd = .distantPast
+            let n = cluster.count
+            result += cluster.enumerated().map { i, it in
+                PlacedEvent(item: it.item, start: it.s, end: it.en, column: i, columns: n)
+            }
+            cluster = []; clusterEnd = .distantPast
         }
 
         for it in items {
             if it.s >= clusterEnd { flush() }
-            let col: Int
-            if let free = colEnds.firstIndex(where: { $0 <= it.s }) { col = free; colEnds[free] = it.en }
-            else { colEnds.append(it.en); col = colEnds.count - 1 }
-            cluster.append(PlacedEvent(item: it.item, start: it.s, end: it.en, column: col, columns: 1))
+            cluster.append(it)
             clusterEnd = max(clusterEnd, it.en)
         }
         flush()
@@ -107,6 +110,10 @@ struct TimeGridView: View {
     @AppStorage("showSecondaryZone") private var showSecondaryZone = true
     @AppStorage("secondaryZoneID") private var secondaryZoneID = ""
     let days: [Date]
+
+    /// Hour height captured when a pinch gesture begins, so `MagnificationGesture`'s cumulative scale
+    /// factor is applied against a fixed base rather than compounding every frame.
+    @State private var hourHeightAtPinchStart: Double?
 
     private let gutter: CGFloat = 56
     private var secondaryZone: TimeZone? { AppSettings.effectiveZone(id: secondaryZoneID, show: showSecondaryZone) }
@@ -130,6 +137,11 @@ struct TimeGridView: View {
                     .background(alignment: .topLeading) { hourLines }
                 }
                 .scrollIndicators(.hidden)
+                // Pinch-to-zoom (trackpad) on the time grid: spreading expands the vertical space between
+                // hour marks (more detail), pinching in collapses it (more hours visible at once).
+                // `hourHeight` is @AppStorage-backed, so the zoom level is sticky across view opens and
+                // app restarts for free, and the Settings slider stays in sync with pinch adjustments.
+                .gesture(pinchToZoomGesture)
                 .task {
                     try? await Task.sleep(nanoseconds: 60_000_000)   // let the grid lay out first
                     let start = AppSettings.workingHours.startHour        // grid opens at the beginning of the working day
@@ -257,6 +269,17 @@ struct TimeGridView: View {
         let d = Calendar.current.date(bySettingHour: h, minute: 0, second: 0, of: Date())!
         return d.formatted(.dateTime.hour())
     }
+
+    private var pinchToZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                let base = hourHeightAtPinchStart ?? hourHeight
+                if hourHeightAtPinchStart == nil { hourHeightAtPinchStart = base }
+                let range = AppSettings.hourHeightRange
+                hourHeight = min(max(base * scale, range.lowerBound), range.upperBound)
+            }
+            .onEnded { _ in hourHeightAtPinchStart = nil }
+    }
 }
 
 // MARK: - One day column
@@ -293,18 +316,28 @@ struct DayColumn: View {
                 ForEach(placed) { p in
                     let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
                     let h = max(p.end.timeIntervalSince(p.start) / 3600 * hourHeight - 2, 18)
-                    let colW = geo.size.width / CGFloat(p.columns)
+                    // Every event spans (almost) the full column width; overlapping events overlay each other
+                    // rather than being squeezed into equal side-by-side slices. The card on top (the last to
+                    // start, highest z) sits at its natural position; earlier-starting cards behind it cascade
+                    // down and to the right so their own title row peeks out below the card(s) covering them,
+                    // instead of every title rendering at the same spot on top of each other.
+                    let behind = max(p.columns - 1 - p.column, 0)
+                    let peek = min(CGFloat(behind), 3)
+                    let xCascade = peek * 10
+                    let yCascade = peek * 18
+                    let w = max(geo.size.width - 4 - xCascade, 24)
                     Group {
                         switch p.item {
                         case .single(let event):
-                            EventBlock(event: event, height: h, narrow: p.columns > 1,
+                            EventBlock(event: event, height: h, overlapping: p.columns > 1,
                                        hourHeight: hourHeight, dayWidth: geo.size.width)
                         case .stack(let events):
                             StackedEventBlock(events: events, height: h)
                         }
                     }
-                    .frame(width: max(colW - 4, 4), height: h)
-                    .offset(x: colW * CGFloat(p.column) + 2, y: top)
+                    .frame(width: w, height: h)
+                    .offset(x: 2 + xCascade, y: top + yCascade)
+                    .zIndex(Double(p.column))
                 }
 
                 ForEach(dueTasks) { t in
@@ -398,7 +431,9 @@ struct EventBlock: View {
     @Environment(CalendarStore.self) private var store
     let event: CalEvent
     let height: Double
-    var narrow = false
+    /// True when this event overlaps at least one other in the same day column. Full width is used either way
+    /// (issue #20) — this only dials back fill opacity and adds a border so overlaid cards stay legible.
+    var overlapping = false
     /// Needed to convert drag translation into minutes/days; 0 when a caller (e.g. previews) doesn't drag.
     var hourHeight: Double = 56
     var dayWidth: CGFloat = 0
@@ -417,7 +452,7 @@ struct EventBlock: View {
 
         VStack(alignment: .leading, spacing: 1) {
             HStack(alignment: .top, spacing: 4) {
-                if let o = event.ownerName, !narrow {
+                if let o = event.ownerName {
                     Text(String(o.prefix(1)).uppercased())
                         .font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 14, height: 14).background(Circle().fill(c))
@@ -428,12 +463,11 @@ struct EventBlock: View {
                         .accessibilityHidden(true)
                 }
                 Text(titleText)
-                    .font(.system(size: narrow ? 11 : 12, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .strikethrough(event.isDeclined)
                     .lineLimit(height > 40 ? 2 : 1)
-                    .minimumScaleFactor(narrow ? 0.85 : 1)
                 Spacer(minLength: 0)
-                if let url = event.meetingURL, height >= 28, !narrow {
+                if let url = event.meetingURL, height >= 28 {
                     Button { NSWorkspace.shared.open(url) } label: {
                         Image(systemName: "video.fill").font(.system(size: 10)).padding(.top, 2)
                     }
@@ -449,16 +483,21 @@ struct EventBlock: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(event.isOverlay ? Theme.text2 : Theme.eventText(c))
-        .padding(.horizontal, narrow ? 5 : 7).padding(.vertical, 4)
+        .padding(.horizontal, 7).padding(.vertical, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             if event.isBusyOnly { Hatch(color: c).clipShape(shape) }
             else if event.isOverlay { shape.fill(hovering ? c.opacity(0.08) : Color.clear) }
-            else { ZStack { shape.fill(Theme.surface); shape.fill(c.opacity(hovering ? 0.26 : 0.17)) } }
+            // Overlapping same-calendar events now overlay each other at full width (issue #20), so their
+            // fill is a touch lighter than a lone event's — that plus the border below keeps a card's own
+            // edges (and the edges of whatever it's cascaded over) readable.
+            else { ZStack { shape.fill(Theme.surface); shape.fill(c.opacity(hovering ? 0.28 : (overlapping ? 0.14 : 0.17))) } }
         }
         .overlay {
             if event.isOverlay { shape.strokeBorder(c.opacity(0.6), lineWidth: event.isBusyOnly ? 1 : 1.5) }
+            else if overlapping { shape.strokeBorder(c.opacity(0.45), lineWidth: 1) }
         }
+        .shadow(color: overlapping ? .black.opacity(0.18) : .clear, radius: 3, y: 1)
         .overlay { if focused { shape.inset(by: -1.5).strokeBorder(Theme.accent, lineWidth: 2) } }
         .overlay(alignment: .bottom) { if canDrag { resizeHandle } }
         .opacity(event.isDeclined ? 0.5 : (isBeingDragged ? 0.35 : 1))

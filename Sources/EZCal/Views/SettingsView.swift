@@ -184,7 +184,7 @@ struct SettingsView: View {
                     Text("Google Meet").tag("meet")
                 }
                 LabeledContent("Hour height") {
-                    Slider(value: $hourHeight, in: 36...120).frame(width: 180)
+                    Slider(value: $hourHeight, in: AppSettings.hourHeightRange).frame(width: 180)
                 }
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)
