@@ -396,6 +396,10 @@ struct DayColumn: View {
     let hourHeight: Double
 
     @State private var dragRange: (Double, Double)?
+    /// Set for the rest of a gesture once it's been repurposed to close the open event-detail panel (see
+    /// `createGesture`), so a click-and-drag that started while it was open never also falls through to
+    /// creating an event.
+    @State private var closingDetail = false
 
     private var overlapMode: OverlapLayoutMode { OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .auto }
 
@@ -489,13 +493,23 @@ struct DayColumn: View {
         return "\(s.formatted(date: .omitted, time: .shortened)) – \(e.formatted(date: .omitted, time: .shortened))"
     }
 
+    /// A click (or click-and-drag) on empty grid space normally starts creating an event. But if the
+    /// event-detail panel is currently docked open, that same click just closes it instead — clicking into
+    /// the main page reads as "I'm done looking at that event," not "make me a new one underneath it."
     private var createGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { v in
+                if dragRange == nil, !closingDetail, store.isShowingDetail {
+                    closingDetail = true
+                    store.sheet = nil
+                    return
+                }
+                guard !closingDetail else { return }
                 if abs(v.translation.height) > 4 { dragRange = (snap(v.startLocation.y), snap(v.location.y)) }
             }
             .onEnded { v in
-                defer { dragRange = nil }
+                defer { dragRange = nil; closingDetail = false }
+                guard !closingDetail else { return }
                 if abs(v.translation.height) > 4 {
                     var a = snap(v.startLocation.y), b = snap(v.location.y)
                     if a > b { swap(&a, &b) }

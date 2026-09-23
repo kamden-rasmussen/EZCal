@@ -84,6 +84,8 @@ private struct MonthCell: View {
             .background(isToday ? Theme.todayBg : Color.clear)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
+                // If the event-detail panel's open, this click just closes it instead of also creating an event.
+                guard !store.isShowingDetail else { store.sheet = nil; return }
                 let start = store.cal.date(bySettingHour: 9, minute: 0, second: 0, of: day)!
                 store.newDraft(start: start)
             }
