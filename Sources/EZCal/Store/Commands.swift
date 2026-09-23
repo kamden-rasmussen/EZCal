@@ -81,9 +81,12 @@ extension CalendarStore {
 
     func toggleSidebar() { columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly }
 
-    func requestAddPerson() {
+    /// `temporary: true` (plain "p") overlays whoever's picked for this session only; `false` (⇧P)
+    /// adds them to the sidebar for good.
+    func requestAddPerson(temporary: Bool = false) {
         guard !accounts.isEmpty else { errorMessage = "Connect Google to overlay coworkers."; return }
         columnVisibility = .all
+        addPersonTemporary = temporary
         showAddPerson = true
     }
 
@@ -139,7 +142,8 @@ extension CalendarStore {
         add("tz", "Views", secondaryZoneShown ? "Hide time zone" : "Show time zone", icon: "◔") { self.toggleSecondaryZone() }
         add("sidebar", "Views", "Toggle sidebar", icon: "▤", key: "⌘\\") { self.toggleSidebar() }
         add("refresh", "Actions", "Refresh calendars", icon: "↻", key: "⌘R") { Task { await self.refreshAll() } }
-        add("addperson", "Coworkers", "Add coworker…", icon: "+", key: "P") { self.requestAddPerson() }
+        add("addperson", "Coworkers", "Add coworker…", icon: "+", key: "⇧P") { self.requestAddPerson() }
+        add("peekperson", "Coworkers", "Peek at a coworker…", icon: "◔", key: "P", sub: "Overlays their calendar for this session only") { self.requestAddPerson(temporary: true) }
         add("addsubscription", "Calendars", "Add calendar by URL…", icon: "+") { self.openAddSubscription() }
         add("shortcuts", "Help", "Keyboard shortcuts", icon: "?", key: "?") { self.openShortcuts() }
         add("settings", "Help", "Settings", icon: "⚙", key: "⌘,") { self.openSettings() }
@@ -160,7 +164,7 @@ extension CalendarStore {
 
         guard !q.isEmpty else {
             let order = ["Actions", "Go to", "Views", "Coworkers", "Calendars", "Help"]
-            return items.filter { ["new", "join", "findtime", "today", "workweek", "week", "day", "month", "addperson", "addsubscription", "shortcuts", "tz"].contains($0.id) || $0.id.hasPrefix("person-") }
+            return items.filter { ["new", "join", "findtime", "today", "workweek", "week", "day", "month", "peekperson", "addperson", "addsubscription", "shortcuts", "tz"].contains($0.id) || $0.id.hasPrefix("person-") }
                 .sorted { (order.firstIndex(of: $0.group) ?? 9) < (order.firstIndex(of: $1.group) ?? 9) }
         }
 

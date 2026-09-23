@@ -166,7 +166,7 @@ struct ContentView: View {
         case "]": store.step(1)
         case "j": store.joinMeeting()
         case "e": store.editFocused()
-        case "p": store.requestAddPerson()
+        case "p": store.requestAddPerson(temporary: !press.modifiers.contains(.shift))
         case "g": store.openPalette("go to ")
         case "/": store.openPalette()
         case "?": store.openShortcuts()

@@ -52,7 +52,8 @@ struct ShortcutsView: View {
             Row(label: "Close", keys: ["esc"]),
         ]),
         Section(title: "Coworkers & calendars", rows: [
-            Row(label: "Add coworker", keys: ["P"]),
+            Row(label: "Peek at a coworker (this session only)", keys: ["P"]),
+            Row(label: "Add coworker permanently", keys: ["⇧", "P"]),
             Row(label: "Add calendar by URL", keys: ["⌘K"]),
             Row(label: "Show or hide a coworker", keys: ["⌘K"]),
             Row(label: "Toggle sidebar", keys: ["⌘", "\\"]),

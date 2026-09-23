@@ -73,11 +73,16 @@ struct SidebarView: View {
                         .padding(.horizontal, 6).padding(.bottom, 4)
 
                         ForEach(store.people) { p in
-                            SourceRow(source: p, access: store.personAccess[p.id])
-                                .contextMenu { Button("Remove", role: .destructive) { store.removePerson(p) } }
+                            SourceRow(source: p, access: store.personAccess[p.id], isTemporary: store.temporaryPeople.contains(p.id))
+                                .contextMenu {
+                                    if store.temporaryPeople.contains(p.id) {
+                                        Button("Keep permanently") { store.makePersonPermanent(p) }
+                                    }
+                                    Button("Remove", role: .destructive) { store.removePerson(p) }
+                                }
                         }
 
-                        Button { store.showAddPerson = true } label: {
+                        Button { store.requestAddPerson() } label: {
                             HStack(spacing: 9) {
                                 Image(systemName: "plus").font(.system(size: 9, weight: .bold))
                                     .frame(width: 20, height: 20)
@@ -91,7 +96,7 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("Add a coworker (P)")
+                        .help("P to peek at a coworker's calendar for this session, ⇧P to add them for good")
                         .popover(isPresented: $store.showAddPerson, arrowEdge: .trailing) {
                             AddPersonView(isPresented: $store.showAddPerson)
                         }
@@ -273,6 +278,7 @@ private struct SourceRow: View {
     @Environment(CalendarStore.self) private var store
     let source: Source
     var access: PersonAccess?
+    var isTemporary = false
     @State private var hovering = false
 
     var body: some View {
@@ -295,6 +301,10 @@ private struct SourceRow: View {
                         .padding(.horizontal, 3)
                 }
                 Text(source.name).lineLimit(1).foregroundStyle(on ? Theme.text : Theme.text2)
+                if isTemporary {
+                    Image(systemName: "clock").font(.system(size: 9)).foregroundStyle(Theme.text3)
+                        .help("Just for this session — right-click to keep permanently")
+                }
                 Spacer(minLength: 0)
                 switch access {
                 case .busyOnly: Text("busy only").font(.system(size: 11)).foregroundStyle(Theme.text3)
@@ -358,13 +368,19 @@ struct AddPersonView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: store.addPersonTemporary ? "clock" : "person.badge.plus")
+                    .font(.system(size: 10)).foregroundStyle(Theme.text3)
+                Text(store.addPersonTemporary ? "Just for this session — ⇧P to add for good" : "Adding permanently")
+                    .font(.system(size: 11)).foregroundStyle(Theme.text3)
+            }
             TextField("Search name or email…", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
                 .onSubmit { addTyped() }
             if searching { ProgressView().controlSize(.small) }
             ForEach(results.filter { r in !store.people.contains { $0.calendarId == r.email.lowercased() } }) { p in
-                Button { store.addPerson(p); isPresented = false } label: {
+                Button { store.addPerson(p, temporary: store.addPersonTemporary); isPresented = false } label: {
                     HStack {
                         Image(systemName: "person.crop.circle").foregroundStyle(Theme.text3)
                         VStack(alignment: .leading, spacing: 0) {
@@ -388,7 +404,11 @@ struct AddPersonView: View {
         }
         .padding(12)
         .frame(width: 300)
-        .onAppear { focused = true }
+        .onAppear {
+            // The popover isn't always key yet the instant this view appears, so an immediate
+            // `focused = true` can be swallowed; give AppKit a beat to finish presenting it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
+        }
         .task(id: query) {
             guard query.count >= 2 else { results = []; return }
             searching = true
@@ -402,8 +422,8 @@ struct AddPersonView: View {
     private var looksLikeEmail: Bool { query.contains("@") && query.contains(".") }
 
     private func addTyped() {
-        if let first = results.first, !looksLikeEmail { store.addPerson(first) }
-        else if looksLikeEmail { store.addPerson(name: "", email: query) }
+        if let first = results.first, !looksLikeEmail { store.addPerson(first, temporary: store.addPersonTemporary) }
+        else if looksLikeEmail { store.addPerson(name: "", email: query, temporary: store.addPersonTemporary) }
         isPresented = false
     }
 }
