@@ -297,10 +297,15 @@ struct DayColumn: View {
                     let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
                     let h = max(p.end.timeIntervalSince(p.start) / 3600 * hourHeight - 2, 18)
                     // Every event spans (almost) the full column width; overlapping events overlay each other
-                    // with a small cascading offset (capped) and are stacked in z-order by arrival time, rather
-                    // than being squeezed into equal side-by-side slices.
-                    let cascade = min(CGFloat(p.column), 3) * 8
-                    let w = max(geo.size.width - 4 - cascade, 24)
+                    // rather than being squeezed into equal side-by-side slices. The card on top (the last to
+                    // start, highest z) sits at its natural position; earlier-starting cards behind it cascade
+                    // down and to the right so their own title row peeks out below the card(s) covering them,
+                    // instead of every title rendering at the same spot on top of each other.
+                    let behind = max(p.columns - 1 - p.column, 0)
+                    let peek = min(CGFloat(behind), 3)
+                    let xCascade = peek * 10
+                    let yCascade = peek * 18
+                    let w = max(geo.size.width - 4 - xCascade, 24)
                     Group {
                         switch p.item {
                         case .single(let event):
@@ -311,7 +316,7 @@ struct DayColumn: View {
                         }
                     }
                     .frame(width: w, height: h)
-                    .offset(x: 2 + cascade, y: top)
+                    .offset(x: 2 + xCascade, y: top + yCascade)
                     .zIndex(Double(p.column))
                 }
 
