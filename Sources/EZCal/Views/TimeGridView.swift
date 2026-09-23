@@ -3,22 +3,75 @@ import AppKit
 
 // MARK: - Overlap layout
 
+/// One cell in the grid: either an ordinary event, or a handful of them folded into one block because
+/// `EventGrouping` decided they're the same meeting seen on different calendars.
+enum TimeGridItem: Identifiable {
+    case single(CalEvent)
+    case stack([CalEvent])   // 2+ events: same title, same slot (within `EventGrouping.slack`), different calendars
+
+    var id: String {
+        switch self {
+        case .single(let e): return e.id
+        case .stack(let es): return es.map(\.id).sorted().joined(separator: "+")
+        }
+    }
+    var start: Date { switch self { case .single(let e): return e.start; case .stack(let es): return es.map(\.start).min()! } }
+    var end: Date { switch self { case .single(let e): return e.end; case .stack(let es): return es.map(\.end).max()! } }
+}
+
+/// Folds the same meeting seen on several calendars into one `TimeGridItem.stack`, so the grid can draw it as one
+/// readable block instead of N near-identical slivers (feature request: stack same-slot duplicates).
+enum EventGrouping {
+    /// How far a duplicate's start/end may drift and still count as "the same slot" — absorbs calendars that
+    /// round differently, or a copy that was entered a minute or two off.
+    static let slack: TimeInterval = 5 * 60
+
+    static func group(_ events: [CalEvent]) -> [TimeGridItem] {
+        var remaining = events
+        var items: [TimeGridItem] = []
+        while let anchor = remaining.first {
+            remaining.removeFirst()
+            let key = normalizedTitle(anchor.title)
+            // Coworker overlays and free/busy blocks stay their own thing — never folded into a stack.
+            guard !key.isEmpty, !anchor.isOverlay, !anchor.isBusyOnly else { items.append(.single(anchor)); continue }
+            var matched = [anchor]
+            remaining.removeAll { candidate in
+                guard !candidate.isOverlay, !candidate.isBusyOnly,
+                      candidate.sourceId != anchor.sourceId,   // only different calendars count as a duplicate
+                      normalizedTitle(candidate.title) == key,
+                      abs(candidate.start.timeIntervalSince(anchor.start)) <= slack,
+                      abs(candidate.end.timeIntervalSince(anchor.end)) <= slack
+                else { return false }
+                matched.append(candidate)
+                return true
+            }
+            items.append(matched.count > 1 ? .stack(matched) : .single(anchor))
+        }
+        return items
+    }
+
+    private static func normalizedTitle(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
 struct PlacedEvent: Identifiable {
-    let event: CalEvent
+    let item: TimeGridItem
     let start: Date
     let end: Date
     var column: Int
     var columns: Int
-    var id: String { event.id }
+    var id: String { item.id }
 }
 
 enum EventLayout {
-    /// Packs overlapping events side by side (Google-Calendar style clusters).
+    /// Packs overlapping events side by side (Google-Calendar style clusters), after first folding same-slot
+    /// duplicates across calendars into single stacked items (`EventGrouping`).
     static func place(_ events: [CalEvent], day: Date, cal: Calendar) -> [PlacedEvent] {
         let dayStart = cal.startOfDay(for: day)
         let dayEnd = cal.endOfDay(day)
-        var items = events.map { e in
-            (e: e, s: max(e.start, dayStart), en: min(max(e.end, e.start.addingTimeInterval(20 * 60)), dayEnd))
+        var items = EventGrouping.group(events).map { item in
+            (item: item, s: max(item.start, dayStart), en: min(max(item.end, item.start.addingTimeInterval(20 * 60)), dayEnd))
         }
         items.sort { $0.s != $1.s ? $0.s < $1.s : $0.en > $1.en }
 
@@ -38,7 +91,7 @@ enum EventLayout {
             let col: Int
             if let free = colEnds.firstIndex(where: { $0 <= it.s }) { col = free; colEnds[free] = it.en }
             else { colEnds.append(it.en); col = colEnds.count - 1 }
-            cluster.append(PlacedEvent(event: it.e, start: it.s, end: it.en, column: col, columns: 1))
+            cluster.append(PlacedEvent(item: it.item, start: it.s, end: it.en, column: col, columns: 1))
             clusterEnd = max(clusterEnd, it.en)
         }
         flush()
@@ -241,10 +294,17 @@ struct DayColumn: View {
                     let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
                     let h = max(p.end.timeIntervalSince(p.start) / 3600 * hourHeight - 2, 18)
                     let colW = geo.size.width / CGFloat(p.columns)
-                    EventBlock(event: p.event, height: h, narrow: p.columns > 1,
-                               hourHeight: hourHeight, dayWidth: geo.size.width)
-                        .frame(width: max(colW - 4, 4), height: h)
-                        .offset(x: colW * CGFloat(p.column) + 2, y: top)
+                    Group {
+                        switch p.item {
+                        case .single(let event):
+                            EventBlock(event: event, height: h, narrow: p.columns > 1,
+                                       hourHeight: hourHeight, dayWidth: geo.size.width)
+                        case .stack(let events):
+                            StackedEventBlock(events: events, height: h)
+                        }
+                    }
+                    .frame(width: max(colW - 4, 4), height: h)
+                    .offset(x: colW * CGFloat(p.column) + 2, y: top)
                 }
 
                 ForEach(dueTasks) { t in
@@ -493,6 +553,122 @@ struct EventBlock: View {
         let who = event.ownerName.map { "\($0): " } ?? ""
         let time = event.start.formatted(date: .omitted, time: .shortened)
         return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "") + (event.isRecurring ? ", repeats" : "")
+    }
+}
+
+/// The same meeting seen on several calendars at once (`EventGrouping`), drawn as one card with faint peeking
+/// edges behind it — a stack of copies, not N unreadable slivers. Tapping it lists which calendars it's on;
+/// picking one opens that calendar's own event in the usual docked detail panel.
+struct StackedEventBlock: View {
+    @Environment(CalendarStore.self) private var store
+    let events: [CalEvent]   // 2+, same title/slot, different sourceIds
+    let height: Double
+    @State private var hovering = false
+    @State private var showList = false
+
+    private var front: CalEvent { events[0] }
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 7) }
+    private var focused: Bool { events.contains { $0.id == store.focusedEventID } }
+    /// Peeking edges only read as "a stack" once there's room for them; below that just show the front card.
+    private var showsPeek: Bool { height >= 30 }
+    private var peekLayers: [CalEvent] { Array(events.dropFirst().prefix(2)) }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if showsPeek {
+                ForEach(Array(peekLayers.enumerated().reversed()), id: \.offset) { i, e in
+                    let inset = CGFloat(i + 1) * 3
+                    shape
+                        .fill(Theme.surface)
+                        .overlay(shape.strokeBorder(e.color.opacity(0.55), lineWidth: 1.5))
+                        .padding(EdgeInsets(top: inset, leading: inset, bottom: -inset, trailing: -inset))
+                }
+            }
+            frontCard
+                .padding(.trailing, showsPeek ? 6 : 0)
+                .padding(.bottom, showsPeek ? 6 : 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .opacity(events.allSatisfy(\.isDeclined) ? 0.5 : 1)
+        .help(helpText)
+        .popover(isPresented: $showList, arrowEdge: .trailing) { calendarList }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var frontCard: some View {
+        let c = front.color
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(front.title)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(height > 40 ? 2 : 1)
+                .minimumScaleFactor(0.9)
+            HStack(spacing: 6) {
+                if height >= 40 {
+                    Text(front.start.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 11).monospacedDigit()).opacity(0.75).lineLimit(1)
+                }
+                HStack(spacing: 3) {
+                    ForEach(events.prefix(4)) { e in
+                        Circle().fill(e.color).frame(width: 6, height: 6)
+                    }
+                    if events.count > 4 {
+                        Text("+\(events.count - 4)").font(.system(size: 9, weight: .semibold)).opacity(0.7)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Theme.eventText(c))
+        .padding(.horizontal, 7).padding(.vertical, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background { ZStack { shape.fill(Theme.surface); shape.fill(c.opacity(hovering ? 0.26 : 0.17)) } }
+        .overlay { shape.strokeBorder(c.opacity(0.55), lineWidth: 1.5) }
+        .overlay { if focused { shape.inset(by: -1.5).strokeBorder(Theme.accent, lineWidth: 2) } }
+        .contentShape(shape)
+        .onHover { hovering = $0 }
+        .onTapGesture { showList = true }
+    }
+
+    private var calendarList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("On \(events.count) calendars")
+                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.text3)
+                .padding(.bottom, 4)
+            ForEach(events) { e in
+                Button {
+                    showList = false
+                    store.focusedEventID = e.id
+                    store.sheet = .detail(e)
+                } label: {
+                    HStack(spacing: 8) {
+                        Circle().fill(e.color).frame(width: 8, height: 8)
+                        Text(e.sourceName).font(.system(size: 12)).foregroundStyle(Theme.text).lineLimit(1)
+                        Spacer(minLength: 8)
+                        Text("\(e.start.formatted(date: .omitted, time: .shortened)) – \(e.end.formatted(date: .omitted, time: .shortened))")
+                            .font(.system(size: 11)).foregroundStyle(Theme.text3)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 5).padding(.horizontal, 8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Theme.hover.opacity(0)))
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+        .padding(10)
+        .frame(minWidth: 220)
+    }
+
+    private var helpText: String {
+        let names = events.map(\.sourceName).joined(separator: ", ")
+        return "\(front.title) · on \(names)"
+    }
+
+    private var accessibilityText: String {
+        let time = front.start.formatted(date: .omitted, time: .shortened)
+        return "\(front.title), \(time), on \(events.count) calendars"
     }
 }
 
