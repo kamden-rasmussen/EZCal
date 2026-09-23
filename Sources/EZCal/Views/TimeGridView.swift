@@ -65,7 +65,26 @@ struct PlacedEvent: Identifiable {
     var column: Int
     /// How many events (after folding same-slot duplicates via `EventGrouping`) overlap in this cluster.
     var columns: Int
+    /// Side-by-side slot index from a classic greedy interval-packing pass (Google-Calendar-style columns) —
+    /// independent of `column` above. `OverlapCluster` uses this when `.auto` mode decides the column is wide
+    /// enough to slice this cluster into real side-by-side cards instead of cascading them.
+    var sideSlot: Int
+    /// How many side-by-side slots this cluster needs (the packing's width, not `columns`' cluster size —
+    /// two events that don't actually overlap in time can share a cluster via a third that overlaps both,
+    /// yet still fit in 2 slots).
+    var sideSlots: Int
+    /// Shared by every `PlacedEvent` produced from the same overlap cluster, so `DayColumn` can regroup a flat
+    /// placement list back into per-cluster views (each owning its own hover-cycle state).
+    var clusterID: String
     var id: String { item.id }
+}
+
+/// How a day column resolves a cluster of same-time events into cards. Persisted as a setting (General tab)
+/// because "always cascade" vs "slice into columns when it fits" is a real readability trade-off, not just an
+/// implementation detail — see `EventLayout.useSideBySide`.
+enum OverlapLayoutMode: String {
+    case auto      // side-by-side columns when a cluster's slice width would stay readable; cascade otherwise
+    case cascade   // always overlay full-width cards, cascaded — never slice into columns
 }
 
 enum EventLayout {
@@ -98,9 +117,26 @@ enum EventLayout {
         var clusterEnd = Date.distantPast
 
         func flush() {
+            guard !cluster.isEmpty else { return }
             let n = cluster.count
+            // Classic greedy interval packing for the side-by-side alternative: each item takes the first
+            // column whose previous occupant has already ended, opening a new column otherwise.
+            var colEnds: [Date] = []
+            var sideSlot: [Int] = []
+            for it in cluster {
+                if let free = colEnds.firstIndex(where: { $0 <= it.s }) {
+                    colEnds[free] = it.en
+                    sideSlot.append(free)
+                } else {
+                    colEnds.append(it.en)
+                    sideSlot.append(colEnds.count - 1)
+                }
+            }
+            let sideSlots = colEnds.count
+            let clusterID = cluster.map(\.item.id).sorted().joined(separator: "|")
             result += cluster.enumerated().map { i, it in
-                PlacedEvent(item: it.item, start: it.s, end: it.en, column: i, columns: n)
+                PlacedEvent(item: it.item, start: it.s, end: it.en, column: i, columns: n,
+                            sideSlot: sideSlot[i], sideSlots: sideSlots, clusterID: clusterID)
             }
             cluster = []; clusterEnd = .distantPast
         }
@@ -111,6 +147,37 @@ enum EventLayout {
             clusterEnd = max(clusterEnd, it.en)
         }
         flush()
+        return result
+    }
+
+    /// Below this per-card width, side-by-side columns stop being worth it — a cascade of full-width cards
+    /// (each revealed in turn via hover-cycle) reads better than a sliver too narrow for its own title.
+    static let minSideBySideSliceWidth: CGFloat = 100
+    /// Below this width a card switches to its compact style (drops the avatar/recurring icon, smaller title).
+    static let compactCardWidth: CGFloat = 130
+
+    /// Whether a cluster should be sliced into real side-by-side columns rather than cascaded. `.cascade` mode
+    /// always says no; `.auto` says yes only if every resulting slice would stay at least
+    /// `minSideBySideSliceWidth` wide — otherwise it falls back to cascade+hover-cycle for that cluster, even
+    /// if other clusters on the same day are wide enough to slice.
+    static func useSideBySide(sideSlots: Int, availableWidth: CGFloat, mode: OverlapLayoutMode) -> Bool {
+        guard mode == .auto, sideSlots > 1 else { return false }
+        let slice = (availableWidth - 4) / CGFloat(sideSlots)
+        return slice >= minSideBySideSliceWidth
+    }
+
+    /// Regroups a flat placement list back into contiguous per-cluster arrays. Relies on `place` appending one
+    /// cluster at a time, so `DayColumn` can render each cluster as its own `OverlapCluster` view with its own
+    /// hover-cycle state, instead of one flat `ForEach` that can't tell where one cluster ends and the next begins.
+    static func clusters(of placed: [PlacedEvent]) -> [[PlacedEvent]] {
+        var result: [[PlacedEvent]] = []
+        for p in placed {
+            if !result.isEmpty, result[result.count - 1][0].clusterID == p.clusterID {
+                result[result.count - 1].append(p)
+            } else {
+                result.append([p])
+            }
+        }
         return result
     }
 }
@@ -299,10 +366,13 @@ struct TimeGridView: View {
 
 struct DayColumn: View {
     @Environment(CalendarStore.self) private var store
+    @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.auto.rawValue
     let day: Date
     let hourHeight: Double
 
     @State private var dragRange: (Double, Double)?
+
+    private var overlapMode: OverlapLayoutMode { OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .auto }
 
     var body: some View {
         let placed = EventLayout.place(store.events(on: day).timed, day: day, cal: store.cal)
@@ -326,30 +396,9 @@ struct DayColumn: View {
                         .accessibilityHidden(true)
                 }
 
-                ForEach(placed) { p in
-                    let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
-                    let h = max(p.end.timeIntervalSince(p.start) / 3600 * hourHeight - 2, 18)
-                    // Every event spans (almost) the full column width; overlapping events overlay each other
-                    // rather than being squeezed into equal side-by-side slices. The card on top (the last to
-                    // start, highest z) sits at its natural position; earlier-starting cards behind it cascade
-                    // down and to the right so their own title row peeks out below the card(s) covering them,
-                    // instead of every title rendering at the same spot on top of each other — see
-                    // `EventLayout.cascadeOffset` for why the step is never capped.
-                    let behind = max(p.columns - 1 - p.column, 0)
-                    let cascade = EventLayout.cascadeOffset(behind: behind, columns: p.columns)
-                    let w = max(geo.size.width - 4 - cascade.x, 24)
-                    Group {
-                        switch p.item {
-                        case .single(let event):
-                            EventBlock(event: event, height: h, overlapping: p.columns > 1,
-                                       hourHeight: hourHeight, dayWidth: geo.size.width)
-                        case .stack(let events):
-                            StackedEventBlock(events: events, height: h)
-                        }
-                    }
-                    .frame(width: w, height: h)
-                    .offset(x: 2 + cascade.x, y: top + cascade.y)
-                    .zIndex(Double(p.column))
+                ForEach(EventLayout.clusters(of: placed), id: \.[0].clusterID) { cluster in
+                    OverlapCluster(cluster: cluster, dayStart: dayStart, hourHeight: hourHeight,
+                                   dayWidth: geo.size.width, mode: overlapMode)
                 }
 
                 ForEach(dueTasks) { t in
@@ -437,6 +486,88 @@ struct DayColumn: View {
     }
 }
 
+/// Renders one overlap cluster (1+ same-time events, post `EventGrouping` folding) and owns the state for it:
+/// whether it's currently sliced into side-by-side columns or cascaded, and — when cascaded — the hover-cycle
+/// that rotates which card sits on top every few seconds so a big pileup doesn't permanently bury everything
+/// behind the most-recently-started event.
+struct OverlapCluster: View {
+    let cluster: [PlacedEvent]   // sorted ascending by `column` (arrival order); all share one `clusterID`
+    let dayStart: Date
+    let hourHeight: Double
+    let dayWidth: CGFloat
+    let mode: OverlapLayoutMode
+
+    /// Per-card hover state, keyed by event id. Only the currently topmost card actually receives hover in the
+    /// region it shares with the rest of the cluster (AppKit hit-tests to the top of the z-order), so this is
+    /// effectively "is the visible card under the cursor" even though several cards are wired up to report it —
+    /// a background card can only ever set this from its own uncovered peeking sliver.
+    @State private var hoverStates: [String: Bool] = [:]
+    /// Advances by one every 3s while `anyHovering` — rotates which natural index renders on top (see `front`).
+    @State private var tick = 0
+
+    private var n: Int { cluster.count }
+    private var anyHovering: Bool { hoverStates.values.contains(true) }
+    private var sideBySide: Bool {
+        guard let first = cluster.first else { return false }
+        return EventLayout.useSideBySide(sideSlots: first.sideSlots, availableWidth: dayWidth, mode: mode)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(cluster.enumerated()), id: \.element.id) { i, p in
+                let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
+                let h = max(p.end.timeIntervalSince(p.start) / 3600 * hourHeight - 2, 18)
+
+                if sideBySide {
+                    let slotW = max((dayWidth - 4) / CGFloat(p.sideSlots), 24)
+                    let w = max(slotW - 3, 24)
+                    card(p, height: h, compact: w < EventLayout.compactCardWidth)
+                        .frame(width: w, height: h)
+                        .offset(x: 2 + slotW * CGFloat(p.sideSlot), y: top)
+                        .zIndex(Double(i))
+                } else {
+                    // `frontIndex` is which natural index currently renders on top; it steps back by one every
+                    // tick, wrapping around, so hovering sends the current front card to join the rest of the
+                    // stack and brings the next one up front. Every non-front card sits at the same one-layer
+                    // offset regardless of cluster size — cycling reveals each in turn, so nothing needs its own
+                    // ever-larger offset to stay reachable (unlike the un-hovered, static cascade cap this
+                    // replaced, which had to fan every layer out to keep each one clickable).
+                    let frontIndex = n > 0 ? ((n - 1 - tick) % n + n) % n : i
+                    let isFront = i == frontIndex
+                    let cascade = EventLayout.cascadeOffset(behind: isFront ? 0 : 1, columns: n)
+                    let w = max(dayWidth - 4 - cascade.x, 24)
+                    card(p, height: h, compact: false)
+                        .frame(width: w, height: h)
+                        .offset(x: 2 + cascade.x, y: top + cascade.y)
+                        .zIndex(isFront ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: isFront)
+                        .onHover { hoverStates[p.id] = $0 }
+                }
+            }
+        }
+        .task(id: anyHovering) {
+            guard anyHovering, n > 1 else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled else { return }
+                tick += 1
+            }
+        }
+        .onChange(of: anyHovering) { _, hovering in if !hovering { tick = 0 } }
+    }
+
+    @ViewBuilder
+    private func card(_ p: PlacedEvent, height: Double, compact: Bool) -> some View {
+        switch p.item {
+        case .single(let event):
+            EventBlock(event: event, height: height, overlapping: n > 1, compact: compact,
+                       hourHeight: hourHeight, dayWidth: dayWidth)
+        case .stack(let events):
+            StackedEventBlock(events: events, height: height, compact: compact)
+        }
+    }
+}
+
 // MARK: - Event visuals
 
 struct EventBlock: View {
@@ -446,6 +577,10 @@ struct EventBlock: View {
     /// True when this event overlaps at least one other in the same day column. Full width is used either way
     /// (issue #20) — this only dials back fill opacity and adds a border so overlaid cards stay legible.
     var overlapping = false
+    /// True when `OverlapCluster` sliced this into a side-by-side column too narrow for the full layout —
+    /// drops the avatar/recurring icon and the video-join button, and shrinks the title, so the card still
+    /// reads at a glance instead of truncating everything to fit.
+    var compact = false
     /// Needed to convert drag translation into minutes/days; 0 when a caller (e.g. previews) doesn't drag.
     var hourHeight: Double = 56
     var dayWidth: CGFloat = 0
@@ -464,22 +599,23 @@ struct EventBlock: View {
 
         VStack(alignment: .leading, spacing: 1) {
             HStack(alignment: .top, spacing: 4) {
-                if let o = event.ownerName {
+                if let o = event.ownerName, !compact {
                     Text(String(o.prefix(1)).uppercased())
                         .font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 14, height: 14).background(Circle().fill(c))
                         .padding(.top, 0.5)
                 }
-                if event.isRecurring {
+                if event.isRecurring, !compact {
                     Image(systemName: "repeat").font(.system(size: 9)).opacity(0.75).padding(.top, 1)
                         .accessibilityHidden(true)
                 }
                 Text(titleText)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: compact ? 11 : 12, weight: .semibold))
                     .strikethrough(event.isDeclined)
                     .lineLimit(height > 40 ? 2 : 1)
+                    .minimumScaleFactor(compact ? 0.9 : 1)
                 Spacer(minLength: 0)
-                if let url = event.meetingURL, height >= 28 {
+                if let url = event.meetingURL, height >= 28, !compact {
                     Button { NSWorkspace.shared.open(url) } label: {
                         Image(systemName: "video.fill").font(.system(size: 10)).padding(.top, 2)
                     }
@@ -495,7 +631,7 @@ struct EventBlock: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(event.isOverlay ? Theme.text2 : Theme.eventText(c))
-        .padding(.horizontal, 7).padding(.vertical, 4)
+        .padding(.horizontal, compact ? 5 : 7).padding(.vertical, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             if event.isBusyOnly { Hatch(color: c).clipShape(shape) }
@@ -614,6 +750,7 @@ struct StackedEventBlock: View {
     @Environment(CalendarStore.self) private var store
     let events: [CalEvent]   // 2+, same title/slot, different sourceIds
     let height: Double
+    var compact = false
     @State private var hovering = false
     @State private var showList = false
 
@@ -652,11 +789,11 @@ struct StackedEventBlock: View {
         let c = front.color
         return VStack(alignment: .leading, spacing: 2) {
             Text(front.title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: compact ? 11 : 12, weight: .semibold))
                 .lineLimit(height > 40 ? 2 : 1)
                 .minimumScaleFactor(0.9)
             HStack(spacing: 6) {
-                if height >= 40 {
+                if height >= 40 && !compact {
                     Text(front.start.formatted(date: .omitted, time: .shortened))
                         .font(.system(size: 11).monospacedDigit()).opacity(0.75).lineLimit(1)
                 }
@@ -672,7 +809,7 @@ struct StackedEventBlock: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(Theme.eventText(c))
-        .padding(.horizontal, 7).padding(.vertical, 4)
+        .padding(.horizontal, compact ? 5 : 7).padding(.vertical, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background { ZStack { shape.fill(Theme.surface); shape.fill(c.opacity(hovering ? 0.26 : 0.17)) } }
         .overlay { shape.strokeBorder(c.opacity(0.55), lineWidth: 1.5) }

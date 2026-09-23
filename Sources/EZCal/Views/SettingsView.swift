@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage("defaultDuration") private var defaultDuration = 60
     @AppStorage("defaultVideo") private var defaultVideo = "none"
     @AppStorage("hourHeight") private var hourHeight = 56.0
+    @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.auto.rawValue
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("notificationLeadMinutes") private var notificationLeadMinutes = 5
     @AppStorage("notificationVideoOnly") private var notificationVideoOnly = false
@@ -186,6 +187,12 @@ struct SettingsView: View {
                 LabeledContent("Hour height") {
                     Slider(value: $hourHeight, in: AppSettings.hourHeightRange).frame(width: 180)
                 }
+                Picker("Overlapping events", selection: $overlapLayoutModeRaw) {
+                    Text("Fit side by side when possible").tag(OverlapLayoutMode.auto.rawValue)
+                    Text("Always overlap (cascade)").tag(OverlapLayoutMode.cascade.rawValue)
+                }
+                Text("When same-time events can't all fit as side-by-side columns, hover the stack to cycle through what's underneath every few seconds.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)
                         .onChange(of: notificationsEnabled) { _, _ in Task { await store.rescheduleNotifications() } }
