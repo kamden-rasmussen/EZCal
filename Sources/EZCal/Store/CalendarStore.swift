@@ -493,7 +493,10 @@ final class CalendarStore {
         // Keep cached events for hidden sources, replace the ones we just fetched.
         for (k, v) in fresh { eventsBySource[k] = v }
         for (k, v) in access { personAccess[k] = v }
-        errorMessage = firstError
+        // With no visible sources to fetch (e.g. loadCalendars() just failed, leaving `calendars`
+        // empty), there's nothing here to report success or failure on — don't clobber whatever
+        // error loadCalendars() set with a false-positive "all clear".
+        if !sources.isEmpty { errorMessage = firstError }
         isLoading = false
         rebuildDisplay()
     }
