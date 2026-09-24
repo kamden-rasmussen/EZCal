@@ -34,7 +34,7 @@ struct SettingsView: View {
     @AppStorage("defaultDuration") private var defaultDuration = 60
     @AppStorage("defaultVideo") private var defaultVideo = "none"
     @AppStorage("hourHeight") private var hourHeight = 56.0
-    @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.auto.rawValue
+    @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.sideBySide.rawValue
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("notificationLeadMinutes") private var notificationLeadMinutes = 5
     @AppStorage("notificationVideoOnly") private var notificationVideoOnly = false
@@ -188,10 +188,11 @@ struct SettingsView: View {
                     Slider(value: $hourHeight, in: AppSettings.hourHeightRange).frame(width: 180)
                 }
                 Picker("Overlapping events", selection: $overlapLayoutModeRaw) {
-                    Text("Fit side by side when possible").tag(OverlapLayoutMode.auto.rawValue)
-                    Text("Always overlap (cascade)").tag(OverlapLayoutMode.cascade.rawValue)
+                    Text("Side by side").tag(OverlapLayoutMode.sideBySide.rawValue)
+                    Text("Overlap (cascade)").tag(OverlapLayoutMode.cascade.rawValue)
+                    Text("Auto (side by side when it fits)").tag(OverlapLayoutMode.auto.rawValue)
                 }
-                Text("When same-time events can't all fit as side-by-side columns, they're cascaded instead — every one keeps its own visible sliver, click any of them to open it.")
+                Text(overlapModeCaption)
                     .font(.caption).foregroundStyle(.secondary)
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)
@@ -261,6 +262,19 @@ struct SettingsView: View {
             case "accounts": tab = .accounts
             default: tab = initialTab
             }
+        }
+    }
+
+    /// Caption under the "Overlapping events" picker, tailored to the selected mode so it always describes
+    /// what's actually about to happen rather than a generic blurb.
+    private var overlapModeCaption: String {
+        switch OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .sideBySide {
+        case .sideBySide:
+            return "Every event keeps its own column, sized to fit — this is what Google Calendar, Apple Calendar and Outlook all do. Columns just get narrower as more events pile up."
+        case .cascade:
+            return "Events overlay each other at full width instead of splitting into columns — every one keeps its own visible sliver along the edge, click any of them to open it."
+        case .auto:
+            return "Side by side columns when they'd stay readable; cascades instead once a cluster would slice into columns narrower than that."
         }
     }
 }
