@@ -1,34 +1,7 @@
 import SwiftUI
 
-struct SecretField: View {
-    let title: String
-    let keychainKey: String
-    @State private var text = ""
-
-    var body: some View {
-        SecureField(title, text: $text)
-            .onAppear { text = Keychain.get(keychainKey) ?? "" }
-            .onChange(of: text) { _, new in Keychain.set(new, for: keychainKey) }
-    }
-}
-
-struct GoogleCredentialsForm: View {
-    @AppStorage("googleClientID") private var clientID = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("Client ID", text: $clientID)
-            SecretField(title: "Client secret", keychainKey: "googleClientSecret")
-            Text("Create an OAuth client of type “Desktop app” in Google Cloud Console and enable the Google Calendar API and People API. See the README for step-by-step instructions.")
-                .font(.caption).foregroundStyle(.secondary)
-            Link("Open Google Cloud Console", destination: URL(string: "https://console.cloud.google.com/apis/credentials")!).font(.caption)
-        }
-    }
-}
-
 struct SettingsView: View {
     @Environment(CalendarStore.self) private var store
-    @AppStorage("zoomClientID") private var zoomClientID = ""
     @AppStorage("showWeekends") private var showWeekends = true
     @AppStorage("firstWeekday") private var firstWeekday = 0
     @AppStorage("defaultDuration") private var defaultDuration = 60
@@ -124,7 +97,6 @@ struct SettingsView: View {
                     Text("Shows tasks with due dates from Apple Reminders in the grid, with a checkbox to complete them, and lets ⌘K quick-add new ones (\u{201c}task: call dentist tomorrow 3pm\u{201d}).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Google OAuth client") { GoogleCredentialsForm() }
             }
             .formStyle(.grouped)
             .tabItem { Label("Accounts", systemImage: "person.crop.circle") }
@@ -132,8 +104,6 @@ struct SettingsView: View {
 
             Form {
                 Section("Zoom") {
-                    TextField("Client ID", text: $zoomClientID)
-                    SecretField(title: "Client secret", keychainKey: "zoomClientSecret")
                     HStack {
                         if store.zoomConnected {
                             Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
@@ -141,16 +111,13 @@ struct SettingsView: View {
                             Button("Disconnect", role: .destructive) { store.disconnectZoom() }
                         } else {
                             Button(store.zoomNeedsReconnect ? "Reconnect Zoom" : "Connect Zoom") { Task { await store.connectZoom() } }
-                                .disabled(zoomClientID.isEmpty)
+                                .disabled(!AppSettings.hasZoomCredentials)
                         }
                     }
                     if store.zoomNeedsReconnect {
                         Label("Zoom's sign-in expired — reconnect to keep creating meetings.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption).foregroundStyle(.orange)
                     }
-                    Text("Create a “General app” (user-managed OAuth) in the Zoom App Marketplace, add the scope meeting:write:meeting (plus meeting:update:meeting and meeting:delete:meeting), and register http://localhost:48291/callback as the redirect URL.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Link("Open Zoom App Marketplace", destination: URL(string: "https://marketplace.zoom.us/develop/create")!).font(.caption)
                 }
                 Section("Meeting defaults") {
                     Toggle("Waiting room", isOn: $zoomWaitingRoom)
@@ -351,8 +318,6 @@ enum SecondaryZoneList {
 /// Shown in the main window until a calendar source is connected.
 struct SetupView: View {
     @Environment(CalendarStore.self) private var store
-    @AppStorage("googleClientID") private var clientID = ""
-    @State private var showGoogleSetup = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -385,21 +350,10 @@ struct SetupView: View {
                 }
 
                 card(symbol: "g.circle", tint: Color(hex: "#3E63DD"), title: "Google Calendar",
-                     detail: "Adds coworker overlay and Google Meet. Needs a one-time key, about 5 minutes.") {
-                    if AppSettings.hasGoogleCredentials {
-                        Button(store.isSigningIn ? "Waiting…" : "Sign in") { Task { await store.signIn() } }
-                            .buttonStyle(SecondaryButtonStyle()).disabled(store.isSigningIn)
-                    } else {
-                        Button(showGoogleSetup ? "Hide" : "Set up") { showGoogleSetup.toggle() }
-                            .buttonStyle(SecondaryButtonStyle())
-                    }
-                }
-                if showGoogleSetup && !AppSettings.hasGoogleCredentials {
-                    VStack(alignment: .leading, spacing: 10) {
-                        GoogleCredentialsForm()
-                        Text("Then sign in from Settings → Accounts, or press Return.").font(.system(size: 12)).foregroundStyle(Theme.text3)
-                    }
-                    .padding(16).background(RoundedRectangle(cornerRadius: 12).fill(Theme.hover))
+                     detail: "Adds coworker overlay and Google Meet.") {
+                    Button(store.isSigningIn ? "Waiting…" : "Sign in") { Task { await store.signIn() } }
+                        .buttonStyle(SecondaryButtonStyle())
+                        .disabled(store.isSigningIn || !AppSettings.hasGoogleCredentials)
                 }
 
                 SectionLabel("Step 2 · Optional").padding(.top, 10)

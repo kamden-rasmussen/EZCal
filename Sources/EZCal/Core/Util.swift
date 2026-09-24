@@ -111,19 +111,12 @@ enum Keychain {
 enum AppSettings {
     static let defaults = UserDefaults.standard
 
-    // Falls back to Secrets.swift (gitignored, see Secrets.swift.example) so a distributed build
-    // works without each recipient creating their own Google Cloud project. Settings → Accounts
-    // still wins if someone pastes their own client ID/secret there.
-    static var googleClientID: String {
-        let v = defaults.string(forKey: "googleClientID") ?? ""
-        return v.isEmpty ? Secrets.googleClientID : v
-    }
-    static var googleClientSecret: String {
-        let v = Keychain.get("googleClientSecret") ?? ""
-        return v.isEmpty ? Secrets.googleClientSecret : v
-    }
-    static var zoomClientID: String { defaults.string(forKey: "zoomClientID") ?? "" }
-    static var zoomClientSecret: String { Keychain.get("zoomClientSecret") ?? "" }
+    // Baked in from Secrets.swift (gitignored, see Secrets.swift.example) at build time. There's no
+    // Settings UI to override these — every build of this app signs in with the same OAuth client.
+    static var googleClientID: String { Secrets.googleClientID }
+    static var googleClientSecret: String { Secrets.googleClientSecret }
+    static var zoomClientID: String { Secrets.zoomClientID }
+    static var zoomClientSecret: String { Secrets.zoomClientSecret }
 
     static var hasGoogleCredentials: Bool { !googleClientID.isEmpty }
     static var hasZoomCredentials: Bool { !zoomClientID.isEmpty && !zoomClientSecret.isEmpty }
