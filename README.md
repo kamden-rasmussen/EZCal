@@ -46,6 +46,8 @@ Settings → Accounts → **Add calendar by URL…** (also in ⌘K and the Calen
 
 Recurring events (RRULE) are expanded for daily/weekly/monthly/yearly frequencies with COUNT, UNTIL, INTERVAL and BYDAY (including "2nd Tuesday of the month" style rules); very old Outlook-style time zone names (rather than IANA ones like `America/New_York`) aren't recognized and fall back to your Mac's local time zone.
 
+Google and Zoom sign-in both need an OAuth client, but there's no Settings UI for pasting one in — the client ID/secret are baked into the app at build time (see `Sources/EZCal/Core/Secrets.swift.example`), so everyone who runs a given build shares the same OAuth client and just clicks **Sign in**. If you're building EZCal yourself, create your own and drop them in:
+
 ### 1. Google (optional if you only use Apple Calendar, ~5 min)
 
 1. Go to <https://console.cloud.google.com/> and create a project (e.g. "EZCal").
@@ -53,7 +55,7 @@ Recurring events (RRULE) are expanded for daily/weekly/monthly/yearly frequencie
 3. **APIs & Services → OAuth consent screen** (or "Google Auth Platform"):
    - User type **Internal** if you're on Google Workspace (no verification needed and no test-user limits), otherwise **External** and add yourself as a test user.
 4. **Credentials → Create credentials → OAuth client ID → Application type: Desktop app.**
-5. Copy the **Client ID** and **Client secret** into EZCal's welcome screen (or Settings → Accounts), then click **Sign in with Google**.
+5. Copy `Sources/EZCal/Core/Secrets.swift.example` to `Sources/EZCal/Core/Secrets.swift` (gitignored) and paste the **Client ID** and **Client secret** into `googleClientID`/`googleClientSecret`. Rebuild, then click **Sign in with Google**.
 
 Notes:
 - Coworker search uses the Workspace directory (`directory.readonly`). Personal Gmail accounts have no directory, but you can still add people by typing their email.
@@ -65,7 +67,7 @@ Notes:
 1. Go to <https://marketplace.zoom.us/develop/create> and create a **General app** → **User-managed**.
 2. **OAuth redirect URL**: `http://localhost:48291/callback` (also add it to the allow list).
 3. **Scopes**: `meeting:write:meeting`, `meeting:update:meeting`, `meeting:delete:meeting`.
-4. Copy the **Client ID** and **Client secret** into EZCal Settings → Zoom, then **Connect Zoom**.
+4. Paste the **Client ID** and **Client secret** into `zoomClientID`/`zoomClientSecret` in the same `Secrets.swift`. Rebuild, then click **Connect Zoom** in Settings → Zoom.
 
 You don't need to publish the Zoom app; leaving it in development works for your own account. If your Zoom admin restricts app installs, ask them to pre-approve it.
 
