@@ -80,11 +80,15 @@ struct PlacedEvent: Identifiable {
 }
 
 /// How a day column resolves a cluster of same-time events into cards. Persisted as a setting (General tab)
-/// because "always cascade" vs "slice into columns when it fits" is a real readability trade-off, not just an
-/// implementation detail — see `EventLayout.useSideBySide`.
+/// because side-by-side vs. cascade is a real readability trade-off, not just an implementation detail — see
+/// `EventLayout.useSideBySide`. `.sideBySide` is the default: every mainstream calendar (Google, Apple, Outlook,
+/// Fantastical) always slices into real columns positioned by true start/end time and just lets them narrow
+/// under pressure, rather than switching metaphors. `.cascade` stays available as an explicit style choice for
+/// people who'd rather see full-width overlaid cards than thin columns.
 enum OverlapLayoutMode: String {
-    case auto      // side-by-side columns when a cluster's slice width would stay readable; cascade otherwise
-    case cascade   // always overlay full-width cards, cascaded — never slice into columns
+    case sideBySide   // always real side-by-side columns; narrows gracefully, never cascades
+    case cascade      // always overlay full-width cards, cascaded — never slice into columns
+    case auto         // side-by-side columns when a cluster's slice width would stay readable; cascade otherwise
 }
 
 enum EventLayout {
@@ -96,14 +100,15 @@ enum EventLayout {
     /// narrow the day column — guarantees every layer stays a distinct, clickable rect and never gets pushed
     /// past the column's right edge. See `EventLayoutCascadeTests`.
     static let cascadeMinCardWidth: CGFloat = 24
-    /// Small per-layer vertical nudge, capped after a few layers. Its whole job is to keep two cascaded cards
-    /// that happen to start at the very same time from putting their title rows on the exact same line — with
-    /// only `waterfallOffset`'s horizontal step between them, a later card's title/avatar would butt directly
-    /// up against the earlier card's exposed title with no separation, reading as one crowded, half-garbled
-    /// label instead of two distinct stacked cards. A few points of vertical fan makes the layering unmistakable
-    /// without meaningfully misrepresenting a card's true start time.
-    static let cascadeYNudge: CGFloat = 7
-    private static let cascadeYNudgeMaxLayers = 3
+    /// Small per-layer vertical nudge, capped after a couple of layers. Its whole job is to keep two cascaded
+    /// cards that happen to start at the very same time from putting their title rows on the exact same
+    /// line — with only `waterfallOffset`'s horizontal step between them, a later card's title would butt
+    /// directly up against the earlier card's exposed title with no separation, reading as one crowded,
+    /// half-garbled label instead of two distinct stacked cards. Kept deliberately small (and capped at just 2
+    /// layers, down from the original design's 3×7pt) — no other calendar app nudges a card off its true start
+    /// time at all, so this only does the minimum needed to keep same-instant titles legible.
+    static let cascadeYNudge: CGFloat = 4
+    private static let cascadeYNudgeMaxLayers = 2
 
     /// Horizontal offset for the `index`-th (0 = earliest start, i.e. bottommost/leftmost) of `count` events
     /// cascaded across a `dayWidth`-wide column. Every layer gets the *same* step — unlike the old design (one
@@ -181,14 +186,20 @@ enum EventLayout {
     /// Below this width a card switches to its compact style (drops the avatar/recurring icon, smaller title).
     static let compactCardWidth: CGFloat = 130
 
-    /// Whether a cluster should be sliced into real side-by-side columns rather than cascaded. `.cascade` mode
-    /// always says no; `.auto` says yes only if every resulting slice would stay at least
-    /// `minSideBySideSliceWidth` wide — otherwise it falls back to a waterfall cascade for that cluster, even
-    /// if other clusters on the same day are wide enough to slice.
+    /// Whether a cluster should be sliced into real side-by-side columns rather than cascaded. `.sideBySide`
+    /// always says yes (columns just narrow, down to `EventBlock`'s compact/sliver styling); `.cascade` always
+    /// says no; `.auto` says yes only if every resulting slice would stay at least `minSideBySideSliceWidth`
+    /// wide — otherwise it falls back to a cascade for that cluster, even if other clusters on the same day are
+    /// wide enough to slice.
     static func useSideBySide(sideSlots: Int, availableWidth: CGFloat, mode: OverlapLayoutMode) -> Bool {
-        guard mode == .auto, sideSlots > 1 else { return false }
-        let slice = (availableWidth - 4) / CGFloat(sideSlots)
-        return slice >= minSideBySideSliceWidth
+        guard sideSlots > 1 else { return false }
+        switch mode {
+        case .sideBySide: return true
+        case .cascade: return false
+        case .auto:
+            let slice = (availableWidth - 4) / CGFloat(sideSlots)
+            return slice >= minSideBySideSliceWidth
+        }
     }
 
     /// Regroups a flat placement list back into contiguous per-cluster arrays. Relies on `place` appending one
@@ -391,7 +402,7 @@ struct TimeGridView: View {
 
 struct DayColumn: View {
     @Environment(CalendarStore.self) private var store
-    @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.auto.rawValue
+    @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.sideBySide.rawValue
     let day: Date
     let hourHeight: Double
 
@@ -401,7 +412,7 @@ struct DayColumn: View {
     /// creating an event.
     @State private var closingDetail = false
 
-    private var overlapMode: OverlapLayoutMode { OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .auto }
+    private var overlapMode: OverlapLayoutMode { OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .sideBySide }
 
     var body: some View {
         let placed = EventLayout.place(store.events(on: day).timed, day: day, cal: store.cal)
@@ -526,10 +537,11 @@ struct DayColumn: View {
 }
 
 /// Renders one overlap cluster (1+ same-time events, post `EventGrouping` folding), either sliced into
-/// side-by-side columns or, when the column's too narrow for that to stay readable, cascaded: every card gets
-/// its own uniformly-sized visible sliver (`EventLayout.waterfallOffset`) along its left edge, later-starting
-/// events layered on top. Nothing is ever fully hidden — however big the pileup, each event stays its own
-/// distinct, clickable rect, so there's no need to hover-and-wait to bring a buried card to the front.
+/// side-by-side columns (the default — see `OverlapLayoutMode`) or, in `.cascade` mode (always) or `.auto`
+/// mode (only when the column's too narrow for columns to stay readable), cascaded: every card gets its own
+/// uniformly-sized visible sliver (`EventLayout.waterfallOffset`) along its left edge, later-starting events
+/// layered on top. Nothing is ever fully hidden — however big the pileup, each event stays its own distinct,
+/// clickable rect, so there's no need to hover-and-wait to bring a buried card to the front.
 struct OverlapCluster: View {
     let cluster: [PlacedEvent]   // sorted ascending by `column` (arrival order); all share one `clusterID`
     let dayStart: Date
@@ -552,7 +564,7 @@ struct OverlapCluster: View {
                 if sideBySide {
                     let slotW = max((dayWidth - 4) / CGFloat(p.sideSlots), 24)
                     let w = max(slotW - 3, 24)
-                    card(p, height: h, compact: w < EventLayout.compactCardWidth)
+                    card(p, height: h, compact: w < EventLayout.compactCardWidth, cascaded: false)
                         .frame(width: w, height: h)
                         .offset(x: 2 + slotW * CGFloat(p.sideSlot), y: top)
                         .zIndex(Double(i))
@@ -560,7 +572,7 @@ struct OverlapCluster: View {
                     let offsetX = EventLayout.waterfallOffset(index: i, count: n, dayWidth: dayWidth)
                     let offsetY = EventLayout.waterfallYNudge(index: i)
                     let w = max(dayWidth - 4 - offsetX, 24)
-                    card(p, height: h, compact: w < EventLayout.compactCardWidth)
+                    card(p, height: h, compact: w < EventLayout.compactCardWidth, cascaded: true)
                         .frame(width: w, height: h)
                         .offset(x: 2 + offsetX, y: top + offsetY)
                         .zIndex(Double(i))
@@ -570,10 +582,10 @@ struct OverlapCluster: View {
     }
 
     @ViewBuilder
-    private func card(_ p: PlacedEvent, height: Double, compact: Bool) -> some View {
+    private func card(_ p: PlacedEvent, height: Double, compact: Bool, cascaded: Bool) -> some View {
         switch p.item {
         case .single(let event):
-            EventBlock(event: event, height: height, overlapping: n > 1, compact: compact,
+            EventBlock(event: event, height: height, overlapping: n > 1, cascaded: cascaded, compact: compact,
                        hourHeight: hourHeight, dayWidth: dayWidth)
         case .stack(let events):
             StackedEventBlock(events: events, height: height, compact: compact)
@@ -590,6 +602,11 @@ struct EventBlock: View {
     /// True when this event overlaps at least one other in the same day column. Full width is used either way
     /// (issue #20) — this only dials back fill opacity and adds a border so overlaid cards stay legible.
     var overlapping = false
+    /// True when `OverlapCluster` is rendering this in cascade style (genuinely stacked in z-order) rather than
+    /// as a side-by-side column. Side-by-side cards sit edge-to-edge, not on top of one another, so they keep
+    /// `overlapping`'s existing border/shadow; a cascaded card gets a visibly softer border and shadow instead
+    /// — it's already doing more visual work by overlaying its neighbors, so it doesn't need as much of either.
+    var cascaded = false
     /// True when `OverlapCluster` sliced this into a side-by-side column too narrow for the full layout —
     /// drops the avatar/recurring icon and the video-join button, and shrinks the title, so the card still
     /// reads at a glance instead of truncating everything to fit.
@@ -656,9 +673,11 @@ struct EventBlock: View {
         }
         .overlay {
             if event.isOverlay { shape.strokeBorder(c.opacity(0.6), lineWidth: event.isBusyOnly ? 1 : 1.5) }
+            else if cascaded { shape.strokeBorder(c.opacity(0.35), lineWidth: 1) }
             else if overlapping { shape.strokeBorder(c.opacity(0.45), lineWidth: 1) }
         }
-        .shadow(color: overlapping ? .black.opacity(0.18) : .clear, radius: 3, y: 1)
+        .shadow(color: cascaded ? .black.opacity(0.12) : (overlapping ? .black.opacity(0.18) : .clear),
+                radius: cascaded ? 2 : 3, y: 1)
         .overlay { if focused { shape.inset(by: -1.5).strokeBorder(Theme.accent, lineWidth: 2) } }
         .overlay(alignment: .bottom) { if canDrag { resizeHandle } }
         .opacity(event.isDeclined ? 0.5 : (isBeingDragged ? 0.35 : 1))

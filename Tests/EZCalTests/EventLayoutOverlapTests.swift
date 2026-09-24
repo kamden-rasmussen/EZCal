@@ -54,6 +54,14 @@ final class EventLayoutOverlapTests: XCTestCase {
 
     // MARK: - useSideBySide
 
+    func testSideBySideModeAlwaysUsesSideBySideRegardlessOfWidth() {
+        XCTAssertTrue(EventLayout.useSideBySide(sideSlots: 5, availableWidth: 60, mode: .sideBySide))
+    }
+
+    func testSideBySideModeNeverSlicesASingleUnclusteredEvent() {
+        XCTAssertFalse(EventLayout.useSideBySide(sideSlots: 1, availableWidth: 2000, mode: .sideBySide))
+    }
+
     func testCascadeModeNeverUsesSideBySideRegardlessOfWidth() {
         XCTAssertFalse(EventLayout.useSideBySide(sideSlots: 2, availableWidth: 2000, mode: .cascade))
     }
