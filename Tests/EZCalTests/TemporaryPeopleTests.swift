@@ -50,3 +50,17 @@ final class TemporaryPeopleTests: XCTestCase {
         XCTAssertTrue(store.people.isEmpty)
     }
 }
+
+@MainActor
+final class PersonColorTests: XCTestCase {
+    func testNewOverlayAvoidsColorsInUse() {
+        let store = CalendarStore()
+        store.accounts = [Account(email: "me@example.com", name: "Me")]
+        store.people = []
+        store.addPerson(name: "A", email: "a@x.com", temporary: true)
+        store.addPerson(name: "B", email: "b@x.com", temporary: true)
+        let colors = store.people.map(\.colorHex)
+        XCTAssertEqual(Set(colors).count, 2)
+        store.clearTemporaryPeople()
+    }
+}

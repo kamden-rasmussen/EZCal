@@ -344,13 +344,23 @@ final class CalendarStore {
             scheduleReload()
             return
         }
-        let color = Palette.people[people.count % Palette.people.count]
+        let color = nextPersonColor()
         people.append(Source(id: id, accountId: acct, calendarId: email,
                              name: name.isEmpty ? email : name, colorHex: color, kind: .person))
         hidden.remove(id)
         if temporary { temporaryPeople.insert(id) } else { temporaryPeople.remove(id) }
         persist()
         scheduleReload()
+    }
+
+    /// First palette color no visible source (calendar, coworker, subscription) is already using, so a
+    /// new overlay is distinguishable; once the palette is exhausted, reuses the least-used color.
+    func nextPersonColor() -> String {
+        let used = (calendars + people + icsSubscriptions.map(\.source)).map { $0.colorHex.uppercased() }
+        if let free = Palette.people.first(where: { !used.contains($0.uppercased()) }) { return free }
+        return Palette.people.min { a, b in
+            used.filter { $0 == a.uppercased() }.count < used.filter { $0 == b.uppercased() }.count
+        } ?? Palette.people[0]
     }
 
     /// Keeps a temporary overlay (added via plain "p") in the sidebar for good.
