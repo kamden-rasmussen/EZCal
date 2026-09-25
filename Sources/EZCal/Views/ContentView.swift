@@ -86,23 +86,19 @@ struct ContentView: View {
             }
         }
         // Recurring events go through RecurrenceScopeView (store.requestDelete) instead of this dialog.
-        .confirmationDialog(
-            "Delete “\(store.deleteRequest?.title ?? "")”?",
-            isPresented: Binding(get: { store.deleteRequest != nil }, set: { if !$0 { store.deleteRequest = nil } }),
-            presenting: store.deleteRequest
-        ) { e in
-            Button("Delete", role: .destructive) { Task { await store.delete(e) } }
-        } message: { _ in
-            Text("This can't be undone.")
-        }
-        .confirmationDialog(
-            "Join “\(store.joinRequest?.title ?? "")”?",
-            isPresented: Binding(get: { store.joinRequest != nil }, set: { if !$0 { store.joinRequest = nil } }),
-            presenting: store.joinRequest
-        ) { _ in
-            Button("Join") { store.confirmJoin() }
-        } message: { e in
-            Text("Scheduled for \(e.start.formatted(.dateTime.weekday(.wide).month(.wide).day().hour().minute())).")
+        .overlay {
+            if let e = store.deleteRequest {
+                ConfirmDialog(icon: "trash", destructive: true, title: "Delete “\(e.title)”?",
+                              message: "This can't be undone.", confirmLabel: "Delete",
+                              onConfirm: { store.deleteRequest = nil; Task { await store.delete(e) } },
+                              onCancel: { store.deleteRequest = nil })
+            } else if let e = store.joinRequest {
+                ConfirmDialog(icon: "video", title: "Join “\(e.title)”?",
+                              message: "Scheduled for \(e.start.formatted(.dateTime.weekday(.wide).month(.wide).day().hour().minute())).",
+                              confirmLabel: "Join",
+                              onConfirm: { store.confirmJoin(); store.joinRequest = nil },
+                              onCancel: { store.joinRequest = nil })
+            }
         }
         .task { await store.bootstrap() }
         .task {
