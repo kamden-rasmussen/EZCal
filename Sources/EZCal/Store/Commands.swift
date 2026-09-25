@@ -110,7 +110,6 @@ extension CalendarStore {
     /// adds them to the sidebar for good.
     func requestAddPerson(temporary: Bool = false) {
         guard !accounts.isEmpty else { errorMessage = "Connect Google to overlay coworkers."; return }
-        columnVisibility = .all
         addPersonTemporary = temporary
         showAddPerson = true
     }

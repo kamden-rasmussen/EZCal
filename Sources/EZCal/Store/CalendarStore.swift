@@ -344,7 +344,7 @@ final class CalendarStore {
             scheduleReload()
             return
         }
-        let color = Palette.people[people.count % Palette.people.count]
+        let color = nextPersonColor()
         people.append(Source(id: id, accountId: acct, calendarId: email,
                              name: name.isEmpty ? email : name, colorHex: color, kind: .person))
         hidden.remove(id)
@@ -353,10 +353,33 @@ final class CalendarStore {
         scheduleReload()
     }
 
+    /// First palette color no visible source (calendar, coworker, subscription) is already using, so a
+    /// new overlay is distinguishable; once the palette is exhausted, reuses the least-used color.
+    func nextPersonColor() -> String {
+        let used = (calendars + people + icsSubscriptions.map(\.source)).map { $0.colorHex.uppercased() }
+        if let free = Palette.people.first(where: { !used.contains($0.uppercased()) }) { return free }
+        return Palette.people.min { a, b in
+            used.filter { $0 == a.uppercased() }.count < used.filter { $0 == b.uppercased() }.count
+        } ?? Palette.people[0]
+    }
+
     /// Keeps a temporary overlay (added via plain "p") in the sidebar for good.
     func makePersonPermanent(_ s: Source) {
         guard temporaryPeople.remove(s.id) != nil else { return }
         persist()
+    }
+
+    var hasTemporaryPeople: Bool { !temporaryPeople.isEmpty }
+
+    /// Drops every temporary overlay (Esc on the main view).
+    func clearTemporaryPeople() {
+        let ids = temporaryPeople
+        guard !ids.isEmpty else { return }
+        people.removeAll { ids.contains($0.id) }
+        for id in ids { eventsBySource[id] = nil; hidden.remove(id); personAccess[id] = nil }
+        temporaryPeople = []
+        persist()
+        rebuildDisplay()
     }
 
     func removePerson(_ s: Source) {
