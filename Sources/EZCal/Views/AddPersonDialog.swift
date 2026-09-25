@@ -98,7 +98,7 @@ struct AddPersonDialog: View {
         let status: String? = src == nil ? nil
             : store.temporaryPeople.contains(src!.id) ? (temporary ? "Overlaid · Return removes" : "Overlaid · Return keeps") : "In sidebar"
         return HStack(spacing: 10) {
-            Circle().strokeBorder(Theme.text3, lineWidth: 1.5).frame(width: 16, height: 16)
+            marker(filled: src != nil)
             VStack(alignment: .leading, spacing: 0) {
                 Text(p.name).foregroundStyle(Theme.text)
                 Text(p.email).font(.system(size: 11)).foregroundStyle(Theme.text3)
@@ -109,6 +109,16 @@ struct AddPersonDialog: View {
         .padding(.horizontal, 8).padding(.vertical, 5)
         .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Theme.selection : .clear))
         .contentShape(Rectangle())
+    }
+
+    /// Empty ring for someone not on your calendar yet; a filled accent circle with a check once they are.
+    @ViewBuilder private func marker(filled: Bool) -> some View {
+        if filled {
+            Circle().fill(Theme.accent).frame(width: 16, height: 16)
+                .overlay(Image(systemName: "checkmark").font(.system(size: 8, weight: .heavy)).foregroundStyle(Theme.accentText))
+        } else {
+            Circle().strokeBorder(Theme.text3, lineWidth: 1.5).frame(width: 16, height: 16)
+        }
     }
 
     private func move(_ d: Int) {

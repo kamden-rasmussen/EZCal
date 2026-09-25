@@ -284,7 +284,7 @@ enum EventMapper {
             id: "\(source.id)|\(id)", eventId: id, sourceId: source.id,
             calendarId: source.calendarId, accountId: source.accountId,
             uid: g.iCalUID ?? id,
-            title: (g.summary?.isEmpty == false ? g.summary! : "(No title)"),
+            title: (g.summary?.isEmpty == false ? g.summary! : (source.kind == .person ? "Busy" : "(No title)")),
             start: s, end: e, isAllDay: allDay,
             location: location, notes: notes, attendees: attendees,
             htmlLink: g.htmlLink.flatMap(URL.init(string:)),
