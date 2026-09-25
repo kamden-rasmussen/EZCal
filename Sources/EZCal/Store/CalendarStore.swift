@@ -59,6 +59,13 @@ final class CalendarStore {
     // Keyboard-driven state
     var focusedEventID: String?
     var deleteRequest: CalEvent?
+    /// Set when "J" targets an event that isn't currently in progress — asks for confirmation
+    /// instead of joining immediately. See `Store/IdleDeselect.swift`'s neighbor, `joinMeeting()`.
+    var joinRequest: CalEvent?
+    /// Last time any keyboard/mouse activity was seen anywhere in the app; drives the idle
+    /// auto-deselect in `Store/IdleDeselect.swift`.
+    var lastInteractionAt = Date()
+    var activityMonitor: Any?
     var showAddPerson = false
     /// Whether the currently-open add-coworker popover will add temporarily (plain "p") or for good (⇧P).
     var addPersonTemporary = false
@@ -431,6 +438,7 @@ final class CalendarStore {
     // MARK: - Loading
 
     func bootstrap() async {
+        startIdleDeselectWatcher()
         await refreshAll()
     }
 
