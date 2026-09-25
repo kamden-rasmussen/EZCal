@@ -112,6 +112,8 @@ struct ContentView: View {
         }
         .onAppear { gridFocused = true }
         .onChange(of: store.sheet?.id) { _, id in if id == nil { gridFocused = true } }
+        // The person-picker's search field owns focus while open; hand it back so Esc/P work afterwards.
+        .onChange(of: store.showAddPerson) { _, open in if !open { gridFocused = true } }
         .onChange(of: firstWeekday) { _, _ in store.scheduleReload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             guard Date().timeIntervalSince(lastActivation) > 60 else { return }
