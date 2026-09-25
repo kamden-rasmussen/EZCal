@@ -94,6 +94,11 @@ struct CalEvent: Identifiable, Hashable, Sendable {
 
     /// Whether `date` falls within the event's span — i.e. it's happening right now.
     func isInProgress(at date: Date = Date()) -> Bool { start <= date && date < end }
+    /// True from `lead` seconds before the start until the end — the window where pressing J should
+    /// just join, without asking.
+    func isJoinable(at date: Date = Date(), lead: TimeInterval = 600) -> Bool {
+        start.addingTimeInterval(-lead) <= date && date < end
+    }
 }
 
 enum MeetingProvider: Sendable {
