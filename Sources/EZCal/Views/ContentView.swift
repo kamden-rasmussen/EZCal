@@ -95,6 +95,15 @@ struct ContentView: View {
         } message: { _ in
             Text("This can't be undone.")
         }
+        .confirmationDialog(
+            "Join “\(store.joinRequest?.title ?? "")”?",
+            isPresented: Binding(get: { store.joinRequest != nil }, set: { if !$0 { store.joinRequest = nil } }),
+            presenting: store.joinRequest
+        ) { _ in
+            Button("Join") { store.confirmJoin() }
+        } message: { e in
+            Text("Scheduled for \(e.start.formatted(.dateTime.weekday(.wide).month(.wide).day().hour().minute())).")
+        }
         .task { await store.bootstrap() }
         .task {
             // Periodic refresh so the calendar stays current while it sits open.

@@ -69,13 +69,35 @@ extension CalendarStore {
 
     // MARK: - Actions
 
-    /// Focused event's call, else the next upcoming one.
-    func joinMeeting() {
-        if let url = focusedEvent?.meetingURL ?? nextMeeting?.meetingURL {
-            NSWorkspace.shared.open(url)
-        } else {
-            errorMessage = focusedEvent == nil ? "No upcoming meeting with a video link." : "That event has no video link."
+    enum JoinDecision: Equatable { case open(URL), confirm(CalEvent), error(String) }
+
+    /// Focused event's call, else the next upcoming one. A focused event that isn't happening right
+    /// now asks for confirmation first rather than silently opening whatever's selected — see issue
+    /// #30. The no-focus fallback is an explicit "join whatever's next" action, so it's unchanged.
+    /// Pulled out from `joinMeeting()` so tests can check the branching without actually opening a URL.
+    func joinMeetingDecision() -> JoinDecision {
+        if let e = focusedEvent {
+            guard let url = e.meetingURL else { return .error("That event has no video link.") }
+            return e.isInProgress() ? .open(url) : .confirm(e)
         }
+        guard let e = nextMeeting, let url = e.meetingURL else {
+            return .error("No upcoming meeting with a video link.")
+        }
+        return .open(url)
+    }
+
+    func joinMeeting() {
+        switch joinMeetingDecision() {
+        case .open(let url): NSWorkspace.shared.open(url)
+        case .confirm(let e): joinRequest = e
+        case .error(let msg): errorMessage = msg
+        }
+    }
+
+    /// Confirms joining `joinRequest`, e.g. from the "Join anyway?" dialog.
+    func confirmJoin() {
+        guard let url = joinRequest?.meetingURL else { return }
+        NSWorkspace.shared.open(url)
     }
 
     func openFocused() { if sheet == nil, let e = focusedEvent { sheet = .detail(e) } }

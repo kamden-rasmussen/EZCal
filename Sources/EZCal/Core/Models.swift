@@ -91,6 +91,9 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     var isICS: Bool { sourceId.hasPrefix("ics|") }
     var meetingProvider: MeetingProvider? { meetingURL.map(MeetingProvider.init(url:)) }
     var selfAttendee: Attendee? { attendees.first { $0.isSelf } }
+
+    /// Whether `date` falls within the event's span — i.e. it's happening right now.
+    func isInProgress(at date: Date = Date()) -> Bool { start <= date && date < end }
 }
 
 enum MeetingProvider: Sendable {
