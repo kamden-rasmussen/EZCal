@@ -98,6 +98,28 @@ final class KeyboardTests: XCTestCase {
         XCTAssertEqual(store.joinMeetingDecision(), .open(now.meetingURL!))
     }
 
+    func testJoinMeetingOpensDirectlyWithinTenMinutesBeforeStart() {
+        let store = CalendarStore()
+        let soon = event(id: "soon", start: Date().addingTimeInterval(300), minutes: 30)
+        store.calendars = [Source(id: "s", accountId: "a", calendarId: "c", name: "Cal", colorHex: "#fff", kind: .calendar)]
+        store.eventsBySource["s"] = [soon]
+        store.rebuildDisplay()
+        store.focusedEventID = soon.id
+
+        XCTAssertEqual(store.joinMeetingDecision(), .open(soon.meetingURL!))
+    }
+
+    func testJoinMeetingConfirmsWhenFocusedEventIsMoreThanTenMinutesAway() {
+        let store = CalendarStore()
+        let later = event(id: "later", start: Date().addingTimeInterval(1800), minutes: 30)
+        store.calendars = [Source(id: "s", accountId: "a", calendarId: "c", name: "Cal", colorHex: "#fff", kind: .calendar)]
+        store.eventsBySource["s"] = [later]
+        store.rebuildDisplay()
+        store.focusedEventID = later.id
+
+        XCTAssertEqual(store.joinMeetingDecision(), .confirm(later))
+    }
+
     func testJoinMeetingWithNoFocusAndNoUpcomingShowsError() {
         let store = CalendarStore()
         store.joinMeeting()

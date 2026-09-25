@@ -71,19 +71,19 @@ extension CalendarStore {
 
     enum JoinDecision: Equatable { case open(URL), confirm(CalEvent), error(String) }
 
-    /// Focused event's call, else the next upcoming one. A focused event that isn't happening right
-    /// now asks for confirmation first rather than silently opening whatever's selected — see issue
-    /// #30. The no-focus fallback is an explicit "join whatever's next" action, so it's unchanged.
+    /// Focused event's call, else the next upcoming one. Joins directly only within 10 minutes before
+    /// the start through the end; any other meeting asks for confirmation first rather than silently
+    /// opening it — see issue #30.
     /// Pulled out from `joinMeeting()` so tests can check the branching without actually opening a URL.
     func joinMeetingDecision() -> JoinDecision {
         if let e = focusedEvent {
             guard let url = e.meetingURL else { return .error("That event has no video link.") }
-            return e.isInProgress() ? .open(url) : .confirm(e)
+            return e.isJoinable() ? .open(url) : .confirm(e)
         }
         guard let e = nextMeeting, let url = e.meetingURL else {
             return .error("No upcoming meeting with a video link.")
         }
-        return .open(url)
+        return e.isJoinable() ? .open(url) : .confirm(e)
     }
 
     func joinMeeting() {
