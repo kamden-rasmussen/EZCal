@@ -660,12 +660,12 @@ struct EventBlock: View {
             }
             Spacer(minLength: 0)
         }
-        .foregroundStyle(event.isOverlay ? Theme.text2 : Theme.eventText(c))
+        .foregroundStyle(Theme.eventText(c))
         .padding(.horizontal, compact ? 5 : 7).padding(.vertical, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             if event.isBusyOnly { Hatch(color: c).clipShape(shape) }
-            else if event.isOverlay { shape.fill(hovering ? c.opacity(0.08) : Color.clear) }
+            else if event.isOverlay { shape.fill(c.opacity(hovering ? 0.42 : 0.32)) }
             // Overlapping same-calendar events now overlay each other at full width (issue #20), so their
             // fill is a touch lighter than a lone event's — that plus the border below keeps a card's own
             // edges (and the edges of whatever it's cascaded over) readable.
@@ -925,12 +925,12 @@ struct AllDayChip: View {
         let focused = store.focusedEventID == event.id
         Text(event.title)
             .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(event.isOverlay ? Theme.text2 : Theme.eventText(c))
+            .foregroundStyle(Theme.eventText(c))
             .lineLimit(1)
             .padding(.horizontal, 7)
             .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
             .background {
-                if event.isOverlay { Color.clear } else { ZStack { shape.fill(Theme.surface); shape.fill(c.opacity(0.17)) } }
+                if event.isOverlay { shape.fill(c.opacity(0.32)) } else { ZStack { shape.fill(Theme.surface); shape.fill(c.opacity(0.17)) } }
             }
             .overlay { if event.isOverlay { shape.strokeBorder(c.opacity(0.6), lineWidth: 1.5) } }
             .overlay { if focused { shape.inset(by: -1.5).strokeBorder(Theme.accent, lineWidth: 2) } }
