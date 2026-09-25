@@ -96,10 +96,7 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("P to peek at a coworker's calendar for this session, ⇧P to add them for good")
-                        .popover(isPresented: $store.showAddPerson, arrowEdge: .trailing) {
-                            AddPersonView(isPresented: $store.showAddPerson)
-                        }
+                        .help("P to peek at a coworker's calendar for this session (Esc clears peeks), ⇧P to add them for good")
                     }
                 }
             }
@@ -355,76 +352,6 @@ private struct TaskListRow: View {
         .onHover { hovering = $0 }
         .accessibilityLabel("\(list.name) tasks, \(on ? "shown" : "hidden")")
         .accessibilityHint("Toggles this reminder list")
-    }
-}
-
-struct AddPersonView: View {
-    @Environment(CalendarStore.self) private var store
-    @Binding var isPresented: Bool
-    @State private var query = ""
-    @State private var results: [DirectoryPerson] = []
-    @State private var searching = false
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 5) {
-                Image(systemName: store.addPersonTemporary ? "clock" : "person.badge.plus")
-                    .font(.system(size: 10)).foregroundStyle(Theme.text3)
-                Text(store.addPersonTemporary ? "Just for this session — ⇧P to add for good" : "Adding permanently")
-                    .font(.system(size: 11)).foregroundStyle(Theme.text3)
-            }
-            TextField("Search name or email…", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .focused($focused)
-                .onSubmit { addTyped() }
-            if searching { ProgressView().controlSize(.small) }
-            ForEach(results.filter { r in !store.people.contains { $0.calendarId == r.email.lowercased() } }) { p in
-                Button { store.addPerson(p, temporary: store.addPersonTemporary); isPresented = false } label: {
-                    HStack {
-                        Image(systemName: "person.crop.circle").foregroundStyle(Theme.text3)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(p.name)
-                            Text(p.email).font(.caption).foregroundStyle(Theme.text3)
-                        }
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            if looksLikeEmail {
-                Button { addTyped() } label: { Label("Add \(query)", systemImage: "plus.circle") }
-                    .buttonStyle(.plain)
-            }
-            if results.isEmpty && !searching && !looksLikeEmail {
-                Text("Type two letters to search your organization, or a full email address. Return adds the first match.")
-                    .font(.caption).foregroundStyle(Theme.text3)
-            }
-        }
-        .padding(12)
-        .frame(width: 300)
-        .onAppear {
-            // The popover isn't always key yet the instant this view appears, so an immediate
-            // `focused = true` can be swallowed; give AppKit a beat to finish presenting it.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focused = true }
-        }
-        .task(id: query) {
-            guard query.count >= 2 else { results = []; return }
-            searching = true
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else { return }
-            results = await store.searchDirectory(query)
-            searching = false
-        }
-    }
-
-    private var looksLikeEmail: Bool { query.contains("@") && query.contains(".") }
-
-    private func addTyped() {
-        if let first = results.first, !looksLikeEmail { store.addPerson(first, temporary: store.addPersonTemporary) }
-        else if looksLikeEmail { store.addPerson(name: "", email: query, temporary: store.addPersonTemporary) }
-        isPresented = false
     }
 }
 

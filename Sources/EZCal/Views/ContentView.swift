@@ -39,7 +39,7 @@ struct ContentView: View {
                         .focusEffectDisabled()
                         .onKeyPress(phases: .down) { handle($0) }
                         .background(HorizontalSwipeNavigator { days in
-                            guard store.sheet == nil, store.deleteRequest == nil else { return }
+                            guard store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }
                             store.stepDay(days)
                         })
                     }
@@ -87,7 +87,9 @@ struct ContentView: View {
         }
         // Recurring events go through RecurrenceScopeView (store.requestDelete) instead of this dialog.
         .overlay {
-            if let e = store.deleteRequest {
+            if store.showAddPerson {
+                AddPersonDialog()
+            } else if let e = store.deleteRequest {
                 ConfirmDialog(icon: "trash", destructive: true, title: "Delete “\(e.title)”?",
                               message: "This can't be undone.", confirmLabel: "Delete",
                               onConfirm: { store.deleteRequest = nil; Task { await store.delete(e) } },
@@ -154,8 +156,9 @@ struct ContentView: View {
         case .upArrow: store.moveFocus(-1); return .handled
         case .return: store.openFocused(); return .handled
         case .escape:
-            guard store.focusedEventID != nil else { return .ignored }
-            store.focusedEventID = nil; return .handled
+            if store.focusedEventID != nil { store.focusedEventID = nil; return .handled }
+            guard store.hasTemporaryPeople else { return .ignored }
+            store.clearTemporaryPeople(); return .handled
         case .delete, .deleteForward: store.deleteFocused(); return .handled
         default: break
         }

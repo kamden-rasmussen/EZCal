@@ -359,6 +359,19 @@ final class CalendarStore {
         persist()
     }
 
+    var hasTemporaryPeople: Bool { !temporaryPeople.isEmpty }
+
+    /// Drops every temporary overlay (Esc on the main view).
+    func clearTemporaryPeople() {
+        let ids = temporaryPeople
+        guard !ids.isEmpty else { return }
+        people.removeAll { ids.contains($0.id) }
+        for id in ids { eventsBySource[id] = nil; hidden.remove(id); personAccess[id] = nil }
+        temporaryPeople = []
+        persist()
+        rebuildDisplay()
+    }
+
     func removePerson(_ s: Source) {
         people.removeAll { $0.id == s.id }
         eventsBySource[s.id] = nil
