@@ -36,8 +36,12 @@ struct AddPersonDialog: View {
                 }
 
                 TextField("Search name or email…", text: $query)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
                     .font(.system(size: 14))
+                    .foregroundStyle(Theme.text)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Theme.surface))
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(focused ? Theme.accent : Theme.line, lineWidth: 1))
                     .focused($focused)
                     .onSubmit(commit)
                     .onKeyPress(.downArrow) { move(1); return .handled }
@@ -59,9 +63,9 @@ struct AddPersonDialog: View {
                 }
 
                 HStack(spacing: 10) {
-                    HStack(spacing: 4) { KeyCap("↑"); KeyCap("↓"); Text("navigate") }
-                    HStack(spacing: 4) { KeyCap("↵"); Text(temporary ? "overlay" : "add") }
-                    HStack(spacing: 4) { KeyCap("esc"); Text("close") }
+                    Text("↑ ↓ navigate")
+                    Text(temporary ? "↵ overlay" : "↵ add")
+                    Text("esc close")
                     Spacer()
                 }
                 .font(.system(size: 11)).foregroundStyle(Theme.text3)
@@ -94,7 +98,7 @@ struct AddPersonDialog: View {
         let status: String? = src == nil ? nil
             : store.temporaryPeople.contains(src!.id) ? (temporary ? "Overlaid · Return removes" : "Overlaid · Return keeps") : "In sidebar"
         return HStack(spacing: 10) {
-            Image(systemName: "person.crop.circle").foregroundStyle(Theme.text3)
+            Circle().strokeBorder(Theme.text3, lineWidth: 1.5).frame(width: 16, height: 16)
             VStack(alignment: .leading, spacing: 0) {
                 Text(p.name).foregroundStyle(Theme.text)
                 Text(p.email).font(.system(size: 11)).foregroundStyle(Theme.text3)
@@ -103,7 +107,7 @@ struct AddPersonDialog: View {
             if let status { Text(status).font(.system(size: 11)).foregroundStyle(Theme.text3) }
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Theme.accent.opacity(0.14) : .clear))
+        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Theme.selection : .clear))
         .contentShape(Rectangle())
     }
 
