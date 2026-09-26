@@ -34,6 +34,10 @@ enum Theme {
     static let selection = dynamic("#E3E8FA", "#262C4A")
     static let todayBg = dynamic("#F6F5FF", "#1B1C22")
     static let now = Color(nsColor: NSColor(hex: "#E5484D"))
+    /// Soft white catch-light used under hairlines for an etched look.
+    static let highlight = Color(nsColor: NSColor(name: nil) { a in
+        a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor.white.withAlphaComponent(0.06) : NSColor.white.withAlphaComponent(0.85)
+    })
     /// Subtle wash over non-working hours in the time grid.
     static let nonWorkingShade = Color(nsColor: NSColor(name: nil) { a in
         a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor.black.withAlphaComponent(0.16) : NSColor.black.withAlphaComponent(0.035)

@@ -241,7 +241,19 @@ struct ModePicker: View {
 
 /// Lets a plain region of a hidden-title-bar window drag the window.
 struct WindowDragArea: NSViewRepresentable {
-    final class DragView: NSView { override var mouseDownCanMoveWindow: Bool { true } }
+    final class DragView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let w = window else { return }
+            TrafficLights.apply(to: w)
+            for n in [NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification, NSWindow.didBecomeKeyNotification] {
+                NotificationCenter.default.addObserver(forName: n, object: w, queue: .main) { [weak w] _ in
+                    if let w { TrafficLights.apply(to: w) }
+                }
+            }
+        }
+    }
     func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
@@ -315,5 +327,35 @@ struct TopBar: View {
             .help("New event (N or ⌘N)")
         }
         .padding(.leading, leadingInset).padding(.trailing, 20)
+    }
+}
+
+
+/// Enlarges the close/minimize/zoom buttons and centers them in the 56pt top bar.
+enum TrafficLights {
+    static let scale: CGFloat = 1.3
+    static let barHeight: CGFloat = 56
+    static let leading: CGFloat = 12
+    static let gap: CGFloat = 8
+
+    static func apply(to window: NSWindow) {
+        let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        let buttons = kinds.compactMap { window.standardWindowButton($0) }
+        guard buttons.count == 3, let bar = buttons[0].superview?.superview ?? buttons[0].superview else { return }
+        // Grow the titlebar container to the bar's height, pinned to the top of the window.
+        if bar.frame.height != barHeight, let content = window.contentView?.superview {
+            bar.frame = NSRect(x: 0, y: content.bounds.height - barHeight, width: bar.frame.width, height: barHeight)
+        }
+        var x = leading
+        for b in buttons {
+            // Keep bounds at the native size and grow the frame, so AppKit draws the button scaled up.
+            let native = b.bounds.size.width > 0 && b.bounds.size.width < 20 ? b.bounds.size : NSSize(width: 14, height: 14)
+            let side = native.width * scale
+            b.layer?.setAffineTransform(.identity)
+            b.setFrameSize(NSSize(width: side, height: native.height * scale))
+            b.bounds = NSRect(origin: .zero, size: native)
+            b.setFrameOrigin(NSPoint(x: x, y: (b.superview?.bounds.height ?? barHeight) / 2 - b.frame.height / 2))
+            x += side + gap
+        }
     }
 }
