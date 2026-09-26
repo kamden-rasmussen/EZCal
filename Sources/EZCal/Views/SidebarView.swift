@@ -21,7 +21,20 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var store = store
 
-        ScrollView {
+        VStack(spacing: 0) {
+            // Fixed strip behind the traffic lights so scrolled content never slides underneath them.
+            Theme.side.frame(height: 56).overlay { WindowDragArea() }
+                .overlay(alignment: .bottom) {
+                    // Etched edge: a soft shadow line with a white highlight just beneath it.
+                    VStack(spacing: 0) {
+                        Rectangle().fill(Theme.line2).frame(height: 1)
+                        Rectangle().fill(Theme.highlight).frame(height: 1)
+                    }
+                    .offset(y: 2)
+                }
+                .zIndex(1)
+
+            ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 MiniMonthView()
 
@@ -100,10 +113,10 @@ struct SidebarView: View {
                     }
                 }
             }
-            .padding(.horizontal, 14).padding(.top, 48).padding(.bottom, 14)
+            .padding(.horizontal, 14).padding(.top, 4).padding(.bottom, 14)
+            }
         }
         .background(Theme.side)
-        .background(alignment: .top) { WindowDragArea().frame(height: 48) }
     }
 
     /// Small "Add calendar by URL…" affordance, styled like the "Add coworker…" row below it.
