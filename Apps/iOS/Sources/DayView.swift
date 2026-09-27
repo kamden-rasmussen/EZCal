@@ -6,13 +6,31 @@ import SwiftUI
 struct DayView: View {
     @Environment(CalendarStore.self) private var store
     @Binding var gridMode: ViewMode
-    private let hourHeight: CGFloat = 56
+    // Shared with macOS: same UserDefaults key and range, so "zoom level" means the same thing on
+    // both, though each platform's defaults are sandboxed separately (no cross-device sync).
+    @AppStorage("hourHeight") private var hourHeightStorage: Double = 56
+    private var hourHeight: CGFloat {
+        CGFloat(min(max(hourHeightStorage, AppSettings.hourHeightRange.lowerBound), AppSettings.hourHeightRange.upperBound))
+    }
+    @State private var hourHeightAtPinchStart: Double?
     private let gutter: CGFloat = 48
     @State private var drag: DayDragState?
     @State private var selectedID: String?
     @State private var gridMinY: CGFloat = 0
     @State private var viewportH: CGFloat = 0
     @State private var saveError: String?
+
+    /// Pinch to zoom the grid's vertical density — touch pinch on iOS, same as trackpad pinch on macOS.
+    private var pinchToZoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                let base = hourHeightAtPinchStart ?? hourHeightStorage
+                if hourHeightAtPinchStart == nil { hourHeightAtPinchStart = base }
+                let range = AppSettings.hourHeightRange
+                hourHeightStorage = min(max(base * scale, range.lowerBound), range.upperBound)
+            }
+            .onEnded { _ in hourHeightAtPinchStart = nil }
+    }
 
     /// Days shown. Day mode ignores `store.mode` entirely (unaffected by whatever range was last
     /// fetched); Work Week/Week reuse the shared `visibleDays`, which `store.setMode` keeps in sync with.
@@ -102,6 +120,7 @@ struct DayView: View {
                 .padding(.top, 8)
             }
             .coordinateSpace(name: "scroll")
+            .gesture(pinchToZoomGesture)
             .background(GeometryReader { g in Color.clear.preference(key: ViewportHeightKey.self, value: g.size.height) })
             .onPreferenceChange(GridMinYKey.self) { gridMinY = $0 }
             .onPreferenceChange(ViewportHeightKey.self) { viewportH = $0 }
@@ -205,6 +224,7 @@ struct DayView: View {
                 .background(alignment: .top) { scrollAnchors(timedByDay.flatMap { $0 }.sorted { $0.start < $1.start }) }
                 .padding(.top, 8)
             }
+            .gesture(pinchToZoomGesture)
             .dynamicTypeSize(...DynamicTypeSize.large)
             .onAppear { proxy.scrollTo("scroll", anchor: .top) }
             .onChange(of: store.anchor) { _, _ in proxy.scrollTo("scroll", anchor: .top) }
