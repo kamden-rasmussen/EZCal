@@ -5,6 +5,11 @@ struct DayView: View {
     @Environment(CalendarStore.self) private var store
     private let hourHeight: CGFloat = 56
     private let gutter: CGFloat = 48
+    @State private var drag: DayDragState?
+    @State private var selectedID: String?
+    @State private var gridMinY: CGFloat = 0
+    @State private var viewportH: CGFloat = 0
+    @State private var saveError: String?
 
     var body: some View {
         let r = store.events(on: store.anchor)
@@ -35,6 +40,7 @@ struct DayView: View {
                             // Long-press an empty spot to create an event there (events sit above and win).
                             Color.clear.contentShape(Rectangle())
                                 .accessibilityIdentifier("dayGridBackground")
+                                .onTapGesture { selectedID = nil }
                                 .gesture(LongPressGesture(minimumDuration: 0.5)
                                     .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
                                     .onEnded { v in
@@ -52,27 +58,17 @@ struct DayView: View {
                                 .offset(y: CGFloat(h) * hourHeight)
                             }
                             ForEach(layout(r.timed)) { item in
-                                let e = item.event
-                                let top = CGFloat(e.start.timeIntervalSince(day) / 3600) * hourHeight
-                                let h = max(CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hourHeight, 22)
-                                let w = width / CGFloat(item.columns)
-                                Button { store.sheet = .detail(e) } label: {
-                                    VStack(alignment: .leading, spacing: 0) {
-                                        Text(e.title).font(.caption.bold()).lineLimit(2)
-                                        if h > 40 { Text(e.start.formatted(date: .omitted, time: .shortened)).font(.caption2) }
-                                    }
-                                    .padding(4)
-                                    .frame(width: w - 2, height: h, alignment: .topLeading)
-                                    .background(e.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
-                                    .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: 3) }
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier("dayEvent")
-                                .offset(x: gutter + w * CGFloat(item.column), y: max(top, 0))
+                                block(item, day: day, width: width, gridWidth: geo.size.width)
+                            }
+                            if let d = drag, !d.committing {
+                                timeLabel(d, day: day)
                             }
                         }
                     }
+                    .coordinateSpace(name: "grid")
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: GridMinYKey.self, value: g.frame(in: .named("scroll")).minY)
+                    })
                     .frame(height: hourHeight * 24 + 12)
                     .background(alignment: .top) {
                         // offset() doesn't move layout frames, so build the scroll anchor with real layout.
@@ -82,12 +78,198 @@ struct DayView: View {
                             Spacer(minLength: 0)
                         }
                     }
+                    .background(alignment: .top) {
+                        // 15-minute anchors: auto-scroll while dragging jumps between these.
+                        VStack(spacing: 0) {
+                            ForEach(0..<96, id: \.self) { i in Color.clear.frame(height: hourHeight / 4).id("a-\(i)") }
+                        }
+                    }
                     .padding(.top, 8)
                 }
+                .coordinateSpace(name: "scroll")
+                .background(GeometryReader { g in Color.clear.preference(key: ViewportHeightKey.self, value: g.size.height) })
+                .onPreferenceChange(GridMinYKey.self) { gridMinY = $0 }
+                .onPreferenceChange(ViewportHeightKey.self) { viewportH = $0 }
+                .task(id: drag?.id) { await autoScroll(proxy) }
+                .alert("Couldn’t move event", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+                    Button("OK", role: .cancel) {}
+                } message: { Text(saveError ?? "") }
+                .confirmationDialog("Move recurring event", isPresented: Binding(
+                    get: { drag?.awaitingScope == true },
+                    set: { if !$0, drag?.awaitingScope == true, drag?.committing != true { drag = nil } }),
+                    titleVisibility: .visible) {
+                    ForEach(RecurrenceScope.allCases) { scope in
+                        Button(scope.title) { commit(scope: scope) }
+                    }
+                    Button("Cancel", role: .cancel) { drag = nil }
+                } message: { Text("This event repeats. Which events should the change affect?") }
                 // Fixed-height grid: cap type size so hour labels and short events don't clip.
                 .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .onAppear { proxy.scrollTo("scroll", anchor: .top) }
                 .onChange(of: store.anchor) { _, _ in proxy.scrollTo("scroll", anchor: .top) }
+            }
+        }
+    }
+
+    // MARK: - Event blocks and touch drag
+
+    private func canDrag(_ e: CalEvent) -> Bool { e.canEdit && !e.isOverlay && !e.isBusyOnly && !e.isICS && !e.isAllDay }
+
+    private func timeText(_ s: Date, _ e: Date) -> String {
+        "\(s.formatted(date: .omitted, time: .shortened)) – \(e.formatted(date: .omitted, time: .shortened))"
+    }
+
+    @ViewBuilder
+    private func block(_ item: Placed, day: Date, width: CGFloat, gridWidth: CGFloat) -> some View {
+        let e = item.event
+        let live = drag?.id == e.id ? drag : nil
+        let s = live?.start ?? e.start, en = live?.end ?? e.end
+        let top = CGFloat(s.timeIntervalSince(day) / 3600) * hourHeight
+        let h = max(CGFloat(en.timeIntervalSince(s) / 3600) * hourHeight, 22)
+        let w = width / CGFloat(item.columns)
+        let editable = canDrag(e)
+        let selected = editable && selectedID == e.id
+        let body = VStack(alignment: .leading, spacing: 0) {
+            Text(e.title).font(.caption.bold()).lineLimit(2)
+            if h > 40 { Text(s.formatted(date: .omitted, time: .shortened)).font(.caption2) }
+        }
+        .padding(4)
+        .frame(width: w - 2, height: h, alignment: .topLeading)
+        .background(e.color.opacity(live == nil ? 0.25 : 0.4), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: 3) }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay { if selected { RoundedRectangle(cornerRadius: 6).stroke(e.color, lineWidth: 2) } }
+        .opacity(live?.valid == false ? 0.5 : 1)
+        .shadow(color: .black.opacity(live == nil ? 0 : 0.3), radius: live == nil ? 0 : 8, y: 3)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(e.title)
+        .accessibilityValue(timeText(s, en))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("dayEvent")
+        .onTapGesture { selectedID = nil; store.sheet = .detail(e) }
+
+        Group {
+            if editable {
+                body
+                    .gesture(LongPressGesture(minimumDuration: 0.4)
+                        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("grid")))
+                        .onChanged { v in
+                            guard case .second(true, let d) = v, drag == nil || drag?.id == e.id else { return }
+                            if selectedID != e.id { selectedID = e.id; Haptics.impact() }
+                            if let d {
+                                if drag == nil { begin(e, .move, y: d.startLocation.y) }
+                                move(to: d.location, gridWidth: gridWidth, day: day)
+                            }
+                        }
+                        .onEnded { _ in finish() })
+                    .overlay(alignment: .topTrailing) {
+                        if selected { handle(e, .resizeTop, day: day, gridWidth: gridWidth).offset(x: 8, y: -12) }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if selected { handle(e, .resizeBottom, day: day, gridWidth: gridWidth).offset(x: 8, y: 12) }
+                    }
+            } else {
+                body
+            }
+        }
+        .zIndex(live != nil ? 10 : (selected ? 5 : 0))
+        .scaleEffect(live != nil && live?.kind == .move ? 1.03 : 1)
+        .offset(x: gutter + w * CGFloat(item.column), y: max(top, 0))
+    }
+
+    private func handle(_ e: CalEvent, _ kind: DayDragState.Kind, day: Date, gridWidth: CGFloat) -> some View {
+        ResizeHandle(color: e.color, id: kind == .resizeTop ? "resizeTop" : "resizeBottom")
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("grid"))
+                .onChanged { v in
+                    guard drag == nil || drag?.id == e.id else { return }
+                    if drag == nil { begin(e, kind, y: v.startLocation.y); Haptics.impact() }
+                    move(to: v.location, gridWidth: gridWidth, day: day)
+                }
+                .onEnded { _ in finish() })
+    }
+
+    private func timeLabel(_ d: DayDragState, day: Date) -> some View {
+        let top = CGFloat(d.start.timeIntervalSince(day) / 3600) * hourHeight
+        return Text(d.valid ? timeText(d.start, d.end) : "Release to cancel")
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(.thinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(.secondary.opacity(0.4)))
+            .offset(x: gutter, y: max(top - 28, 0))
+            .zIndex(20)
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("dragTimeLabel")
+    }
+
+    private var dayStart: Date { store.cal.startOfDay(for: store.anchor) }
+
+    private func begin(_ e: CalEvent, _ kind: DayDragState.Kind, y: CGFloat) {
+        drag = DayDragState(id: e.id, kind: kind, origStart: e.start, origEnd: e.end, startY: y, fingerY: y,
+                            start: e.start, end: e.end)
+    }
+
+    private func move(to p: CGPoint, gridWidth: CGFloat, day: Date) {
+        guard var d = drag, !d.committing, !d.awaitingScope else { return }
+        d.fingerY = p.y
+        d.valid = p.y >= 0 && p.y <= hourHeight * 24 && p.x >= -8 && p.x <= gridWidth + 8
+        recompute(&d, day: day)
+        drag = d
+    }
+
+    private func recompute(_ d: inout DayDragState, day: Date) {
+        let r = DayDragMath.compute(kind: d.kind, origStart: d.origStart, origEnd: d.origEnd,
+                                    deltaY: d.fingerY - d.startY, hourHeight: hourHeight, day: day, cal: store.cal)
+        if r.start != d.start || r.end != d.end { Haptics.tick() }
+        d.start = r.start; d.end = r.end
+    }
+
+    /// Finger released: cancel, or commit (asking for the scope first when the event repeats).
+    private func finish() {
+        guard let d = drag, !d.committing, !d.awaitingScope else { return }
+        guard d.valid, d.start != d.origStart || d.end != d.origEnd else { drag = nil; return }
+        Haptics.impact()
+        if store.displayEvents.first(where: { $0.id == d.id })?.isRecurring == true {
+            drag?.awaitingScope = true
+        } else {
+            commit(scope: .thisEvent)
+        }
+    }
+
+    private func commit(scope: RecurrenceScope) {
+        guard var d = drag, let e = store.displayEvents.first(where: { $0.id == d.id }) else { drag = nil; return }
+        d.awaitingScope = false; d.committing = true; drag = d
+        var draft = EventDraft(existing: e, title: e.title, start: d.start, end: d.end, isAllDay: false,
+                               sourceId: e.sourceId, location: e.location, notes: e.notes.strippingHTML,
+                               attendees: e.attendees)
+        draft.recurrenceScope = scope
+        Task {
+            do { try await store.save(draft) }
+            catch { saveError = error.localizedDescription }
+            drag = nil
+        }
+    }
+
+    /// While a drag is active and the finger sits near the top/bottom edge, scroll the grid.
+    private func autoScroll(_ proxy: ScrollViewProxy) async {
+        while !Task.isCancelled, drag != nil {
+            try? await Task.sleep(nanoseconds: 70_000_000)
+            guard let d = drag, !d.committing, !d.awaitingScope, viewportH > 0 else { continue }
+            let fingerViewport = d.fingerY + gridMinY
+            let zone: CGFloat = 56
+            let row = Int((-gridMinY + 8) / (hourHeight / 4))
+            var target: Int?
+            if fingerViewport < zone, gridMinY < 8 { target = max(row - 1, 0) }
+            else if fingerViewport > viewportH - zone { target = min(row + 1, 95) }
+            guard let t = target, t != row else { continue }
+            let before = gridMinY
+            proxy.scrollTo("a-\(t)", anchor: .top)
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            // Content moved under a stationary finger: keep the finger's viewport position.
+            if var cur = drag, gridMinY != before {
+                cur.fingerY = fingerViewport - gridMinY
+                recompute(&cur, day: dayStart)
+                drag = cur
             }
         }
     }

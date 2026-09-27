@@ -197,4 +197,70 @@ final class EZCaliOSUITests: XCTestCase {
         app.buttons["editorCancel"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
     }
+
+    // MARK: - Touch drag / resize
+
+    /// Goes to Day view and returns the first timed event block found in the coming week.
+    private func firstDayEvent() -> XCUIElement {
+        selectTab("Day")
+        for _ in 0..<7 {
+            if anyEl("dayEvent").waitForExistence(timeout: 1) { return anyEl("dayEvent") }
+            app.buttons["nextButton"].tap()
+        }
+        XCTFail("no timed events in the next week")
+        return anyEl("dayEvent")
+    }
+
+    private func chooseScopeIfAsked() {
+        let b = app.buttons["This event"]
+        if b.waitForExistence(timeout: 1.5) { b.tap() }
+    }
+
+    func testLongPressDragMovesEvent() throws {
+        let ev = firstDayEvent()
+        let before = ev.value as? String
+        // Drag towards the middle of the screen so we never end up under the bars.
+        let down = ev.frame.midY < app.frame.midY
+        let from = ev.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let to = from.withOffset(CGVector(dx: 0, dy: down ? 84 : -84))   // 1.5 h at 56 pt/h
+        from.press(forDuration: 0.8, thenDragTo: to)
+        chooseScopeIfAsked()
+        let moved = anyEl("dayEvent")
+        XCTAssertTrue(moved.waitForExistence(timeout: 5))
+        XCTAssertNotEqual(moved.value as? String, before, "event time should change after a move")
+        XCTAssertFalse(app.staticTexts["detailTitle"].exists, "a drag must not open details")
+    }
+
+    func testResizeHandlesChangeEndAndStart() throws {
+        let ev = firstDayEvent()
+        let before = ev.value as? String ?? ""
+        // Lift without moving: selects the block and shows the handles.
+        ev.press(forDuration: 0.8)
+        let bottom = anyEl("resizeBottom")
+        XCTAssertTrue(bottom.waitForExistence(timeout: 5), "handles should show after lifting")
+        bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .withOffset(CGVector(dx: 0, dy: 56)))
+        chooseScopeIfAsked()
+        let afterBottom = anyEl("dayEvent").value as? String ?? ""
+        XCTAssertNotEqual(afterBottom, before, "end time should change after resizing the bottom")
+        let startBefore = before.components(separatedBy: " – ").first
+        XCTAssertEqual(afterBottom.components(separatedBy: " – ").first, startBefore, "bottom resize keeps the start")
+
+        let top = anyEl("resizeTop")
+        XCTAssertTrue(top.waitForExistence(timeout: 5))
+        top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .withOffset(CGVector(dx: 0, dy: -28)))
+        chooseScopeIfAsked()
+        let afterTop = anyEl("dayEvent").value as? String ?? ""
+        XCTAssertNotEqual(afterTop.components(separatedBy: " – ").first, startBefore, "top resize should change the start")
+        XCTAssertEqual(afterTop.components(separatedBy: " – ").last, afterBottom.components(separatedBy: " – ").last)
+    }
+
+    func testTapStillOpensDetailsAfterDragSupport() throws {
+        let ev = firstDayEvent()
+        ev.tap()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+    }
 }
