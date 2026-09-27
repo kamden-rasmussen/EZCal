@@ -162,7 +162,7 @@ struct DayView: View {
         let allDay = days.map { store.events(on: $0).allDay }
         if allDay.contains(where: { !$0.isEmpty }) {
             HStack(spacing: 0) {
-                Color.clear.frame(width: gutter)
+                Color.clear.frame(width: gutter, height: 1)
                 ForEach(Array(days.enumerated()), id: \.offset) { i, d in
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(allDay[i].prefix(2)) { ev in
@@ -213,7 +213,7 @@ struct DayView: View {
 
     private func columnHeaders(_ days: [Date]) -> some View {
         HStack(spacing: 0) {
-            Color.clear.frame(width: gutter)
+            Color.clear.frame(width: gutter, height: 1)
             ForEach(days, id: \.self) { d in
                 let today = store.cal.isDateInToday(d)
                 VStack(spacing: 2) {
