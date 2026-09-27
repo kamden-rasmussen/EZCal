@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import AppKit
 
 /// Fake data for screenshots and UI development: `EZCAL_DEMO=1 build/EZCal.app/Contents/MacOS/EZCal`.
 extension CalendarStore {
@@ -94,6 +93,9 @@ extension CalendarStore {
     }
 }
 
+#if os(macOS)
+import AppKit
+
 /// `EZCAL_SNAPSHOT=/path/out.png` renders a screen to a PNG (no screen-recording permission needed) and quits.
 /// `EZCAL_SNAPSHOT_VIEW` = window (default) | sidebar | editor | detail | palette | shortcuts | findtime | recurrence | setup | settings,  `EZCAL_APPEARANCE` = light | dark.
 enum DebugSnapshot {
@@ -158,3 +160,4 @@ enum DebugSnapshot {
         }
     }
 }
+#endif

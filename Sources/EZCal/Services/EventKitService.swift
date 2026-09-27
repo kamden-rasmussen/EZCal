@@ -1,6 +1,5 @@
 import Foundation
 import EventKit
-import AppKit
 
 /// Reads/writes calendars that macOS already syncs (iCloud, Exchange, Fastmail, CalDAV, "On My Mac"…).
 /// Accounts are managed in System Settings → Internet Accounts; EZCal just gets permission to see them.
@@ -33,8 +32,8 @@ final class EventKitService: @unchecked Sendable {
     }
 
     private static func hex(_ cg: CGColor?) -> String {
-        guard let cg, let c = NSColor(cgColor: cg)?.usingColorSpace(.sRGB) else { return "#4285F4" }
-        return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
+        guard let cg, let c = PlatformColor.fromCG(cg)?.srgbComponents else { return "#4285F4" }
+        return String(format: "#%02X%02X%02X", Int(c.0 * 255), Int(c.1 * 255), Int(c.2 * 255))
     }
 
     // MARK: Events

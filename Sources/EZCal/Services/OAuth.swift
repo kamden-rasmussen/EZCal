@@ -1,7 +1,12 @@
 import Foundation
 import Network
 import CryptoKit
+#if os(macOS)
 import AppKit
+#else
+import AuthenticationServices
+import UIKit
+#endif
 
 enum APIError: LocalizedError {
     case missingCredentials(String)
@@ -43,11 +48,22 @@ struct OAuthConfig: Sendable {
     var fixedPort: UInt16? = nil
     var redirectHost = "127.0.0.1"
     var callbackPath = "/"
+    /// iOS only: custom URL scheme used as the redirect (`<scheme>:/oauth2redirect`) via ASWebAuthenticationSession.
+    var nativeRedirectScheme: String? = nil
 }
 
 enum OAuth {
     /// Runs the full browser-based authorization-code + PKCE flow against a loopback redirect.
     static func authorize(_ c: OAuthConfig) async throws -> TokenSet {
+        #if os(macOS)
+        return try await authorizeLoopback(c)
+        #else
+        return try await authorizeNative(c)
+        #endif
+    }
+
+    #if os(macOS)
+    private static func authorizeLoopback(_ c: OAuthConfig) async throws -> TokenSet {
         let server = LoopbackServer()
         let port = try await server.start(port: c.fixedPort)
         defer { server.stop() }
@@ -88,6 +104,44 @@ enum OAuth {
             "code_verifier": verifier,
         ], previousRefresh: nil)
     }
+    #else
+    /// iOS: system web-auth sheet with a custom-scheme redirect (no loopback server).
+    private static func authorizeNative(_ c: OAuthConfig) async throws -> TokenSet {
+        guard let scheme = c.nativeRedirectScheme else { throw APIError.invalid("This provider isn't configured for sign-in on iOS.") }
+        let redirect = "\(scheme):/oauth2redirect"
+        let verifier = randomString(48)
+        let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
+        let state = randomString(16)
+
+        var items: [URLQueryItem] = [
+            .init(name: "response_type", value: "code"),
+            .init(name: "client_id", value: c.clientID),
+            .init(name: "redirect_uri", value: redirect),
+            .init(name: "state", value: state),
+            .init(name: "code_challenge", value: challenge),
+            .init(name: "code_challenge_method", value: "S256"),
+        ]
+        if !c.scopes.isEmpty { items.append(.init(name: "scope", value: c.scopes.joined(separator: " "))) }
+        for (k, v) in c.extraAuthParams { items.append(.init(name: k, value: v)) }
+        var comps = URLComponents(url: c.authURL, resolvingAgainstBaseURL: false)!
+        comps.queryItems = items
+        guard let authURL = comps.url else { throw APIError.invalid("Bad auth URL") }
+
+        let cb = try await WebAuthPresenter.run(url: authURL, callbackScheme: scheme)
+        let q = URLComponents(url: cb, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func val(_ n: String) -> String? { q.first { $0.name == n }?.value }
+        if let err = val("error") { throw APIError.oauth(val("error_description") ?? err) }
+        guard val("state") == state else { throw APIError.oauth("State mismatch") }
+        guard let code = val("code") else { throw APIError.oauth("No authorization code returned") }
+
+        return try await tokenRequest(c, params: [
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect,
+            "code_verifier": verifier,
+        ], previousRefresh: nil)
+    }
+    #endif
 
     static func refresh(_ c: OAuthConfig, token: TokenSet) async throws -> TokenSet {
         guard let rt = token.refreshToken else { throw APIError.notSignedIn }
@@ -165,17 +219,26 @@ enum Provider: Sendable {
 extension OAuthConfig {
     static func google() throws -> OAuthConfig {
         guard AppSettings.hasGoogleCredentials else { throw APIError.missingCredentials("Google") }
+        #if os(macOS)
+        let clientID = AppSettings.googleClientID, clientSecret = AppSettings.googleClientSecret
+        let scheme: String? = nil
+        #else
+        // iOS uses its own (secret-less) OAuth client; its redirect scheme is the reversed client ID.
+        let clientID = Secrets.googleIOSClientID, clientSecret = ""
+        let scheme: String? = "com.googleusercontent.apps." + clientID.replacingOccurrences(of: ".apps.googleusercontent.com", with: "")
+        #endif
         return OAuthConfig(
             authURL: URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
             tokenURL: URL(string: "https://oauth2.googleapis.com/token")!,
-            clientID: AppSettings.googleClientID,
-            clientSecret: AppSettings.googleClientSecret,
+            clientID: clientID,
+            clientSecret: clientSecret,
             scopes: [
                 "openid", "email", "profile",
                 "https://www.googleapis.com/auth/calendar",
                 "https://www.googleapis.com/auth/directory.readonly",
             ],
-            extraAuthParams: ["access_type": "offline", "prompt": "consent select_account"]
+            extraAuthParams: ["access_type": "offline", "prompt": "consent select_account"],
+            nativeRedirectScheme: scheme
         )
     }
 
@@ -190,7 +253,8 @@ extension OAuthConfig {
             basicAuth: true,
             fixedPort: 48291,
             redirectHost: "localhost",
-            callbackPath: "/callback"
+            callbackPath: "/callback",
+            nativeRedirectScheme: "ezcal"   // TODO(iOS): register `ezcal:/oauth2redirect` as a redirect URL in the Zoom app
         )
     }
 }
@@ -311,3 +375,33 @@ final class LoopbackServer: @unchecked Sendable {
         }
     }
 }
+
+#if !os(macOS)
+/// Bridges ASWebAuthenticationSession to async/await and supplies a presentation anchor.
+@MainActor
+private final class WebAuthPresenter: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private static var current: WebAuthPresenter?
+    private var session: ASWebAuthenticationSession?
+
+    static func run(url: URL, callbackScheme: String) async throws -> URL {
+        let p = WebAuthPresenter()
+        current = p
+        defer { current = nil }
+        return try await withCheckedThrowingContinuation { cont in
+            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) { cb, err in
+                if let cb { cont.resume(returning: cb) }
+                else if let e = err as? ASWebAuthenticationSessionError, e.code == .canceledLogin {
+                    cont.resume(throwing: APIError.oauth("Sign-in cancelled"))
+                } else { cont.resume(throwing: err ?? APIError.oauth("Sign-in failed")) }
+            }
+            session.presentationContextProvider = p
+            p.session = session
+            if !session.start() { cont.resume(throwing: APIError.oauth("Couldn't start the sign-in session")) }
+        }
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first ?? ASPresentationAnchor()
+    }
+}
+#endif
