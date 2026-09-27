@@ -27,13 +27,16 @@ struct RootView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 200)
+                    .accessibilityIdentifier("tabPicker")
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button { shift(-1) } label: { Image(systemName: "chevron.left") }
+                        .accessibilityLabel("Previous day").accessibilityIdentifier("prevButton")
                     Spacer()
-                    Button("Today") { store.goToday() }
+                    Button("Today") { store.goToday() }.accessibilityIdentifier("todayButton")
                     Spacer()
                     Button { shift(1) } label: { Image(systemName: "chevron.right") }
+                        .accessibilityLabel("Next day").accessibilityIdentifier("nextButton")
                 }
             }
             .refreshable { await store.refreshAll() }

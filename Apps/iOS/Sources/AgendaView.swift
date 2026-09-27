@@ -21,11 +21,13 @@ struct AgendaView: View {
                     ForEach(group.events) { ev in
                         Button { store.sheet = .detail(ev) } label: { AgendaRow(event: ev) }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("agendaRow")
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .accessibilityIdentifier("agendaList")
         .overlay {
             if days.isEmpty {
                 ContentUnavailableView(store.isLoading ? "Loading..." : "No events",

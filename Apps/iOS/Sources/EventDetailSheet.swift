@@ -9,6 +9,7 @@ struct EventDetailSheet: View {
             List {
                 Section {
                     Text(event.title.isEmpty ? "(No title)" : event.title).font(.title3.bold())
+                        .accessibilityIdentifier("detailTitle")
                     LabeledContent("When", value: whenText)
                     HStack {
                         Text("Calendar")
@@ -32,7 +33,7 @@ struct EventDetailSheet: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("doneButton") } }
         }
     }
 

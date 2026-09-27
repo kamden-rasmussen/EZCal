@@ -10,6 +10,10 @@ struct DayView: View {
         let r = store.events(on: store.anchor)
         let day = store.cal.startOfDay(for: store.anchor)
         VStack(spacing: 0) {
+            Text(store.anchor.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+                .font(.subheadline.weight(.semibold)).padding(.vertical, 6)
+                .accessibilityIdentifier("dayTitle")
+            Divider()
             if !r.allDay.isEmpty {
                 VStack(spacing: 4) {
                     ForEach(r.allDay) { ev in
@@ -18,6 +22,7 @@ struct DayView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(6).background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
                         }.buttonStyle(.plain)
+                        .accessibilityIdentifier("allDayEvent")
                     }
                 }.padding(8)
                 Divider()
@@ -34,6 +39,8 @@ struct DayView: View {
                                     Divider()
                                 }
                                 .frame(height: 1)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityIdentifier("hour-\(h)")
                                 .offset(y: CGFloat(h) * hourHeight)
                             }
                             ForEach(layout(r.timed)) { item in
@@ -53,6 +60,7 @@ struct DayView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("dayEvent")
                                 .offset(x: gutter + w * CGFloat(item.column), y: max(top, 0))
                             }
                         }
