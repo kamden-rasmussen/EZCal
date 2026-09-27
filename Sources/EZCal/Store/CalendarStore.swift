@@ -55,6 +55,8 @@ final class CalendarStore {
     var eventKitEnabled = false
     /// `EZCAL_DEMO=1`: fake calendars and events, nothing read from or written to your accounts.
     let isDemo = ProcessInfo.processInfo.environment["EZCAL_DEMO"] != nil
+    /// Demo data is seeded once so in-memory creates/edits/deletes (see Demo.swift) survive reloads.
+    var demoSeeded = false
 
     // Keyboard-driven state
     var focusedEventID: String?
@@ -751,6 +753,7 @@ final class CalendarStore {
             throw APIError.invalid("The event must end after it starts.")
         }
         let displayTitle = title.isEmpty ? "(No title)" : title
+        if isDemo { saveDemo(d, title: displayTitle, start: start, end: end); return }
 
         let isEK = existing?.isEventKit ?? (calendars.first { $0.id == d.sourceId }?.isEventKit ?? false)
         var location = d.location
@@ -843,6 +846,7 @@ final class CalendarStore {
 
     /// `scope` is which occurrences to delete when `e` is recurring; ignored otherwise.
     func delete(_ e: CalEvent, scope: RecurrenceScope = .thisEvent) async {
+        if isDemo { deleteDemo(e, scope: scope); return }
         do {
             if e.isEventKit { try EventKitService.shared.delete(e, span: e.isRecurring ? scope.ekSpan : .thisEvent) }
             else if e.isRecurring { try await deleteGoogleRecurring(e, scope: scope) }
