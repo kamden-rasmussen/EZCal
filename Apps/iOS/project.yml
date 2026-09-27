@@ -25,3 +25,25 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  EZCaliOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: EZCaliOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ezcal.app.ios.uitests
+        TEST_TARGET_NAME: EZCaliOS
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  EZCaliOS:
+    build:
+      targets:
+        EZCaliOS: all
+    run:
+      config: Debug
+    test:
+      targets:
+        - EZCaliOSUITests
