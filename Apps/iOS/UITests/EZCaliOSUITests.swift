@@ -197,4 +197,39 @@ final class EZCaliOSUITests: XCTestCase {
         app.buttons["editorCancel"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
     }
+
+    // MARK: - Calendar list / settings
+
+    /// Tap the switch knob (trailing edge); a center tap lands on the label and may not toggle.
+    private func flip(_ t: XCUIElement) { t.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap() }
+
+    func testCalendarListTogglesFilterAgenda() throws {
+        let rows = app.buttons.matching(identifier: "agendaRow")
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10))
+        let names = ["Me", "Team", "Home", "Family", "City League"]
+        let before = rows.count
+        app.buttons["menuButton"].tap()
+        app.buttons["calendarsButton"].tap()
+        for n in names {
+            let t = app.switches["calendarToggle-\(n)"]
+            XCTAssertTrue(t.waitForExistence(timeout: 5), "missing toggle \(n)")
+            flip(t)
+        }
+        app.buttons["calendarsDoneButton"].tap()
+        XCTAssertLessThan(rows.count, before, "hidden calendars should filter Agenda")
+        app.buttons["menuButton"].tap()
+        app.buttons["calendarsButton"].tap()
+        for n in names { flip(app.switches["calendarToggle-\(n)"]) }
+        app.buttons["calendarsDoneButton"].tap()
+        XCTAssertEqual(rows.count, before)
+    }
+
+    func testSettingsSheetShowsAccountStatus() throws {
+        app.buttons["menuButton"].tap()
+        app.buttons["settingsButton"].tap()
+        XCTAssertTrue(app.staticTexts["Google Calendar"].waitForExistence(timeout: 5))
+        let n = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Not set up on iOS yet'")).count
+        XCTAssertGreaterThanOrEqual(n, 2)
+        app.buttons["settingsDoneButton"].tap()
+    }
 }

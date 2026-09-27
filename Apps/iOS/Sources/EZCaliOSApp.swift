@@ -9,7 +9,10 @@ struct EZCaliOSApp: App {
         WindowGroup {
             RootView()
                 .environment(store)
-                .task { await store.bootstrap() }
+                .task {
+                    if !store.eventKitEnabled && EventKitService.shared.isAuthorized { await store.enableEventKit() }
+                    await store.bootstrap()
+                }
                 .onChange(of: phase) { _, p in
                     if p == .active { Task { await store.refreshAll() } }
                 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import EventKit
 
 enum HomeTab: String, CaseIterable, Identifiable {
     case agenda = "Agenda", day = "Day"
@@ -8,19 +9,37 @@ enum HomeTab: String, CaseIterable, Identifiable {
 struct RootView: View {
     @Environment(CalendarStore.self) private var store
     @State private var tab: HomeTab = .agenda
+    @State private var showCalendars = false
+    @State private var showSettings = false
+    @State private var authStatus = EKEventStore.authorizationStatus(for: .event)
+
+    private var needsConnect: Bool { !store.isDemo && !store.eventKitEnabled }
 
     var body: some View {
         @Bindable var store = store
         NavigationStack {
             Group {
-                switch tab {
-                case .agenda: AgendaView()
-                case .day: DayView()
+                if needsConnect {
+                    ConnectView(status: authStatus)
+                } else {
+                    switch tab {
+                    case .agenda: AgendaView()
+                    case .day: DayView()
+                    }
                 }
             }
             .navigationTitle(store.anchor.formatted(.dateTime.month(.wide).day().year()))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu {
+                        Button { showCalendars = true } label: { Label("Calendars", systemImage: "calendar") }
+                            .accessibilityIdentifier("calendarsButton")
+                        Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                            .accessibilityIdentifier("settingsButton")
+                    } label: { Image(systemName: "line.3.horizontal") }
+                    .accessibilityLabel("Menu").accessibilityIdentifier("menuButton")
+                }
                 ToolbarItem(placement: .principal) {
                     Picker("View", selection: $tab) {
                         ForEach(HomeTab.allCases) { Text($0.rawValue).tag($0) }
@@ -31,7 +50,7 @@ struct RootView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { store.newDraft(start: defaultStart()) } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("New event").accessibilityIdentifier("addButton")
+                        .disabled(needsConnect).accessibilityLabel("New event").accessibilityIdentifier("addButton")
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button { shift(-1) } label: { Image(systemName: "chevron.left") }
@@ -44,6 +63,14 @@ struct RootView: View {
                 }
             }
             .refreshable { await store.refreshAll() }
+        }
+        .sheet(isPresented: $showCalendars) { CalendarListSheet() }
+        .sheet(isPresented: $showSettings) { SettingsSheet() }
+        .onChange(of: store.eventKitEnabled) { _, _ in authStatus = EKEventStore.authorizationStatus(for: .event) }
+        .onChange(of: store.errorMessage) { _, _ in authStatus = EKEventStore.authorizationStatus(for: .event) }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            authStatus = EKEventStore.authorizationStatus(for: .event)
+            if !store.eventKitEnabled && authStatus == .fullAccess { Task { await store.enableEventKit() } }
         }
         .sheet(item: $store.sheet) { sheet in
             switch sheet {

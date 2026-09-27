@@ -2,7 +2,7 @@ APP_NAME := EZCal
 APP      := build/$(APP_NAME).app
 
 .DEFAULT_GOAL := help
-.PHONY: help build run restart install uninstall test debug quit clean ios-test
+.PHONY: help build run restart install uninstall test debug quit clean ios-test ios-device
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -40,3 +40,13 @@ ios-test: ## Run iOS XCUITests on the simulator
 	xcodebuild test -project Apps/iOS/EZCaliOS.xcodeproj -scheme EZCaliOS \
 		-destination 'platform=iOS Simulator,id=$(IOS_UDID)' \
 		-derivedDataPath build/ios-dd CODE_SIGNING_ALLOWED=NO $(ARGS)
+
+# Real iPhone: needs your Apple Team ID (TEAM=ABCDE12345 or Apps/iOS/Config/Local.xcconfig). See Apps/iOS/README.md.
+ios-device: ## Build & install on a connected iPhone (TEAM=<team id> DEVICE=<udid>)
+	@test -n "$(DEVICE)" || { echo "Set DEVICE=<udid> (xcrun devicectl list devices)"; exit 1; }
+	cd Apps/iOS && xcodegen generate
+	xcodebuild build -project Apps/iOS/EZCaliOS.xcodeproj -scheme EZCaliOS \
+		-destination 'platform=iOS,id=$(DEVICE)' -derivedDataPath build/ios-device-dd \
+		-allowProvisioningUpdates $(if $(TEAM),DEVELOPMENT_TEAM=$(TEAM),)
+	xcrun devicectl device install app --device $(DEVICE) build/ios-device-dd/Build/Products/Debug-iphoneos/EZCaliOS.app
+	xcrun devicectl device process launch --device $(DEVICE) com.ezcal.app.ios
