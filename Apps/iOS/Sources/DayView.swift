@@ -25,7 +25,7 @@ struct DayView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     GeometryReader { geo in
-                        let width = geo.size.width - gutter
+                        let width = geo.size.width - gutter - 8
                         ZStack(alignment: .topLeading) {
                             ForEach(0..<24, id: \.self) { h in
                                 HStack(alignment: .top, spacing: 4) {
@@ -55,12 +55,21 @@ struct DayView: View {
                                 .buttonStyle(.plain)
                                 .offset(x: gutter + w * CGFloat(item.column), y: max(top, 0))
                             }
-                            Color.clear.frame(width: 1, height: 1).id("scroll").offset(y: CGFloat(startHour(r.timed)) * hourHeight)
                         }
                     }
                     .frame(height: hourHeight * 24 + 12)
+                    .background(alignment: .top) {
+                        // offset() doesn't move layout frames, so build the scroll anchor with real layout.
+                        VStack(spacing: 0) {
+                            Color.clear.frame(height: CGFloat(startHour(r.timed)) * hourHeight)
+                            Color.clear.frame(height: 1).id("scroll")
+                            Spacer(minLength: 0)
+                        }
+                    }
                     .padding(.top, 8)
                 }
+                // Fixed-height grid: cap type size so hour labels and short events don't clip.
+                .dynamicTypeSize(...DynamicTypeSize.xLarge)
                 .onAppear { proxy.scrollTo("scroll", anchor: .top) }
                 .onChange(of: store.anchor) { _, _ in proxy.scrollTo("scroll", anchor: .top) }
             }
