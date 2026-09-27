@@ -42,7 +42,7 @@ struct DayView: View {
     /// the month out in full (`store.title`).
     private var titleText: String {
         if gridMode == .day {
-            return store.anchor.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year())
+            return store.anchor.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
         }
         let days = store.visibleDays
         guard let f = days.first, let l = days.last else { return "" }
