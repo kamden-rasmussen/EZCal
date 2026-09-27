@@ -23,10 +23,20 @@ struct RootView: View {
                 if needsConnect {
                     ConnectView(status: authStatus)
                 } else {
-                    switch tab {
-                    case .agenda: AgendaView()
-                    case .day: DayView(gridMode: $gridMode)
+                    // Both stay mounted (crossfaded, not swapped) so switching tabs doesn't reset
+                    // DayView's scroll position/selection every time — a plain `switch` here destroyed
+                    // and recreated whichever view you left, which is what made this feel so jumpy.
+                    ZStack {
+                        AgendaView()
+                            .opacity(tab == .agenda ? 1 : 0)
+                            .allowsHitTesting(tab == .agenda)
+                            .accessibilityHidden(tab != .agenda)
+                        DayView(gridMode: $gridMode)
+                            .opacity(tab == .day ? 1 : 0)
+                            .allowsHitTesting(tab == .day)
+                            .accessibilityHidden(tab != .day)
                     }
+                    .animation(.easeInOut(duration: 0.2), value: tab)
                 }
             }
             .navigationTitle(store.anchor.formatted(.dateTime.month(.abbreviated).day().year()))
