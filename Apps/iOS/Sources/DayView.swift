@@ -32,6 +32,14 @@ struct DayView: View {
                     GeometryReader { geo in
                         let width = geo.size.width - gutter - 8
                         ZStack(alignment: .topLeading) {
+                            // Long-press an empty spot to create an event there (events sit above and win).
+                            Color.clear.contentShape(Rectangle())
+                                .accessibilityIdentifier("dayGridBackground")
+                                .gesture(LongPressGesture(minimumDuration: 0.5)
+                                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+                                    .onEnded { v in
+                                        if case .second(true, let drag?) = v { createEvent(at: drag.location.y, day: day) }
+                                    })
                             ForEach(0..<24, id: \.self) { h in
                                 HStack(alignment: .top, spacing: 4) {
                                     Text(hourLabel(h)).font(.caption2).foregroundStyle(.secondary)
@@ -82,6 +90,14 @@ struct DayView: View {
                 .onChange(of: store.anchor) { _, _ in proxy.scrollTo("scroll", anchor: .top) }
             }
         }
+    }
+
+    /// New event at the pressed y position, rounded to 15 minutes, using the store's default duration.
+    private func createEvent(at y: CGFloat, day: Date) {
+        let minutes = Int((y / hourHeight * 60 / 15).rounded()) * 15
+        let m = min(max(minutes, 0), 23 * 60 + 45)
+        guard let start = store.cal.date(byAdding: .minute, value: m, to: day) else { return }
+        store.newDraft(start: start)
     }
 
     private func startHour(_ timed: [CalEvent]) -> Int {

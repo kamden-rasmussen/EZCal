@@ -29,6 +29,10 @@ struct RootView: View {
                     .frame(maxWidth: 200)
                     .accessibilityIdentifier("tabPicker")
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { store.newDraft(start: defaultStart()) } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("New event").accessibilityIdentifier("addButton")
+                }
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button { shift(-1) } label: { Image(systemName: "chevron.left") }
                         .accessibilityLabel("Previous day").accessibilityIdentifier("prevButton")
@@ -41,10 +45,22 @@ struct RootView: View {
             }
             .refreshable { await store.refreshAll() }
         }
-        .sheet(item: detailBinding) { ev in
-            EventDetailSheet(event: ev)
-                .presentationDetents([.medium, .large])
+        .sheet(item: $store.sheet) { sheet in
+            switch sheet {
+            case .detail(let ev):
+                EventDetailSheet(event: ev).presentationDetents([.medium, .large])
+            case .editor(let d):
+                EventEditorSheet(draft: d).interactiveDismissDisabled()
+            default:
+                EmptyView()
+            }
         }
+    }
+
+    /// Today: next half hour. Another day: 9 AM on the visible day.
+    private func defaultStart() -> Date? {
+        if store.cal.isDateInToday(store.anchor) { return nil }
+        return store.cal.date(bySettingHour: 9, minute: 0, second: 0, of: store.anchor)
     }
 
     private func shift(_ n: Int) {
@@ -52,10 +68,4 @@ struct RootView: View {
         store.goTo(d)
     }
 
-    private var detailBinding: Binding<CalEvent?> {
-        Binding(
-            get: { if case .detail(let e) = store.sheet { return e } else { return nil } },
-            set: { if $0 == nil { store.sheet = nil } }
-        )
-    }
 }

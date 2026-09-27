@@ -109,4 +109,92 @@ final class EZCaliOSUITests: XCTestCase {
             .press(forDuration: 0.1, thenDragTo: grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
         XCTAssertEqual(app.state, .runningForeground)
     }
+
+    // MARK: - Create / edit / delete (demo data is in-memory, so these never touch a real account)
+
+    private func replaceText(_ field: XCUIElement, with text: String) {
+        field.tap()
+        let current = (field.value as? String) ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + text)
+    }
+
+    private func createEvent(titled title: String) {
+        app.buttons["addButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(title)
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5), "editor should close after save")
+    }
+
+    func testCreateEditDeleteEvent() throws {
+        selectTab("Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        // Tomorrow: the + button defaults to 9:00 there, independent of the time the test runs.
+        app.buttons["nextButton"].tap()
+        createEvent(titled: "UITest Created")
+        let block = app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Created'")).firstMatch
+        XCTAssertTrue(block.waitForExistence(timeout: 5), "new event not in Day view")
+
+        selectTab("Agenda")
+        XCTAssertTrue(app.staticTexts["UITest Created"].waitForExistence(timeout: 5), "new event not in Agenda")
+
+        // Edit the title.
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Created'")).firstMatch.tap()
+        app.buttons["editButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        replaceText(field, with: "UITest Renamed")
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(app.staticTexts["UITest Renamed"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["UITest Created"].exists)
+
+        // Delete it with confirmation.
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Renamed'")).firstMatch.tap()
+        app.buttons["editButton"].tap()
+        XCTAssertTrue(app.buttons["editorDelete"].waitForExistence(timeout: 5))
+        app.buttons["editorDelete"].tap()
+        let confirm = app.buttons["Delete"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+        XCTAssertTrue(app.staticTexts["UITest Renamed"].waitForNonExistence(timeout: 5), "event should be gone")
+    }
+
+    func testRecurringEditAsksScopeAndDeleteScopeRemovesSeries() throws {
+        app.buttons["addButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText("UITest Repeating")
+        let rep = app.buttons["editorRepeat"]
+        rep.tap()
+        app.buttons["Daily"].tap()
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Repeating'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        app.buttons["editButton"].tap()
+        XCTAssertTrue(app.buttons["This and following events"].waitForExistence(timeout: 5), "scope dialog missing")
+        XCTAssertTrue(app.buttons["All events"].exists)
+        app.buttons["This event"].tap()
+        XCTAssertTrue(app.buttons["editorDelete"].waitForExistence(timeout: 5))
+        app.buttons["editorDelete"].tap()
+        let all = app.buttons["Delete all events"]
+        XCTAssertTrue(all.waitForExistence(timeout: 5), "delete scope dialog missing")
+        all.tap()
+        XCTAssertTrue(row.waitForNonExistence(timeout: 5))
+    }
+
+    func testLongPressEmptyDayCreatesEventAtTime() throws {
+        selectTab("Day")
+        for _ in 0..<30 { app.buttons["nextButton"].tap() }   // empty day
+        let bg = anyEl("dayGridBackground")
+        XCTAssertTrue(bg.waitForExistence(timeout: 5))
+        bg.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.4)).press(forDuration: 1.0)
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "long press should open the editor")
+        app.buttons["editorCancel"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+    }
 }

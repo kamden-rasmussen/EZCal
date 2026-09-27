@@ -2,7 +2,9 @@ import SwiftUI
 
 struct EventDetailSheet: View {
     let event: CalEvent
+    @Environment(CalendarStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @State private var askScope = false
 
     var body: some View {
         NavigationStack {
@@ -33,7 +35,20 @@ struct EventDetailSheet: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("doneButton") } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("doneButton") }
+                if event.canEdit && !event.isBusyOnly && !event.isICS {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Edit") { if event.isRecurring { askScope = true } else { store.editDraft(event) } }
+                            .accessibilityIdentifier("editButton")
+                    }
+                }
+            }
+            .confirmationDialog("Edit recurring event", isPresented: $askScope, titleVisibility: .visible) {
+                ForEach(RecurrenceScope.allCases) { scope in
+                    Button(scope.title) { store.chooseRecurrenceScope(scope, for: event, action: .edit) }
+                }
+            } message: { Text("“\(event.title)” repeats. Which events should the edit affect?") }
         }
     }
 
