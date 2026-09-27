@@ -9,6 +9,7 @@ enum HomeTab: String, CaseIterable, Identifiable {
 struct RootView: View {
     @Environment(CalendarStore.self) private var store
     @State private var tab: HomeTab = .agenda
+    @State private var gridMode: ViewMode = .day
     @State private var showCalendars = false
     @State private var showSettings = false
     @State private var authStatus = EKEventStore.authorizationStatus(for: .event)
@@ -24,7 +25,7 @@ struct RootView: View {
                 } else {
                     switch tab {
                     case .agenda: AgendaView()
-                    case .day: DayView()
+                    case .day: DayView(gridMode: $gridMode)
                     }
                 }
             }
@@ -89,9 +90,15 @@ struct RootView: View {
         return store.cal.date(bySettingHour: 9, minute: 0, second: 0, of: store.anchor)
     }
 
+    /// Day tab in Work Week/Week steps by week (via the shared store, which already knows how); every
+    /// other case (Agenda, or Day tab showing a single day) steps by one day.
     private func shift(_ n: Int) {
-        let d = store.cal.date(byAdding: .day, value: n, to: store.anchor) ?? store.anchor
-        store.goTo(d)
+        if tab == .day, gridMode != .day {
+            store.step(n)
+        } else {
+            let d = store.cal.date(byAdding: .day, value: n, to: store.anchor) ?? store.anchor
+            store.goTo(d)
+        }
     }
 
 }
