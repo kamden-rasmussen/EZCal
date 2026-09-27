@@ -62,7 +62,6 @@ struct RootView: View {
                         .accessibilityLabel("Next day").accessibilityIdentifier("nextButton")
                 }
             }
-            .refreshable { await store.refreshAll() }
         }
         .sheet(isPresented: $showCalendars) { CalendarListSheet() }
         .sheet(isPresented: $showSettings) { SettingsSheet() }

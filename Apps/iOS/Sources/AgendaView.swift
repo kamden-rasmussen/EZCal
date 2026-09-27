@@ -28,6 +28,7 @@ struct AgendaView: View {
         }
         .listStyle(.insetGrouped)
         .accessibilityIdentifier("agendaList")
+        .refreshable { await store.refreshAll() }
         .overlay {
             if days.isEmpty {
                 ContentUnavailableView(store.isLoading ? "Loading..." : "No events",
