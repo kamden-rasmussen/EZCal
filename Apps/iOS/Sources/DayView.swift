@@ -38,10 +38,22 @@ struct DayView: View {
         gridMode == .day ? [store.cal.startOfDay(for: store.anchor)] : store.visibleDays
     }
 
+    /// Always a 3-letter month — screen space here is tighter than on macOS, which sometimes spells
+    /// the month out in full (`store.title`).
     private var titleText: String {
-        gridMode == .day
-            ? store.anchor.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
-            : store.title
+        if gridMode == .day {
+            return store.anchor.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year())
+        }
+        let days = store.visibleDays
+        guard let f = days.first, let l = days.last else { return "" }
+        let sameMonth = store.cal.isDate(f, equalTo: l, toGranularity: .month)
+        let sameYear = store.cal.isDate(f, equalTo: l, toGranularity: .year)
+        let main = sameMonth
+            ? "\(f.formatted(.dateTime.month(.abbreviated).day())) – \(l.formatted(.dateTime.day()))"
+            : "\(f.formatted(.dateTime.month(.abbreviated).day())) – \(l.formatted(.dateTime.month(.abbreviated).day()))"
+        return sameYear
+            ? "\(main), \(f.formatted(.dateTime.year()))"
+            : "\(main), \(f.formatted(.dateTime.year())) – \(l.formatted(.dateTime.year()))"
     }
 
     var body: some View {

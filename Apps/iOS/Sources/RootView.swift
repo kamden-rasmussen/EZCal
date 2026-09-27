@@ -29,7 +29,7 @@ struct RootView: View {
                     }
                 }
             }
-            .navigationTitle(store.anchor.formatted(.dateTime.month(.wide).day().year()))
+            .navigationTitle(store.anchor.formatted(.dateTime.month(.abbreviated).day().year()))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
