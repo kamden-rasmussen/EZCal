@@ -10,6 +10,7 @@ struct EZCaliOSApp: App {
             RootView()
                 .environment(store)
                 .task { await store.bootstrap() }
+                .widgetSync(store)
                 .onChange(of: phase) { _, p in
                     if p == .active { Task { await store.refreshAll() } }
                 }
