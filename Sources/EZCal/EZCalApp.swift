@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct EZCalApp: App {
     @State private var store: CalendarStore
+    @State private var updates = UpdateChecker()
 
     init() {
         let s = CalendarStore()
@@ -14,7 +15,9 @@ struct EZCalApp: App {
         Window("EZCal", id: "main") {
             ContentView()
                 .environment(store)
+                .environment(updates)
                 .frame(minWidth: 980, minHeight: 640)
+                .task { updates.start() }   // launch check, then every ~6h; start() is idempotent
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 900)
@@ -54,6 +57,10 @@ struct EZCalApp: App {
                 Button("Previous Event") { store.moveFocus(-1) }.keyboardShortcut(.upArrow, modifiers: [.command, .option])
             }
 
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton()
+            }
+
             CommandGroup(replacing: .help) {
                 Button("Keyboard Shortcuts") { store.openShortcuts() }.keyboardShortcut("/")
             }
@@ -67,10 +74,17 @@ struct EZCalApp: App {
         WindowGroup("EZCal", id: "secondary") {
             ContentView()
                 .environment(CalendarStore())
+                .environment(updates)
                 .frame(minWidth: 980, minHeight: 640)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 900)
+
+        // Opened by "Check for Updates…" and the toolbar's "Update available" pill.
+        Window("Check for Updates", id: "update") {
+            UpdateView().environment(updates)
+        }
+        .windowResizability(.contentSize)
 
         MenuBarExtra {
             MenuBarView().environment(store)
@@ -81,6 +95,13 @@ struct EZCalApp: App {
         Settings {
             SettingsView().environment(store)
         }
+    }
+}
+
+private struct CheckForUpdatesButton: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Check for Updates…") { openWindow(id: "update") }
     }
 }
 
