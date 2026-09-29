@@ -296,6 +296,8 @@ struct TopBar: View {
 
             if store.isLoading { ProgressView().controlSize(.small) }
 
+            UpdateIndicator()
+
             Button { store.openPalette() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").font(.system(size: 12))
