@@ -21,6 +21,10 @@ final class CalendarStore {
     private(set) var temporaryPeople: Set<String> = []
     var icsSubscriptions: [ICSSubscription] = []
     private(set) var hidden: Set<String> = []
+    /// Per-calendar colors the user has manually chosen, keyed by `Source.id` — takes precedence over
+    /// whatever color Google/Apple/an .ics feed reports, and is re-applied every `loadCalendars()`
+    /// reload since `calendars` itself isn't persisted.
+    private(set) var colorOverrides: [String: String] = [:]
     private var knownCalendars: Set<String> = []
     /// User's drag-to-reorder ranking for sidebar rows (calendars, people), by `Source.id`. Sparse —
     /// only ever contains ids someone has actually dragged; anything missing sorts after by its
@@ -90,6 +94,7 @@ final class CalendarStore {
         accounts = Self.load("accounts", [Account].self) ?? []
         people = Self.load("people", [Source].self) ?? []
         icsSubscriptions = Self.load("icsSubscriptions", [ICSSubscription].self) ?? []
+        colorOverrides = Self.load("colorOverrides", [String: String].self) ?? [:]
         hidden = Set(Self.load("hidden", [String].self) ?? [])
         knownCalendars = Set(Self.load("knownCalendars", [String].self) ?? [])
         sourceOrder = Self.load("sourceOrder", [String].self) ?? []
@@ -150,6 +155,7 @@ final class CalendarStore {
         save(accounts, "accounts")
         save(people.filter { !temporaryPeople.contains($0.id) }, "people")
         save(icsSubscriptions, "icsSubscriptions")
+        save(colorOverrides, "colorOverrides")
         save(Array(hidden), "hidden"); save(Array(knownCalendars), "knownCalendars")
         save(sourceOrder, "sourceOrder")
     }
@@ -392,6 +398,25 @@ final class CalendarStore {
         rebuildDisplay()
     }
 
+    /// Manually overrides `source`'s color, replacing whatever Google/Apple/an .ics feed reports for it.
+    /// Persists across relaunches and `loadCalendars()` reloads. Also recolors that source's already
+    /// fetched events in place — they carry their own `colorHex` baked in at fetch time (see
+    /// `Self.fetch`), so without this the sidebar swatch would update but the grid wouldn't until the
+    /// next reload.
+    func setColor(_ hex: String, for source: Source) {
+        colorOverrides[source.id] = hex
+        if let idx = calendars.firstIndex(where: { $0.id == source.id }) { calendars[idx].colorHex = hex }
+        eventsBySource[source.id] = eventsBySource[source.id]?.map { e in
+            var e = e; e.colorHex = hex; return e
+        }
+        upcoming = upcoming.map { e in
+            guard e.sourceId == source.id else { return e }
+            var e = e; e.colorHex = hex; return e
+        }
+        persist()
+        rebuildDisplay()
+    }
+
     // MARK: - .ics subscriptions
 
     /// Adds (or, for a URL already subscribed to, updates the name/color of) a read-only .ics feed.
@@ -488,7 +513,7 @@ final class CalendarStore {
                     }
                     result.append(Source(id: id, accountId: acct.id, calendarId: i.id,
                                          name: i.summaryOverride ?? i.summary ?? i.id,
-                                         colorHex: i.backgroundColor ?? "#4285F4",
+                                         colorHex: colorOverrides[id] ?? i.backgroundColor ?? "#4285F4",
                                          kind: .calendar, accessRole: i.accessRole ?? "reader"))
                 }
             } catch {
@@ -500,17 +525,19 @@ final class CalendarStore {
             result = calendars.filter { !$0.isEventKit }   // keep what we had
         }
         if eventKitEnabled {
-            for s in EventKitService.shared.sources() {
+            for var s in EventKitService.shared.sources() {
                 if !knownCalendars.contains(s.id) {
                     knownCalendars.insert(s.id)
                     if EventKitService.shared.isBirthdayCalendar(s.calendarId) { hidden.insert(s.id) }
                 }
+                if let override = colorOverrides[s.id] { s.colorHex = override }
                 result.append(s)
             }
         }
         for sub in icsSubscriptions {
-            let s = sub.source
+            var s = sub.source
             knownCalendars.insert(s.id)
+            if let override = colorOverrides[s.id] { s.colorHex = override }
             result.append(s)
         }
         if !result.isEmpty || accounts.isEmpty { calendars = result }
