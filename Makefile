@@ -10,7 +10,7 @@ help: ## Show this help
 version: ## Print the current app version
 	@/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist
 
-release: ## Sign, notarize and zip (VERSION=x.y.z)
+release: ## Sign, notarize, publish to the tap, bump the cask (VERSION=x.y.z; PUBLISH=0 to only build)
 	VERSION=$(VERSION) scripts/release.sh
 
 build: ## Build build/EZCal.app

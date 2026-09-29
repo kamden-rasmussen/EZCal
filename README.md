@@ -83,6 +83,17 @@ Settings → Accounts → **Enable Reminders access** (or wait for the prompt th
 
 Tasks with no due date aren't shown in the grid (there's nowhere to put them); give a task a due date in Reminders, or via quick-add, to see it. There's no dedicated task editor yet — quick-add and the checkbox cover creating and completing a task, anything else (notes, priority, moving lists) happens in Reminders.app.
 
+## Install & releasing
+
+Install: `brew install --cask kamden-rasmussen/tap/ezcal`. Update: `brew update && brew upgrade --cask ezcal`.
+
+Release (needs the Developer ID cert, the `ezcal-notary` notarytool profile, `Secrets.swift`, and `gh` with push access to the tap):
+
+1. Bump `CFBundleShortVersionString`/`CFBundleVersion` in `Resources/Info.plist` and commit.
+2. `make release VERSION=x.y.z`. This builds, signs, notarizes and staples, uploads the zip to a `ezcal-vX.Y.Z` release on `homebrew-tap`, bumps `Casks/ezcal.rb`, and tags this repo `vX.Y.Z`. `PUBLISH=0` stops after the zip.
+
+Notes: OAuth secrets are compiled into every binary, so rotate them if a build leaks. Homebrew only upgrades when the user runs it.
+
 ## How coworker overlay works
 
 Add people with the **+** next to *Coworkers* in the sidebar. For each person EZCal tries, in order:
