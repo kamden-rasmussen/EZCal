@@ -39,7 +39,7 @@ struct ContentView: View {
                         .focusEffectDisabled()
                         .onKeyPress(phases: .down) { handle($0) }
                         .background(HorizontalSwipeNavigator { days in
-                            guard store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }
+                            guard store.mode != .month, store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }  // Month scrolls vertically instead
                             store.stepDay(days)
                         })
                     }
