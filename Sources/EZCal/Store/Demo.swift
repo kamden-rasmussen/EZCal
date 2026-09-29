@@ -1,10 +1,11 @@
 import Foundation
 import SwiftUI
-import AppKit
 
 /// Fake data for screenshots and UI development: `EZCAL_DEMO=1 build/EZCal.app/Contents/MacOS/EZCal`.
 extension CalendarStore {
     func loadDemo() {
+        if demoSeeded { rebuildDisplay(); return }
+        demoSeeded = true
         let me = Source(id: "cal|me@example.com|me", accountId: "me@example.com", calendarId: "me", name: "Me", colorHex: "#3E63DD", kind: .calendar, accessRole: "owner")
         let team = Source(id: "cal|me@example.com|team", accountId: "me@example.com", calendarId: "team", name: "Team", colorHex: "#8E4EC6", kind: .calendar, accessRole: "owner")
         let home = Source(id: "ek|demo-home", accountId: "ek:iCloud", calendarId: "home", name: "Home", colorHex: "#2F9E6E", kind: .calendar, accessRole: "owner")
@@ -94,6 +95,69 @@ extension CalendarStore {
     }
 }
 
+// MARK: - In-memory writes (demo mode never touches Google or EventKit)
+
+extension CalendarStore {
+    /// Occurrences of `e`'s series that `scope` affects (just `e` when it isn't recurring).
+    private func demoTargets(_ e: CalEvent, scope: RecurrenceScope) -> [CalEvent] {
+        guard e.isRecurring, let rid = e.recurringEventId, scope != .thisEvent else { return [e] }
+        return (eventsBySource[e.sourceId] ?? []).filter {
+            $0.recurringEventId == rid && (scope == .all || $0.start >= e.start)
+        }
+    }
+
+    /// `end` is exclusive (already converted for all-day by `save`).
+    func saveDemo(_ d: EventDraft, title: String, start: Date, end: Date) {
+        let c = cal
+        if let e = d.existing {
+            let dStart = start.timeIntervalSince(e.start), dEnd = end.timeIntervalSince(e.end)
+            let ids = Set(demoTargets(e, scope: d.recurrenceScope).map(\.id))
+            eventsBySource[e.sourceId] = (eventsBySource[e.sourceId] ?? []).map { ev in
+                guard ids.contains(ev.id) else { return ev }
+                var n = ev
+                n.title = title; n.location = d.location; n.notes = d.notes; n.isAllDay = d.isAllDay
+                n.start = ev.start.addingTimeInterval(dStart); n.end = ev.end.addingTimeInterval(dEnd)
+                return n
+            }
+        } else if let src = calendars.first(where: { $0.id == d.sourceId }) {
+            let stamp = "\(src.id)|\(title)|\(start.timeIntervalSince1970)"
+            let series = d.recurrence == .none ? nil : "\(stamp)|series"
+            // Recurring demo events are expanded eagerly (a few months).
+            let count = series == nil ? 1 : (d.recurrence == .monthly ? 12 : 90)
+            let comp: Calendar.Component = d.recurrence == .monthly ? .month : (d.recurrence == .weekly ? .weekOfYear : .day)
+            var made: [CalEvent] = []
+            for i in 0..<count {
+                guard let s = c.date(byAdding: comp, value: i, to: start), let en = c.date(byAdding: comp, value: i, to: end) else { continue }
+                if d.recurrence == .weekdays, c.isDateInWeekend(s) { continue }
+                let id = "\(stamp)|\(i)"
+                made.append(CalEvent(
+                    id: id, eventId: id, sourceId: src.id, calendarId: src.calendarId, accountId: src.accountId, uid: id,
+                    title: title, start: s, end: en, isAllDay: d.isAllDay, location: d.location, notes: d.notes,
+                    attendees: [], htmlLink: nil, meetingURL: nil, colorHex: src.colorHex, sourceName: src.name,
+                    ownerName: nil, isOverlay: false, canEdit: true, isBusyOnly: false, isRecurring: series != nil,
+                    recurringEventId: series, zoomMeetingID: nil, isTentative: false, isDeclined: false))
+            }
+            eventsBySource[src.id, default: []] += made
+        }
+        finishDemoWrite()
+    }
+
+    func deleteDemo(_ e: CalEvent, scope: RecurrenceScope) {
+        let ids = Set(demoTargets(e, scope: scope).map(\.id))
+        eventsBySource[e.sourceId] = (eventsBySource[e.sourceId] ?? []).filter { !ids.contains($0.id) }
+        finishDemoWrite()
+    }
+
+    private func finishDemoWrite() {
+        sheet = nil
+        rebuildDisplay()
+        upcoming = displayEvents.filter { !$0.isOverlay && !$0.isAllDay && $0.end > Date() }.sorted { $0.start < $1.start }
+    }
+}
+
+#if os(macOS)
+import AppKit
+
 /// `EZCAL_SNAPSHOT=/path/out.png` renders a screen to a PNG (no screen-recording permission needed) and quits.
 /// `EZCAL_SNAPSHOT_VIEW` = window (default) | sidebar | editor | detail | palette | shortcuts | findtime | recurrence | setup | settings,  `EZCAL_APPEARANCE` = light | dark.
 enum DebugSnapshot {
@@ -158,3 +222,4 @@ enum DebugSnapshot {
         }
     }
 }
+#endif

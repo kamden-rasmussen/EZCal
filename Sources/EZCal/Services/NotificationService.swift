@@ -1,6 +1,6 @@
 import Foundation
 import UserNotifications
-import AppKit
+
 
 /// Posted when the user taps a meeting notification (or its "Open" action) so the app can focus that
 /// event. A plain NotificationCenter post rather than a stored CalendarStore reference keeps this file a
@@ -118,7 +118,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         let eventID = info["eventID"] as? String ?? ""
         if response.actionIdentifier == Self.joinAction,
            let s = info["joinURL"] as? String, !s.isEmpty, let url = URL(string: s) {
-            await MainActor.run { _ = NSWorkspace.shared.open(url) }
+            await MainActor.run { Platform.open(url) }
             return
         }
         // The "Open" action, or a plain click on the notification itself: focus the event in the app.
