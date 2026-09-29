@@ -46,7 +46,13 @@ struct AgendaRow: View {
         HStack(alignment: .top, spacing: 12) {
             Circle().fill(event.color).frame(width: 10, height: 10).padding(.top, 5)
             VStack(alignment: .leading, spacing: 2) {
-                Text(event.title.isEmpty ? "(No title)" : event.title).font(.body)
+                HStack(spacing: 4) {
+                    Text(event.title.isEmpty ? "(No title)" : event.title).font(.body)
+                    if event.isPrivate && !event.isBusyOnly {
+                        Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel("Private")
+                    }
+                }
                 Text(timeText(event)).font(.subheadline).foregroundStyle(.secondary)
                 if !event.location.isEmpty {
                     Text(event.location).font(.footnote).foregroundStyle(.secondary).lineLimit(1)

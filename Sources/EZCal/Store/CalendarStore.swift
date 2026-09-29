@@ -730,6 +730,7 @@ final class CalendarStore {
         var d = EventDraft(existing: e, title: e.title, start: e.start, end: end, isAllDay: e.isAllDay,
                            sourceId: e.sourceId, location: e.location, notes: e.notes.strippingHTML,
                            attendees: e.attendees)
+        d.visibility = e.visibility
         d.video = .none
         d.recurrenceScope = scope
         sheet = .editor(d)
@@ -807,6 +808,8 @@ final class CalendarStore {
             "end": timeDict(end),
         ]
         if notesChanged { body["description"] = notes }
+        // Always sent on edit so changing back to "default" clears it; a new default event omits it.
+        if existing != nil || d.visibility != .default { body["visibility"] = d.visibility.rawValue }
         if let extProps { body["extendedProperties"] = extProps }
         if existing != nil || !d.attendees.isEmpty {
             body["attendees"] = d.attendees.map { a -> [String: Any] in

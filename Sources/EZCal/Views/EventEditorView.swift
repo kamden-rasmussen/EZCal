@@ -478,8 +478,23 @@ struct EventEditorView: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
+    /// Google's per-event visibility. EventKit exposes no privacy setting, so the row is hidden for Apple calendars.
+    private var visibilityRow: some View {
+        row(draft.visibility == .private ? "lock.fill" : "lock.open") {
+            Picker("Visibility", selection: $draft.visibility) {
+                ForEach(EventVisibility.allCases) { v in Text(v.label).tag(v) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 170)
+            .accessibilityLabel("Visibility")
+            .help("Private events show only as Busy to people who can see your calendar")
+        }
+    }
+
     private var detailsBlock: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if !isEK { visibilityRow }
             row("mappin.and.ellipse") {
                 TextField("Add location", text: $draft.location).textFieldStyle(.plain)
             }

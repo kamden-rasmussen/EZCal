@@ -31,6 +31,7 @@ struct GEvent: Decodable {
     var hangoutLink: String?
     var iCalUID: String?
     var recurringEventId: String?
+    var visibility: String?     // default, public, private (or confidential)
     var recurrence: [String]?   // RRULE/EXDATE lines; only present on a master (unexpanded) event
     var start: GTime?
     var end: GTime?
@@ -279,6 +280,18 @@ enum EventMapper {
             ?? g.hangoutLink.flatMap(URL.init(string:))
             ?? MeetingLink.find(in: [location, notes])
 
+        let visibility = EventVisibility(apiValue: g.visibility)
+        // A coworker's private event: show only that they're busy, never any details we may have received.
+        if source.kind == .person, visibility == .private {
+            var busy = busyEvent(s..<e, source: source, ownerName: ownerName ?? "")
+            busy.id = "\(source.id)|\(id)"
+            busy.eventId = id
+            busy.uid = g.iCalUID ?? id
+            busy.isAllDay = allDay
+            busy.visibility = .private
+            return busy
+        }
+
         let me = attendees.first { $0.isSelf }
         return CalEvent(
             id: "\(source.id)|\(id)", eventId: id, sourceId: source.id,
@@ -294,6 +307,7 @@ enum EventMapper {
             canEdit: source.kind == .calendar && source.canWrite,
             isBusyOnly: false, isRecurring: g.recurringEventId != nil,
             recurringEventId: g.recurringEventId,
+            visibility: visibility,
             zoomMeetingID: g.extendedProperties?.private?["zoomMeetingId"],
             isTentative: me?.response == "tentative",
             isDeclined: me?.response == "declined"
