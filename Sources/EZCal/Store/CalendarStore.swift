@@ -25,6 +25,10 @@ final class CalendarStore {
     /// whatever color Google/Apple/an .ics feed reports, and is re-applied every `loadCalendars()`
     /// reload since `calendars` itself isn't persisted.
     private(set) var colorOverrides: [String: String] = [:]
+    /// The color each source reports on its own (Google/Apple/.ics feed, or the one a coworker overlay
+    /// was added with), before any override — what "Reset Color" goes back to. In memory only: rebuilt
+    /// by `loadCalendars()` and at init, and used by `persist()` so overlays are saved with their base.
+    @ObservationIgnored private var baseColors: [String: String] = [:]
     private var knownCalendars: Set<String> = []
     /// User's drag-to-reorder ranking for sidebar rows (calendars, people), by `Source.id`. Sparse —
     /// only ever contains ids someone has actually dragged; anything missing sorts after by its
@@ -101,6 +105,7 @@ final class CalendarStore {
         people = Self.load("people", [Source].self) ?? []
         icsSubscriptions = Self.load("icsSubscriptions", [ICSSubscription].self) ?? []
         colorOverrides = Self.load("colorOverrides", [String: String].self) ?? [:]
+        for i in people.indices { people[i] = applyingOverride(people[i]) }
         hidden = Set(Self.load("hidden", [String].self) ?? [])
         knownCalendars = Set(Self.load("knownCalendars", [String].self) ?? [])
         sourceOrder = Self.load("sourceOrder", [String].self) ?? []
@@ -159,7 +164,9 @@ final class CalendarStore {
     }
     private func persist() {
         save(accounts, "accounts")
-        save(people.filter { !temporaryPeople.contains($0.id) }, "people")
+        save(people.filter { !temporaryPeople.contains($0.id) }.map { p -> Source in
+            var p = p; if let base = baseColors[p.id] { p.colorHex = base }; return p
+        }, "people")
         save(icsSubscriptions, "icsSubscriptions")
         save(colorOverrides, "colorOverrides")
         save(Array(hidden), "hidden"); save(Array(knownCalendars), "knownCalendars")
@@ -377,8 +384,8 @@ final class CalendarStore {
             return
         }
         let color = nextPersonColor()
-        people.append(Source(id: id, accountId: acct, calendarId: email,
-                             name: name.isEmpty ? email : name, colorHex: color, kind: .person))
+        people.append(applyingOverride(Source(id: id, accountId: acct, calendarId: email,
+                             name: name.isEmpty ? email : name, colorHex: color, kind: .person)))
         hidden.remove(id)
         if temporary { temporaryPeople.insert(id) } else { temporaryPeople.remove(id) }
         persist()
@@ -416,6 +423,7 @@ final class CalendarStore {
 
     func removePerson(_ s: Source) {
         people.removeAll { $0.id == s.id }
+        colorOverrides[s.id] = nil; baseColors[s.id] = nil
         eventsBySource[s.id] = nil
         hidden.remove(s.id)
         personAccess[s.id] = nil
@@ -424,23 +432,46 @@ final class CalendarStore {
         rebuildDisplay()
     }
 
+    /// Records `s`'s own color as its base and returns it with any manual override applied. Every place
+    /// that builds a `Source` from outside data (loadCalendars, people at init/add) goes through this,
+    /// so an override always wins over what the provider reports.
+    private func applyingOverride(_ s: Source) -> Source {
+        baseColors[s.id] = s.colorHex
+        guard let o = colorOverrides[s.id] else { return s }
+        var s = s; s.colorHex = o; return s
+    }
+
+    /// The color `source` would have with no override.
+    func defaultColor(for source: Source) -> String { baseColors[source.id] ?? source.colorHex }
+    func hasColorOverride(_ source: Source) -> Bool { colorOverrides[source.id] != nil }
+
     /// Manually overrides `source`'s color, replacing whatever Google/Apple/an .ics feed reports for it.
     /// Persists across relaunches and `loadCalendars()` reloads. Also recolors that source's already
     /// fetched events in place — they carry their own `colorHex` baked in at fetch time (see
     /// `Self.fetch`), so without this the sidebar swatch would update but the grid wouldn't until the
     /// next reload.
     func setColor(_ hex: String, for source: Source) {
+        if baseColors[source.id] == nil { baseColors[source.id] = source.colorHex }
         colorOverrides[source.id] = hex
-        if let idx = calendars.firstIndex(where: { $0.id == source.id }) { calendars[idx].colorHex = hex }
-        eventsBySource[source.id] = eventsBySource[source.id]?.map { e in
-            var e = e; e.colorHex = hex; return e
-        }
+        recolor(source.id, to: hex)
+    }
+
+    /// Drops `source`'s manual color, going back to whatever its provider reports.
+    func resetColor(for source: Source) {
+        guard colorOverrides.removeValue(forKey: source.id) != nil else { return }
+        recolor(source.id, to: baseColors[source.id] ?? source.colorHex)
+    }
+
+    private func recolor(_ id: String, to hex: String) {
+        if let i = calendars.firstIndex(where: { $0.id == id }) { calendars[i].colorHex = hex }
+        if let i = people.firstIndex(where: { $0.id == id }) { people[i].colorHex = hex }
+        eventsBySource[id] = eventsBySource[id]?.map { e in var e = e; e.colorHex = hex; return e }
         upcoming = upcoming.map { e in
-            guard e.sourceId == source.id else { return e }
+            guard e.sourceId == id else { return e }
             var e = e; e.colorHex = hex; return e
         }
         persist()
-        rebuildDisplay()
+        rebuildDisplay()   // sets displayEvents, which invalidates the per-day index cache
     }
 
     // MARK: - .ics subscriptions
@@ -465,6 +496,7 @@ final class CalendarStore {
         icsSubscriptions.removeAll { $0.id == sub.id }
         let sourceId = sub.source.id
         calendars.removeAll { $0.id == sourceId }
+        colorOverrides[sourceId] = nil; baseColors[sourceId] = nil
         eventsBySource[sourceId] = nil
         hidden.remove(sourceId)
         sourceErrors[sourceId] = nil
@@ -537,10 +569,10 @@ final class CalendarStore {
                         knownCalendars.insert(id)
                         if i.selected != true && i.primary != true { hidden.insert(id) }
                     }
-                    result.append(Source(id: id, accountId: acct.id, calendarId: i.id,
+                    result.append(applyingOverride(Source(id: id, accountId: acct.id, calendarId: i.id,
                                          name: i.summaryOverride ?? i.summary ?? i.id,
-                                         colorHex: colorOverrides[id] ?? i.backgroundColor ?? "#4285F4",
-                                         kind: .calendar, accessRole: i.accessRole ?? "reader"))
+                                         colorHex: i.backgroundColor ?? "#4285F4",
+                                         kind: .calendar, accessRole: i.accessRole ?? "reader")))
                 }
             } catch {
                 firstError = firstError ?? "\(acct.email): \(error.localizedDescription)"
@@ -551,20 +583,18 @@ final class CalendarStore {
             result = calendars.filter { !$0.isEventKit }   // keep what we had
         }
         if eventKitEnabled {
-            for var s in EventKitService.shared.sources() {
+            for s in EventKitService.shared.sources() {
                 if !knownCalendars.contains(s.id) {
                     knownCalendars.insert(s.id)
                     if EventKitService.shared.isBirthdayCalendar(s.calendarId) { hidden.insert(s.id) }
                 }
-                if let override = colorOverrides[s.id] { s.colorHex = override }
-                result.append(s)
+                result.append(applyingOverride(s))
             }
         }
         for sub in icsSubscriptions {
-            var s = sub.source
+            let s = sub.source
             knownCalendars.insert(s.id)
-            if let override = colorOverrides[s.id] { s.colorHex = override }
-            result.append(s)
+            result.append(applyingOverride(s))
         }
         if !result.isEmpty || accounts.isEmpty { calendars = result }
         persist()
