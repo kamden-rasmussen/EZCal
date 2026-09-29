@@ -87,6 +87,8 @@ final class CalendarStore {
     var hasAnyAccount: Bool { !accounts.isEmpty || eventKitEnabled || !icsSubscriptions.isEmpty }
 
     private var generation = 0
+    /// Range covered by the last completed `reload()`; lets the scrolling Week grid decide when to refetch.
+    @ObservationIgnored var loadedRange: Range<Date>?
     private let defaults = UserDefaults.standard
 
     init() {
@@ -184,6 +186,11 @@ final class CalendarStore {
         switch mode {
         case .day:
             return [c.startOfDay(for: anchor)]
+        case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
+            // macOS Week / Work Week scroll continuously (Views/WeekScrollView.swift): `anchor` is the leftmost
+            // visible day and the visible days are the next N column days from there (weekends skipped when hidden).
+            let r = weekColumns
+            return WeekScrollMath.columnDays(from: anchor, count: r.count, rule: r.rule, cal: c)
         case .workWeek:
             let start = mondayStart(anchor)
             return (0..<5).map { c.date(byAdding: .day, value: $0, to: start)! }
@@ -203,6 +210,9 @@ final class CalendarStore {
         let c = cal
         switch mode {
         case .day: return c.startOfDay(for: anchor)..<c.endOfDay(anchor)
+        case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
+            // Visible days plus a two-week buffer either side, so scrolling doesn't refetch per day.
+            return WeekScrollMath.fetchRange(visible: visibleDays, bufferDays: 14, cal: c)
         case .workWeek:
             let s = mondayStart(anchor)
             return s..<c.date(byAdding: .day, value: 5, to: s)!
@@ -256,8 +266,8 @@ final class CalendarStore {
         scheduleReload()
     }
 
-    func goToday() { anchor = Date(); scheduleReload() }
-    func goTo(_ d: Date) { anchor = d; scheduleReload() }
+    func goToday() { anchor = alignedLeading(for: Date()); scheduleReload() }
+    func goTo(_ d: Date) { anchor = alignedLeading(for: d); scheduleReload() }
     func setMode(_ m: ViewMode) {
         mode = m
         defaults.set(m.rawValue, forKey: "viewMode")
@@ -265,7 +275,6 @@ final class CalendarStore {
     }
 
     private var pendingReload: Task<Void, Never>?
-
     /// Coalesces bursts (rapid paging, swipe steps) into one fetch: each call restarts a short
     /// debounce and only the last one fetches. Once a fetch has started it is left alone (cancelling
     /// URLSession requests would surface as spurious per-source errors).
@@ -535,7 +544,7 @@ final class CalendarStore {
     }
 
     func reload() async {
-        if isDemo { loadDemo(); return }
+        if isDemo { loadDemo(); loadedRange = fetchRange; return }
         generation += 1
         let gen = generation
         guard hasAnyAccount else {
@@ -567,6 +576,7 @@ final class CalendarStore {
         for (k, v) in access { personAccess[k] = v }
         errorMessage = firstError
         isLoading = false
+        loadedRange = range
         rebuildDisplay()
     }
 

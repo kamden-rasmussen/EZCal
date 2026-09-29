@@ -10,6 +10,8 @@ import AppKit
 /// this window before normal dispatch, and we forward anything that isn't a clear horizontal swipe
 /// unchanged, so the grid's own vertical scrolling is untouched.
 struct HorizontalSwipeNavigator: NSViewRepresentable {
+    /// False where a view scrolls horizontally on its own (Week / Work Week); the monitor then leaves every event alone.
+    var isEnabled = true
     /// Called once per day advanced: -1 = one day back, +1 = one day forward.
     let onStepDay: (Int) -> Void
 
@@ -21,6 +23,7 @@ struct HorizontalSwipeNavigator: NSViewRepresentable {
         var monitor: Any?
         weak var window: NSWindow?
         var accumulated: CGFloat = 0
+        var isEnabled = true
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -39,7 +42,7 @@ struct HorizontalSwipeNavigator: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) { context.coordinator.isEnabled = isEnabled }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
         if let m = coordinator.monitor { NSEvent.removeMonitor(m) }
@@ -47,6 +50,7 @@ struct HorizontalSwipeNavigator: NSViewRepresentable {
 
     /// Returns true if the event was a horizontal swipe we've consumed.
     private func handle(_ event: NSEvent, _ c: Coordinator) -> Bool {
+        guard c.isEnabled else { c.accumulated = 0; return false }
         // Inertial scrolling after fingers lift: never treat as a fresh gesture, just let it fizzle.
         guard event.momentumPhase == [] else { return false }
 
