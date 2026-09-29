@@ -261,7 +261,19 @@ final class CalendarStore {
         scheduleReload()
     }
 
-    func scheduleReload() { Task { await reload() } }
+    private var pendingReload: Task<Void, Never>?
+
+    /// Coalesces bursts (rapid paging, swipe steps) into one fetch: each call restarts a short
+    /// debounce and only the last one fetches. Once a fetch has started it is left alone (cancelling
+    /// URLSession requests would surface as spurious per-source errors).
+    func scheduleReload() {
+        pendingReload?.cancel()
+        pendingReload = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled, let self else { return }
+            Task { await self.reload() }
+        }
+    }
 
     // MARK: - Sources
 
