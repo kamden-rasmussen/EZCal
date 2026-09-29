@@ -344,13 +344,19 @@ private struct SourceRow<ExtraMenuItems: View>: View {
         .accessibilityLabel("\(source.name), \(on ? "shown" : "hidden")")
         .accessibilityHint("Toggles this calendar")
         .contextMenu {
-            if source.kind == .calendar {
-                Button("Change Color…") { showColorPicker = true }
+            Button("Change Color…") { showColorPicker = true }
+            if store.hasColorOverride(source) {
+                Button("Reset Color") { store.resetColor(for: source) }
             }
             extraMenuItems()
         }
         .popover(isPresented: $showColorPicker, arrowEdge: .trailing) {
-            ColorSwatchPicker(colorHex: source.colorHex) { store.setColor($0, for: source); showColorPicker = false }
+            ColorSwatchPicker(colorHex: source.colorHex, defaultHex: store.defaultColor(for: source),
+                              isOverridden: store.hasColorOverride(source)) {
+                store.setColor($0, for: source); showColorPicker = false
+            } onReset: {
+                store.resetColor(for: source); showColorPicker = false
+            }
         }
     }
 }
@@ -359,18 +365,34 @@ private struct SourceRow<ExtraMenuItems: View>: View {
 /// context menu item — same palette/layout as the one on `AddICSSubscriptionView`'s color field.
 private struct ColorSwatchPicker: View {
     let colorHex: String
+    /// What the calendar reports on its own; offered as the first swatch so it's recognisable.
+    let defaultHex: String
+    let isOverridden: Bool
     let onPick: (String) -> Void
+    let onReset: () -> Void
 
     private let columns = Array(repeating: GridItem(.fixed(20), spacing: 8), count: 5)
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(Palette.people, id: \.self) { hex in
-                Circle().fill(Color(hex: hex)).frame(width: 20, height: 20)
-                    .overlay(Circle().strokeBorder(Theme.text, lineWidth: colorHex.uppercased() == hex.uppercased() ? 2 : 0))
-                    .onTapGesture { onPick(hex) }
-                    .accessibilityLabel("Color \(hex)")
-                    .accessibilityAddTraits(colorHex.uppercased() == hex.uppercased() ? .isSelected : [])
+        VStack(spacing: 10) {
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(Palette.people, id: \.self) { hex in
+                    let selected = colorHex.uppercased() == hex.uppercased()
+                    Circle().fill(Color(hex: hex)).frame(width: 20, height: 20)
+                        .overlay(Circle().strokeBorder(Theme.text, lineWidth: selected ? 2 : 0))
+                        .onTapGesture { onPick(hex) }
+                        .accessibilityLabel("Color \(hex)")
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            if isOverridden {
+                Button { onReset() } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: defaultHex)).frame(width: 10, height: 10)
+                        Text("Reset to default")
+                    }
+                }
+                .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.text2)
             }
         }
         .padding(14)
