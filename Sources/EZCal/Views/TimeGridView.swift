@@ -429,8 +429,8 @@ struct DayColumn: View {
 
                 // Subtle wash over hours outside the working day (Settings → General → Working hours).
                 ForEach(Array(AppSettings.workingHours.nonWorkingRanges(on: day, cal: store.cal).enumerated()), id: \.offset) { _, r in
-                    let top = CGFloat(r.lowerBound) / 60 * hourHeight
-                    let height = CGFloat(r.upperBound - r.lowerBound) / 60 * hourHeight
+                    let top = Double(r.lowerBound) / 60 * hourHeight
+                    let height = Double(r.upperBound - r.lowerBound) / 60 * hourHeight
                     Theme.nonWorkingShade
                         .frame(height: height)
                         .offset(y: top)
