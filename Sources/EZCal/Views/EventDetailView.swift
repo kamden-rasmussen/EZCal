@@ -143,6 +143,10 @@ struct EventDetailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(event.isBusyOnly ? "\(event.ownerName ?? "Busy") is busy" : event.title)
                         .font(.system(size: 20, weight: .semibold)).textSelection(.enabled)
+                    if event.isPrivate, !event.isBusyOnly {
+                        Image(systemName: "lock.fill").font(.system(size: 13)).foregroundStyle(Theme.text3)
+                            .accessibilityLabel("Private").help("Private: others see this only as Busy")
+                    }
                     if event.isRecurring {
                         Image(systemName: "repeat").font(.system(size: 13)).foregroundStyle(Theme.text3)
                             .accessibilityLabel("Repeats").help("Recurring event")

@@ -429,9 +429,11 @@ struct DayColumn: View {
 
                 // Subtle wash over hours outside the working day (Settings → General → Working hours).
                 ForEach(Array(AppSettings.workingHours.nonWorkingRanges(on: day, cal: store.cal).enumerated()), id: \.offset) { _, r in
+                    let top = Double(r.lowerBound) / 60 * hourHeight
+                    let height = Double(r.upperBound - r.lowerBound) / 60 * hourHeight
                     Theme.nonWorkingShade
-                        .frame(height: CGFloat(r.upperBound - r.lowerBound) / 60 * hourHeight)
-                        .offset(y: CGFloat(r.lowerBound) / 60 * hourHeight)
+                        .frame(height: height)
+                        .offset(y: top)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -639,6 +641,10 @@ struct EventBlock: View {
                     Image(systemName: "repeat").font(.system(size: 9)).opacity(0.75).padding(.top, 1)
                         .accessibilityHidden(true)
                 }
+                if event.isPrivate, !event.isBusyOnly, !compact {
+                    Image(systemName: "lock.fill").font(.system(size: 9)).opacity(0.75).padding(.top, 1)
+                        .accessibilityHidden(true)
+                }
                 Text(titleText)
                     .font(.system(size: compact ? 11 : 12, weight: .semibold))
                     .strikethrough(event.isDeclined)
@@ -771,7 +777,7 @@ struct EventBlock: View {
     private var accessibilityText: String {
         let who = event.ownerName.map { "\($0): " } ?? ""
         let time = event.start.formatted(date: .omitted, time: .shortened)
-        return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "") + (event.isRecurring ? ", repeats" : "")
+        return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "") + (event.isRecurring ? ", repeats" : "") + (event.isPrivate && !event.isBusyOnly ? ", private" : "")
     }
 }
 

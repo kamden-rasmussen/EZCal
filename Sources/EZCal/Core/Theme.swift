@@ -1,23 +1,41 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+typealias PlatformColor = NSColor
+#else
+import UIKit
+typealias PlatformColor = UIColor
+#endif
 
-extension NSColor {
+extension PlatformColor {
     convenience init(hex: String) {
         var s = hex.trimmingCharacters(in: CharacterSet(charactersIn: "# "))
         if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
         var v: UInt64 = 0
         Scanner(string: s).scanHexInt64(&v)
+        #if os(macOS)
         self.init(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
                   blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+        #else
+        self.init(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
+                  blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+        #endif
     }
 }
 
 /// Design tokens from the EZCal design canvas. Every color adapts to light/dark automatically.
 enum Theme {
+    /// A color that resolves differently in dark mode. The closure receives `isDark`.
+    static func adaptive(_ resolve: @escaping (_ isDark: Bool) -> PlatformColor) -> Color {
+        #if os(macOS)
+        Color(nsColor: NSColor(name: nil) { a in resolve(a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua) })
+        #else
+        Color(uiColor: UIColor { t in resolve(t.userInterfaceStyle == .dark) })
+        #endif
+    }
+
     static func dynamic(_ light: String, _ dark: String) -> Color {
-        Color(nsColor: NSColor(name: nil) { a in
-            a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(hex: dark) : NSColor(hex: light)
-        })
+        adaptive { $0 ? PlatformColor(hex: dark) : PlatformColor(hex: light) }
     }
 
     static let bg = dynamic("#FBFAF7", "#161615")
@@ -33,25 +51,49 @@ enum Theme {
     static let hover = dynamic("#ECE9E2", "#2A2927")
     static let selection = dynamic("#E3E8FA", "#262C4A")
     static let todayBg = dynamic("#F6F5FF", "#1B1C22")
-    static let now = Color(nsColor: NSColor(hex: "#E5484D"))
+    static let now = Color(PlatformColor(hex: "#E5484D"))
     /// Soft white catch-light used under hairlines for an etched look.
-    static let highlight = Color(nsColor: NSColor(name: nil) { a in
-        a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor.white.withAlphaComponent(0.06) : NSColor.white.withAlphaComponent(0.85)
-    })
+    static let highlight = adaptive { $0 ? PlatformColor.white.withAlphaComponent(0.06) : PlatformColor.white.withAlphaComponent(0.85) }
     /// Subtle wash over non-working hours in the time grid.
-    static let nonWorkingShade = Color(nsColor: NSColor(name: nil) { a in
-        a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor.black.withAlphaComponent(0.16) : NSColor.black.withAlphaComponent(0.035)
-    })
+    static let nonWorkingShade = adaptive { $0 ? PlatformColor.black.withAlphaComponent(0.16) : PlatformColor.black.withAlphaComponent(0.035) }
 
     /// Event title color: the calendar color pulled toward the text color so it stays readable on its own tint.
     static func eventText(_ c: Color) -> Color {
-        Color(nsColor: NSColor(name: nil) { a in
-            let dark = a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let base = NSColor(c).usingColorSpace(.sRGB) ?? NSColor(hex: "#3E63DD")
-            let text = NSColor(hex: dark ? "#F2F0EA" : "#1E1D1A")
-            return base.blended(withFraction: 0.28, of: text) ?? base
-        })
+        adaptive { dark in
+            let base = PlatformColor(c).srgbComponents ?? (0x3E / 255, 0x63 / 255, 0xDD / 255)
+            let t = PlatformColor(hex: dark ? "#F2F0EA" : "#1E1D1A").srgbComponents ?? (0, 0, 0)
+            let f: CGFloat = 0.28
+            return PlatformColor(srgbRed: base.0 + (t.0 - base.0) * f, green: base.1 + (t.1 - base.1) * f,
+                                 blue: base.2 + (t.2 - base.2) * f, alpha: 1)
+        }
     }
+}
+
+extension PlatformColor {
+    /// sRGB components, or nil if the color can't be converted.
+    var srgbComponents: (CGFloat, CGFloat, CGFloat)? {
+        #if os(macOS)
+        guard let c = usingColorSpace(.sRGB) else { return nil }
+        return (c.redComponent, c.greenComponent, c.blueComponent)
+        #else
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        return getRed(&r, green: &g, blue: &b, alpha: &a) ? (r, g, b) : nil
+        #endif
+    }
+
+    static func fromCG(_ cg: CGColor) -> PlatformColor? {
+        #if os(macOS)
+        NSColor(cgColor: cg)
+        #else
+        UIColor(cgColor: cg)
+        #endif
+    }
+
+    #if !os(macOS)
+    convenience init(srgbRed r: CGFloat, green g: CGFloat, blue b: CGFloat, alpha a: CGFloat) {
+        self.init(red: r, green: g, blue: b, alpha: a)
+    }
+    #endif
 }
 
 /// Small rounded keycap used in hints and the cheat sheet.

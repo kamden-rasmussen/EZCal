@@ -1,0 +1,3 @@
+// Shared build settings. Put your signing team in Config/Local.xcconfig (gitignored):
+//   DEVELOPMENT_TEAM = ABCDE12345
+#include? "Local.xcconfig"

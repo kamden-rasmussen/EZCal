@@ -30,7 +30,8 @@ struct ContentView: View {
                         if let msg = store.errorMessage { errorBanner(msg) }
                         Group {
                             switch store.mode {
-                            case .day, .workWeek, .week: TimeGridView(days: store.visibleDays)
+                            case .day: TimeGridView(days: store.visibleDays)
+                            case .workWeek, .week: WeekScrollView()
                             case .month: MonthView()
                             }
                         }
@@ -38,8 +39,8 @@ struct ContentView: View {
                         .focused($gridFocused)
                         .focusEffectDisabled()
                         .onKeyPress(phases: .down) { handle($0) }
-                        .background(HorizontalSwipeNavigator { days in
-                            guard store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }
+                        .background(HorizontalSwipeNavigator(isEnabled: store.mode == .day) { days in
+                            guard store.mode != .month, store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }  // Month scrolls vertically; Week/Work Week pan natively
                             store.stepDay(days)
                         })
                     }
@@ -295,6 +296,8 @@ struct TopBar: View {
             Spacer(minLength: 12)
 
             if store.isLoading { ProgressView().controlSize(.small) }
+
+            UpdateIndicator()
 
             Button { store.openPalette() } label: {
                 HStack(spacing: 8) {

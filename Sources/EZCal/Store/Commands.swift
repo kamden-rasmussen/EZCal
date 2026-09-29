@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 
 struct PaletteItem: Identifiable {
     let id: String
@@ -88,7 +90,7 @@ extension CalendarStore {
 
     func joinMeeting() {
         switch joinMeetingDecision() {
-        case .open(let url): NSWorkspace.shared.open(url)
+        case .open(let url): Platform.open(url)
         case .confirm(let e): joinRequest = e
         case .error(let msg): errorMessage = msg
         }
@@ -97,7 +99,7 @@ extension CalendarStore {
     /// Confirms joining `joinRequest`, e.g. from the "Join anyway?" dialog.
     func confirmJoin() {
         guard let url = joinRequest?.meetingURL else { return }
-        NSWorkspace.shared.open(url)
+        Platform.open(url)
     }
 
     func openFocused() { if sheet == nil, let e = focusedEvent { sheet = .detail(e) } }
@@ -128,7 +130,11 @@ extension CalendarStore {
     }
 
     func openSettings() {
+        #if os(macOS)
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        #else
+        NotificationCenter.default.post(name: .ezcalOpenSettings, object: nil)
+        #endif
     }
 
     // MARK: - Palette

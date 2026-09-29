@@ -1,5 +1,7 @@
 import Foundation
+#if os(macOS)
 import AppKit
+#endif
 
 /// Auto-clears the focused/selected event after a couple of minutes of inactivity, so a stray
 /// selection (from browsing around the grid) doesn't linger forever — see issue #30.
@@ -14,12 +16,17 @@ extension CalendarStore {
         // catches clicks/keys/scrolls anywhere (menus, sidebar, dialogs) without threading an
         // "activity" callback through every view. Always returns the event unchanged — this only
         // observes, never consumes.
+        #if os(macOS)
         activityMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
         ) { [weak self] event in
             self?.registerActivity()
             return event
         }
+        #else
+        // No global event monitor on iOS: the UI layer calls `registerActivity()` from touch handlers.
+        activityMonitor = true
+        #endif
         Task { [weak self] in
             while true {
                 try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)

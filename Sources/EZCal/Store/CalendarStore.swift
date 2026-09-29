@@ -35,7 +35,9 @@ final class CalendarStore {
     // Loaded
     var calendars: [Source] = []
     var eventsBySource: [String: [CalEvent]] = [:]
-    private(set) var displayEvents: [CalEvent] = []
+    private(set) var displayEvents: [CalEvent] = [] { didSet { dayIndexCache = nil } }
+    /// Per-day buckets of `displayEvents`, built lazily on first read after a change.
+    @ObservationIgnored private var dayIndexCache: DayEventIndex?
     var upcoming: [CalEvent] = []
     var personAccess: [String: PersonAccess] = [:]
     /// Latest per-source fetch error, keyed by `Source.id`. Currently only populated for .ics
@@ -59,6 +61,8 @@ final class CalendarStore {
     var eventKitEnabled = false
     /// `EZCAL_DEMO=1`: fake calendars and events, nothing read from or written to your accounts.
     let isDemo = ProcessInfo.processInfo.environment["EZCAL_DEMO"] != nil
+    /// Demo data is seeded once so in-memory creates/edits/deletes (see Demo.swift) survive reloads.
+    var demoSeeded = false
 
     // Keyboard-driven state
     var focusedEventID: String?
@@ -87,6 +91,8 @@ final class CalendarStore {
     var hasAnyAccount: Bool { !accounts.isEmpty || eventKitEnabled || !icsSubscriptions.isEmpty }
 
     private var generation = 0
+    /// Range covered by the last completed `reload()`; lets the scrolling Week grid decide when to refetch.
+    @ObservationIgnored var loadedRange: Range<Date>?
     private let defaults = UserDefaults.standard
 
     init() {
@@ -186,6 +192,11 @@ final class CalendarStore {
         switch mode {
         case .day:
             return [c.startOfDay(for: anchor)]
+        case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
+            // macOS Week / Work Week scroll continuously (Views/WeekScrollView.swift): `anchor` is the leftmost
+            // visible day and the visible days are the next N column days from there (weekends skipped when hidden).
+            let r = weekColumns
+            return WeekScrollMath.columnDays(from: anchor, count: r.count, rule: r.rule, cal: c)
         case .workWeek:
             let start = mondayStart(anchor)
             return (0..<5).map { c.date(byAdding: .day, value: $0, to: start)! }
@@ -205,6 +216,9 @@ final class CalendarStore {
         let c = cal
         switch mode {
         case .day: return c.startOfDay(for: anchor)..<c.endOfDay(anchor)
+        case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
+            // Visible days plus a two-week buffer either side, so scrolling doesn't refetch per day.
+            return WeekScrollMath.fetchRange(visible: visibleDays, bufferDays: 14, cal: c)
         case .workWeek:
             let s = mondayStart(anchor)
             return s..<c.date(byAdding: .day, value: 5, to: s)!
@@ -212,8 +226,9 @@ final class CalendarStore {
             let s = weekStart(anchor)
             return s..<c.date(byAdding: .day, value: 7, to: s)!
         case .month:
-            let d = visibleDays
-            return d.first!..<c.endOfDay(d.last!)
+            // The scrolling month view shows more than one month at a time; fetch a buffer around it.
+            let g = MonthGrid(cal: c)
+            return g.fetchRange(aroundMonth: g.monthKey(of: anchor))
         }
     }
 
@@ -257,15 +272,26 @@ final class CalendarStore {
         scheduleReload()
     }
 
-    func goToday() { anchor = Date(); scheduleReload() }
-    func goTo(_ d: Date) { anchor = d; scheduleReload() }
+    func goToday() { anchor = alignedLeading(for: Date()); scheduleReload() }
+    func goTo(_ d: Date) { anchor = alignedLeading(for: d); scheduleReload() }
     func setMode(_ m: ViewMode) {
         mode = m
         defaults.set(m.rawValue, forKey: "viewMode")
         scheduleReload()
     }
 
-    func scheduleReload() { Task { await reload() } }
+    private var pendingReload: Task<Void, Never>?
+    /// Coalesces bursts (rapid paging, swipe steps) into one fetch: each call restarts a short
+    /// debounce and only the last one fetches. Once a fetch has started it is left alone (cancelling
+    /// URLSession requests would surface as spurious per-source errors).
+    func scheduleReload() {
+        pendingReload?.cancel()
+        pendingReload = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled, let self else { return }
+            Task { await self.reload() }
+        }
+    }
 
     // MARK: - Sources
 
@@ -545,7 +571,7 @@ final class CalendarStore {
     }
 
     func reload() async {
-        if isDemo { loadDemo(); return }
+        if isDemo { loadDemo(); loadedRange = fetchRange; return }
         generation += 1
         let gen = generation
         guard hasAnyAccount else {
@@ -575,8 +601,12 @@ final class CalendarStore {
         // Keep cached events for hidden sources, replace the ones we just fetched.
         for (k, v) in fresh { eventsBySource[k] = v }
         for (k, v) in access { personAccess[k] = v }
-        errorMessage = firstError
+        // With no visible sources to fetch (e.g. loadCalendars() just failed, leaving `calendars`
+        // empty), there's nothing here to report success or failure on — don't clobber whatever
+        // error loadCalendars() set with a false-positive "all clear".
+        if !sources.isEmpty { errorMessage = firstError }
         isLoading = false
+        loadedRange = range
         rebuildDisplay()
     }
 
@@ -697,11 +727,13 @@ final class CalendarStore {
     // MARK: - Queries for views
 
     func events(on day: Date) -> (allDay: [CalEvent], timed: [CalEvent]) {
-        let c = cal
-        let s = c.startOfDay(for: day), e = c.endOfDay(day)
-        let hit = displayEvents.filter { $0.start < e && max($0.end, $0.start.addingTimeInterval(1)) > s }
-        return (hit.filter(\.isAllDay).sorted { $0.start < $1.start },
-                hit.filter { !$0.isAllDay }.sorted { $0.start < $1.start })
+        _ = displayEvents   // register observation; the index itself is a cache
+        let index: DayEventIndex
+        if let cached = dayIndexCache { index = cached } else {
+            index = DayEventIndex(events: displayEvents, cal: cal)
+            dayIndexCache = index
+        }
+        return index.events(on: day)
     }
 
     /// Optimistically patches one displayed event's time while a drag/save is in flight (`Store/EventDrag.swift`
@@ -755,6 +787,7 @@ final class CalendarStore {
         var d = EventDraft(existing: e, title: e.title, start: e.start, end: end, isAllDay: e.isAllDay,
                            sourceId: e.sourceId, location: e.location, notes: e.notes.strippingHTML,
                            attendees: e.attendees)
+        d.visibility = e.visibility
         d.video = .none
         d.recurrenceScope = scope
         sheet = .editor(d)
@@ -778,6 +811,7 @@ final class CalendarStore {
             throw APIError.invalid("The event must end after it starts.")
         }
         let displayTitle = title.isEmpty ? "(No title)" : title
+        if isDemo { saveDemo(d, title: displayTitle, start: start, end: end); return }
 
         let isEK = existing?.isEventKit ?? (calendars.first { $0.id == d.sourceId }?.isEventKit ?? false)
         var location = d.location
@@ -831,6 +865,8 @@ final class CalendarStore {
             "end": timeDict(end),
         ]
         if notesChanged { body["description"] = notes }
+        // Always sent on edit so changing back to "default" clears it; a new default event omits it.
+        if existing != nil || d.visibility != .default { body["visibility"] = d.visibility.rawValue }
         if let extProps { body["extendedProperties"] = extProps }
         if existing != nil || !d.attendees.isEmpty {
             body["attendees"] = d.attendees.map { a -> [String: Any] in
@@ -870,6 +906,7 @@ final class CalendarStore {
 
     /// `scope` is which occurrences to delete when `e` is recurring; ignored otherwise.
     func delete(_ e: CalEvent, scope: RecurrenceScope = .thisEvent) async {
+        if isDemo { deleteDemo(e, scope: scope); return }
         do {
             if e.isEventKit { try EventKitService.shared.delete(e, span: e.isRecurring ? scope.ekSpan : .thisEvent) }
             else if e.isRecurring { try await deleteGoogleRecurring(e, scope: scope) }
