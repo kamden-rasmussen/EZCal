@@ -2,10 +2,16 @@ APP_NAME := EZCal
 APP      := build/$(APP_NAME).app
 
 .DEFAULT_GOAL := help
-.PHONY: help build run restart install uninstall test debug quit clean ios-test ios-device
+.PHONY: help version release build run restart install uninstall test debug quit clean ios-test ios-device
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+
+version: ## Print the current app version
+	@/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist
+
+release: ## Sign, notarize and zip (VERSION=x.y.z)
+	VERSION=$(VERSION) scripts/release.sh
 
 build: ## Build build/EZCal.app
 	scripts/build_app.sh
