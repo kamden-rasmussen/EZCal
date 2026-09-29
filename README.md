@@ -7,6 +7,7 @@ A free, hackable, native macOS calendar for Google Calendar, inspired by Notion 
 - **Subscribe to .ics calendars**: paste a `webcal://` or `https://` link (a sports schedule, a shared team calendar, a holiday list) and it shows up in the sidebar, read-only, refreshing itself in the background.
 - **Coworker overlay**: search your Google Workspace directory, click a person, and their calendar appears in your grid (full details if they share them with you, free/busy blocks if not)
 - **Zoom in one click**: pick "Zoom" when creating an event, or hit "Add Zoom meeting" on an existing one, with your own defaults (waiting room, mute on entry, join before host, host/participant video, passcode) editable per event. Real Zoom meetings are created through the Zoom API and attached to the event, deleted when you delete the event or remove the link, and updated if you move the event's time. Google Meet works too.
+- **Private events**: set an event's visibility to Default / Public / Private in the editor (Google Calendar's `visibility` field). Private events show a lock for you, and anyone viewing your calendar (including EZCal's coworker overlay) sees only "Busy". Google calendars only; see limits below.
 - **Availability check** while inviting people ("Alice is busy at this time")
 - **Find a time** (⌘F in the editor, or ⌘K → "Find a time for coworkers"): lists the best slots where every attendee you can see is free, with a per-day availability grid; people whose calendars aren't shared show as "unknown" and never block a slot
 - **Join buttons** on every event with a Zoom / Meet / Teams link, plus a menu bar item showing your next meeting
@@ -38,7 +39,7 @@ You bring your own API credentials, so the app is free and nothing is shared wit
 
 Click **Use my iCloud / Apple Calendar accounts** on the welcome screen (or Settings → Accounts) and allow calendar access. EZCal reads whatever accounts you've added in System Settings → Internet Accounts, so to add iCloud, Exchange, etc., add them there.
 
-Limits versus Google calendars: EventKit doesn't let apps invite people or set your RSVP, so those controls and Google Meet are hidden for Apple calendars. Coworker overlay is Google-only.
+Limits versus Google calendars: EventKit doesn't let apps invite people or set your RSVP, so those controls and Google Meet are hidden for Apple calendars. Coworker overlay is Google-only. Event visibility (private events) is Google-only too: EventKit can't read or write iCloud's `CLASS:PRIVATE`, so the Visibility control is hidden for Apple calendars.
 
 ### 0.5 Subscribe to a calendar URL (optional, zero setup)
 
@@ -90,6 +91,8 @@ Add people with the **+** next to *Coworkers* in the sidebar. For each person EZ
 1. **Full events**: works if they've shared their calendar with you (or your org shares calendars org-wide).
 2. **Free/busy blocks**: if only availability is shared, you'll see dashed "Alice · Busy" blocks and an eye-slash icon in the sidebar.
 3. Otherwise the person gets a warning icon: they haven't shared anything.
+
+If a coworker marks an event private, Google hides its details from you and EZCal draws it as a plain "Busy" block (no title, location, guests or link, and it isn't clickable for details), the same as the free/busy fallback.
 
 Each person gets their own color. The same meeting on several calendars is shown once. Coworker events are drawn lighter with an outline and prefixed with their name.
 

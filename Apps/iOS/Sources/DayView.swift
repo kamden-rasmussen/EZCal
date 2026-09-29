@@ -264,7 +264,8 @@ struct DayView: View {
         let h = max(CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hourHeight, 20)
         let w = colWidth / CGFloat(item.columns)
         VStack(alignment: .leading, spacing: 0) {
-            Text(e.title).font(.caption2.bold()).lineLimit(2)
+            (e.isPrivate && !e.isBusyOnly ? Text(Image(systemName: "lock.fill")) + Text(" ") + Text(e.title) : Text(e.title))
+                .font(.caption2.bold()).lineLimit(2)
             if h > 34 { Text(e.start.formatted(date: .omitted, time: .shortened)).font(.system(size: 9)) }
         }
         .padding(3)
@@ -299,7 +300,8 @@ struct DayView: View {
         let editable = canDrag(e)
         let selected = editable && selectedID == e.id
         let body = VStack(alignment: .leading, spacing: 0) {
-            Text(e.title).font(.caption.bold()).lineLimit(2)
+            (e.isPrivate && !e.isBusyOnly ? Text(Image(systemName: "lock.fill")) + Text(" ") + Text(e.title) : Text(e.title))
+                .font(.caption.bold()).lineLimit(2)
             if h > 40 { Text(s.formatted(date: .omitted, time: .shortened)).font(.caption2) }
         }
         .padding(4)

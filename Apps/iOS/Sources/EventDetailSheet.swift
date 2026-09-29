@@ -13,6 +13,10 @@ struct EventDetailSheet: View {
                     Text(event.title.isEmpty ? "(No title)" : event.title).font(.title3.bold())
                         .accessibilityIdentifier("detailTitle")
                     LabeledContent("When", value: whenText)
+                    if event.isPrivate && !event.isBusyOnly {
+                        Label("Private — others see this only as Busy", systemImage: "lock.fill")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
                     HStack {
                         Text("Calendar")
                         Spacer()

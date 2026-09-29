@@ -63,6 +63,13 @@ struct EventEditorSheet: View {
 
                 Section {
                     TextField("Location", text: $draft.location).accessibilityIdentifier("editorLocation")
+                    // EventKit has no privacy setting, so this is Google-only.
+                    if !isEK {
+                        Picker("Visibility", selection: $draft.visibility) {
+                            ForEach(EventVisibility.allCases) { Text($0.label).tag($0) }
+                        }
+                        .accessibilityIdentifier("editorVisibility")
+                    }
                     if isNew {
                         Picker("Video call", selection: $draft.video) {
                             Text("None").tag(EventDraft.Video.none)

@@ -56,6 +56,31 @@ struct Attendee: Hashable, Sendable {
     var display: String { (name?.isEmpty == false ? name! : email) }
 }
 
+/// Google Calendar's per-event `visibility` field. `.private` hides an event's details from anyone
+/// but the owner (others see only a "Busy" block). EventKit/iCloud has no equivalent.
+enum EventVisibility: String, Codable, CaseIterable, Identifiable, Sendable {
+    case `default`, `public`, `private`
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .default: return "Default visibility"
+        case .public: return "Public"
+        case .private: return "Private"
+        }
+    }
+
+    /// Lenient decoding of the API's string: unknown values (e.g. `confidential`, which Google
+    /// reserves for legacy imports) are treated as private so nothing leaks.
+    init(apiValue: String?) {
+        switch apiValue {
+        case nil, "default"?: self = .default
+        case "public"?: self = .public
+        default: self = .private
+        }
+    }
+}
+
 struct CalEvent: Identifiable, Hashable, Sendable {
     var id: String
     var eventId: String
@@ -82,6 +107,7 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     /// Google's id for the recurring event's master/series (nil for a non-recurring event, or an
     /// EventKit one — EventKit doesn't distinguish instance vs. series ids the way Google does).
     var recurringEventId: String? = nil
+    var visibility: EventVisibility = .default
     var zoomMeetingID: String?
     var isTentative: Bool
     var isDeclined: Bool
@@ -91,6 +117,8 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     var isICS: Bool { sourceId.hasPrefix("ics|") }
     var meetingProvider: MeetingProvider? { meetingURL.map(MeetingProvider.init(url:)) }
     var selfAttendee: Attendee? { attendees.first { $0.isSelf } }
+    /// Marked private, so others only see it as "Busy". Shown with a lock to the owner.
+    var isPrivate: Bool { visibility == .private }
 
     /// Whether `date` falls within the event's span — i.e. it's happening right now.
     func isInProgress(at date: Date = Date()) -> Bool { start <= date && date < end }
@@ -169,6 +197,8 @@ struct EventDraft: Identifiable {
     var recurrenceScope: RecurrenceScope = .thisEvent
     /// Recurrence to create a new event with; ignored when editing an existing event.
     var recurrence: RecurrenceOption = .none
+    /// Google's `visibility`. Not offered (and never written) for EventKit calendars.
+    var visibility: EventVisibility = .default
 }
 
 enum ViewMode: String, CaseIterable, Identifiable {

@@ -639,6 +639,10 @@ struct EventBlock: View {
                     Image(systemName: "repeat").font(.system(size: 9)).opacity(0.75).padding(.top, 1)
                         .accessibilityHidden(true)
                 }
+                if event.isPrivate, !event.isBusyOnly, !compact {
+                    Image(systemName: "lock.fill").font(.system(size: 9)).opacity(0.75).padding(.top, 1)
+                        .accessibilityHidden(true)
+                }
                 Text(titleText)
                     .font(.system(size: compact ? 11 : 12, weight: .semibold))
                     .strikethrough(event.isDeclined)
@@ -771,7 +775,7 @@ struct EventBlock: View {
     private var accessibilityText: String {
         let who = event.ownerName.map { "\($0): " } ?? ""
         let time = event.start.formatted(date: .omitted, time: .shortened)
-        return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "") + (event.isRecurring ? ", repeats" : "")
+        return "\(who)\(event.isBusyOnly ? "Busy" : event.title), \(time)" + (event.meetingURL != nil ? ", has video call" : "") + (event.isRecurring ? ", repeats" : "") + (event.isPrivate && !event.isBusyOnly ? ", private" : "")
     }
 }
 
