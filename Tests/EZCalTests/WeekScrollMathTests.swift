@@ -123,4 +123,17 @@ final class WeekScrollMathTests: XCTestCase {
         XCTAssertTrue(WeekScrollMath.shouldAnimate(columns: -21))
         XCTAssertFalse(WeekScrollMath.shouldAnimate(columns: 22))
     }
+
+    func testHeaderColumnGeometryMatchesGridAtRestAndMidPan() {
+        let colW: CGFloat = 137.5
+        // At rest on column 12: its header sits at x = 0; the next one exactly one column over.
+        XCTAssertEqual(WeekScrollMath.columnX(index: 12, colWidth: colW, offset: 12 * colW), 0)
+        XCTAssertEqual(WeekScrollMath.columnX(index: 13, colWidth: colW, offset: 12 * colW), colW)
+        // Mid-pan (40% of a column): everything shifted by exactly the pan distance.
+        let off = 12 * colW + 0.4 * colW
+        XCTAssertEqual(WeekScrollMath.columnX(index: 12, colWidth: colW, offset: off), -0.4 * colW, accuracy: 0.0001)
+        // The leading column is still the nearest one until the halfway point.
+        XCTAssertEqual(WeekScrollMath.leadingIndex(offset: off, colWidth: colW, count: 400), 12)
+        XCTAssertEqual(WeekScrollMath.leadingIndex(offset: 12 * colW + 0.6 * colW, colWidth: colW, count: 400), 13)
+    }
 }

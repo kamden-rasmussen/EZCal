@@ -135,7 +135,9 @@ struct WeekScrollGrid: View {
                     }
                 }
                 .scrollTargetLayout()
+                .background(ScrollOffsetReader { handleOffset($0, colW: colW) })
                 .background {
+                    // Fallback path; the AppKit reader above is the reliable per-frame source.
                     GeometryReader { g in
                         Color.clear.preference(key: WeekScrollOffsetKey.self,
                                                value: -g.frame(in: .named(coordinateSpaceName)).minX)
@@ -194,13 +196,11 @@ struct WeekScrollGrid: View {
         guard ready, !days.isEmpty else { return }
         let idx = WeekScrollMath.leadingIndex(offset: offset, colWidth: colW, count: days.count)
         let d = days[idx]
+        if let t = model.target, d == t { model.target = nil; model.targetTask?.cancel() }   // arrived
         guard model.leading != d else { return }
         model.leading = d
-        if let t = model.target {
-            // Programmatic scroll in flight: the anchor is already where it should end up.
-            if d == t { model.target = nil; model.targetTask?.cancel() }
-            return
-        }
+        // Programmatic scroll still in flight: the anchor is already where it should end up.
+        if model.target != nil { return }
         model.recentPushes.removeAll { Date().timeIntervalSince($0.at) > 1.5 }
         model.recentPushes.append((d, Date()))
         Task { @MainActor in store.weekScrollAnchorChanged(to: d) }
@@ -273,6 +273,46 @@ struct WeekScrollGrid: View {
     }
 }
 
+/// Reports the horizontal content offset of the NSScrollView enclosing it, on every bounds change (i.e. every
+/// frame of a drag or inertial glide). Placed in the scroll content's background. SwiftUI's GeometryReader
+/// preference does not reliably fire while a ScrollView scrolls on macOS, so this reads AppKit directly.
+private struct ScrollOffsetReader: NSViewRepresentable {
+    let onChange: (CGFloat) -> Void
+
+    final class Tracker: NSView {
+        var onChange: ((CGFloat) -> Void)?
+        private var observer: NSObjectProtocol?
+        private weak var clip: NSClipView?
+
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); attach() }
+        override func viewDidMoveToSuperview() { super.viewDidMoveToSuperview(); attach() }
+
+        func attach() {
+            guard let clipView = enclosingScrollView?.contentView, clipView !== clip else { return }
+            if let o = observer { NotificationCenter.default.removeObserver(o) }
+            clip = clipView
+            clipView.postsBoundsChangedNotifications = true
+            observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clipView, queue: .main) { [weak self, weak clipView] _ in
+                guard let clipView else { return }
+                self?.onChange?(clipView.bounds.origin.x)
+            }
+            onChange?(clipView.bounds.origin.x)
+        }
+        deinit { if let o = observer { NotificationCenter.default.removeObserver(o) } }
+    }
+
+    func makeNSView(context: Context) -> Tracker {
+        let t = Tracker()
+        t.onChange = onChange
+        DispatchQueue.main.async { [weak t] in t?.attach() }   // superview chain may not be complete yet
+        return t
+    }
+    func updateNSView(_ nsView: Tracker, context: Context) {
+        nsView.onChange = onChange
+        nsView.attach()
+    }
+}
+
 private struct WeekScrollOffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
@@ -320,7 +360,7 @@ private struct WeekHeaderStrip: View {
             ZStack(alignment: .topLeading) {
                 if let r = range {
                     WeekHeaderCells(days: Array(days[r]), colW: colW, dayRowHeight: dayRowHeight, chipsHeight: chipsHeight)
-                        .offset(x: CGFloat(r.lowerBound) * colW - offset)
+                        .offset(x: WeekScrollMath.columnX(index: r.lowerBound, colWidth: colW, offset: offset))
                 }
             }
             .frame(width: gridW, height: dayRowHeight + chipsHeight, alignment: .topLeading)

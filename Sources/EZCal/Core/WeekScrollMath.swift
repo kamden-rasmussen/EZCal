@@ -118,4 +118,10 @@ enum WeekScrollMath {
 
     /// Short hops animate; long jumps (Today from months away) would whip through the lazy strip, so they cut.
     static func shouldAnimate(columns: Int) -> Bool { abs(columns) <= 21 }
+
+    /// Screen x (relative to the grid's leading edge) of column `index` at scroll `offset`. The header strip and
+    /// the day grid both use this geometry, so a header date sits exactly above its column at rest and mid-pan.
+    static func columnX(index: Int, colWidth: CGFloat, offset: CGFloat) -> CGFloat {
+        CGFloat(index) * colWidth - offset
+    }
 }
