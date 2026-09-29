@@ -85,6 +85,11 @@ final class CalendarStore {
     var hasAnyAccount: Bool { !accounts.isEmpty || eventKitEnabled || !icsSubscriptions.isEmpty }
 
     private var generation = 0
+    /// Range covered by the last completed `reload()`; lets the scrolling Week grid decide when to refetch.
+    @ObservationIgnored var loadedRange: Range<Date>?
+    @ObservationIgnored private var reloadDebounce: Task<Void, Never>?
+    /// Per-day event buckets, rebuilt lazily after `displayEvents` changes (see `events(on:)`).
+    @ObservationIgnored private var dayEventMemo: [Date: (allDay: [CalEvent], timed: [CalEvent])] = [:]
     private let defaults = UserDefaults.standard
 
     init() {
@@ -182,6 +187,11 @@ final class CalendarStore {
         switch mode {
         case .day:
             return [c.startOfDay(for: anchor)]
+        case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
+            // macOS Week / Work Week scroll continuously (Views/WeekScrollView.swift): `anchor` is the leftmost
+            // visible day and the visible days are the next N column days from there (weekends skipped when hidden).
+            let r = weekColumns
+            return WeekScrollMath.columnDays(from: anchor, count: r.count, rule: r.rule, cal: c)
         case .workWeek:
             let start = mondayStart(anchor)
             return (0..<5).map { c.date(byAdding: .day, value: $0, to: start)! }
@@ -201,6 +211,9 @@ final class CalendarStore {
         let c = cal
         switch mode {
         case .day: return c.startOfDay(for: anchor)..<c.endOfDay(anchor)
+        case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
+            // Visible days plus a two-week buffer either side, so scrolling doesn't refetch per day.
+            return WeekScrollMath.fetchRange(visible: visibleDays, bufferDays: 14, cal: c)
         case .workWeek:
             let s = mondayStart(anchor)
             return s..<c.date(byAdding: .day, value: 5, to: s)!
@@ -253,8 +266,8 @@ final class CalendarStore {
         scheduleReload()
     }
 
-    func goToday() { anchor = Date(); scheduleReload() }
-    func goTo(_ d: Date) { anchor = d; scheduleReload() }
+    func goToday() { anchor = alignedLeading(for: Date()); scheduleReload() }
+    func goTo(_ d: Date) { anchor = alignedLeading(for: d); scheduleReload() }
     func setMode(_ m: ViewMode) {
         mode = m
         defaults.set(m.rawValue, forKey: "viewMode")
@@ -262,6 +275,16 @@ final class CalendarStore {
     }
 
     func scheduleReload() { Task { await reload() } }
+
+    /// Coalesces bursts (continuous scrolling) into one reload after the position settles.
+    func scheduleReloadDebounced() {
+        reloadDebounce?.cancel()
+        reloadDebounce = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled, let self else { return }
+            await self.reload()
+        }
+    }
 
     // MARK: - Sources
 
@@ -520,7 +543,7 @@ final class CalendarStore {
     }
 
     func reload() async {
-        if isDemo { loadDemo(); return }
+        if isDemo { loadDemo(); loadedRange = fetchRange; return }
         generation += 1
         let gen = generation
         guard hasAnyAccount else {
@@ -552,6 +575,7 @@ final class CalendarStore {
         for (k, v) in access { personAccess[k] = v }
         errorMessage = firstError
         isLoading = false
+        loadedRange = range
         rebuildDisplay()
     }
 
@@ -667,16 +691,23 @@ final class CalendarStore {
         let realSlots = Set(real.map { "\($0.start.timeIntervalSince1970)|\($0.end.timeIntervalSince1970)" })
         busy.removeAll { realSlots.contains("\($0.start.timeIntervalSince1970)|\($0.end.timeIntervalSince1970)") }
         displayEvents = real + busy
+        dayEventMemo.removeAll(keepingCapacity: true)
     }
 
     // MARK: - Queries for views
 
     func events(on day: Date) -> (allDay: [CalEvent], timed: [CalEvent]) {
+        let all = displayEvents   // read first so views calling this still track changes
         let c = cal
-        let s = c.startOfDay(for: day), e = c.endOfDay(day)
-        let hit = displayEvents.filter { $0.start < e && max($0.end, $0.start.addingTimeInterval(1)) > s }
-        return (hit.filter(\.isAllDay).sorted { $0.start < $1.start },
-                hit.filter { !$0.isAllDay }.sorted { $0.start < $1.start })
+        let s = c.startOfDay(for: day)
+        // Memoized per day until `displayEvents` changes: the scrolling grid asks for the same days every frame.
+        if let cached = dayEventMemo[s] { return cached }
+        let e = c.endOfDay(day)
+        let hit = all.filter { $0.start < e && max($0.end, $0.start.addingTimeInterval(1)) > s }
+        let result = (allDay: hit.filter(\.isAllDay).sorted { $0.start < $1.start },
+                      timed: hit.filter { !$0.isAllDay }.sorted { $0.start < $1.start })
+        dayEventMemo[s] = result
+        return result
     }
 
     /// Optimistically patches one displayed event's time while a drag/save is in flight (`Store/EventDrag.swift`
@@ -685,6 +716,7 @@ final class CalendarStore {
         guard let i = displayEvents.firstIndex(where: { $0.id == eventID }) else { return }
         displayEvents[i].start = start
         displayEvents[i].end = end
+        dayEventMemo.removeAll(keepingCapacity: true)
     }
 
     var nextMeeting: CalEvent? {
