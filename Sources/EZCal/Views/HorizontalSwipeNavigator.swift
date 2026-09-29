@@ -10,55 +10,43 @@ import AppKit
 /// this window before normal dispatch, and we forward anything that isn't a clear horizontal swipe
 /// unchanged, so the grid's own vertical scrolling is untouched.
 struct HorizontalSwipeNavigator: NSViewRepresentable {
-    /// Called once per step: -1 = back, +1 = forward. What a step means (a day, a month) is up to
-    /// the caller, which should read the current mode when invoked.
-    let onStep: (Int) -> Void
-    /// Pacing for the current view mode. Refreshed in `updateNSView`, so switching modes takes effect.
-    let config: SwipeStepper
+    /// Called once per day advanced: -1 = one day back, +1 = one day forward.
+    let onStepDay: (Int) -> Void
+
+    /// Points of accumulated horizontal delta per day advanced. Small on purpose — this should read
+    /// as a smooth, continuous pull, not a springy threshold you have to shove past.
+    private static let pointsPerDay: CGFloat = 28
 
     final class Coordinator {
         var monitor: Any?
         weak var window: NSWindow?
-        var parent: HorizontalSwipeNavigator?
-        var stepper = SwipeStepper(pointsPerStep: 28)
+        var accumulated: CGFloat = 0
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        context.coordinator.parent = self
-        context.coordinator.stepper = config
         // The view has no window yet on this pass; grab it once AppKit finishes attaching us.
         DispatchQueue.main.async { [weak view] in
             guard let window = view?.window else { return }
             context.coordinator.window = window
             context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak coordinator = context.coordinator] event in
                 guard let coordinator, coordinator.window === event.window else { return event }
-                return coordinator.parent?.handle(event, coordinator) == true ? nil : event
+                return handle(event, coordinator) ? nil : event
             }
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        let c = context.coordinator
-        c.parent = self
-        // Only swap the stepper when pacing actually changed, so an in-flight gesture isn't reset.
-        if c.stepper.pointsPerStep != config.pointsPerStep
-            || c.stepper.maxStepsPerGesture != config.maxStepsPerGesture
-            || c.stepper.minWheelInterval != config.minWheelInterval {
-            c.stepper = config
-        }
-    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
         if let m = coordinator.monitor { NSEvent.removeMonitor(m) }
     }
 
     /// Returns true if the event was a horizontal swipe we've consumed.
-    /// Returns true if the event was a horizontal swipe we've consumed.
-    fileprivate func handle(_ event: NSEvent, _ c: Coordinator) -> Bool {
+    private func handle(_ event: NSEvent, _ c: Coordinator) -> Bool {
         // Inertial scrolling after fingers lift: never treat as a fresh gesture, just let it fizzle.
         guard event.momentumPhase == [] else { return false }
 
@@ -67,17 +55,22 @@ struct HorizontalSwipeNavigator: NSViewRepresentable {
 
         if event.phase == [] {
             // A plain scroll wheel with no gesture phases (rare on modern trackpads/mice): each
-            // qualifying tick advances one step (throttled), no accumulation needed.
+            // qualifying tick advances one day, no accumulation needed.
             guard abs(dx) > 4 else { return false }
-            if let step = c.stepper.wheelTick(dx, at: event.timestamp) { onStep(step) }
+            onStepDay(dx < 0 ? 1 : -1)
             return true
         }
 
-        if event.phase.contains(.began) { c.stepper.beginGesture() }
-        defer { if event.phase.contains(.ended) || event.phase.contains(.cancelled) { c.stepper.endGesture() } }
+        if event.phase.contains(.began) { c.accumulated = 0 }
+        defer { if event.phase.contains(.ended) || event.phase.contains(.cancelled) { c.accumulated = 0 } }
 
-        // Consume the delta in whole steps, carrying any remainder.
-        for step in c.stepper.add(dx) { onStep(step) }
+        // Consume the delta in whole-day chunks, carrying any remainder — a long, fast swipe can
+        // advance several days in one gesture, same as dragging further would in a paged scroller.
+        c.accumulated += dx
+        while abs(c.accumulated) >= Self.pointsPerDay {
+            if c.accumulated < 0 { c.accumulated += Self.pointsPerDay; onStepDay(1) }
+            else { c.accumulated -= Self.pointsPerDay; onStepDay(-1) }
+        }
         return true
     }
 }

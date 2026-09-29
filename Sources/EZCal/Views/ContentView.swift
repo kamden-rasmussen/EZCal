@@ -38,15 +38,10 @@ struct ContentView: View {
                         .focused($gridFocused)
                         .focusEffectDisabled()
                         .onKeyPress(phases: .down) { handle($0) }
-                        .background(HorizontalSwipeNavigator(
-                            onStep: { n in
-                                guard store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }
-                                // Month: one month per swipe. Everything else glides a day at a time.
-                                if store.mode == .month { store.step(n) } else { store.stepDay(n) }
-                            },
-                            config: store.mode == .month
-                                ? SwipeStepper(pointsPerStep: 90, maxStepsPerGesture: 1, minWheelInterval: 0.35)
-                                : SwipeStepper(pointsPerStep: 28)))
+                        .background(HorizontalSwipeNavigator { days in
+                            guard store.mode != .month, store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }  // Month scrolls vertically instead
+                            store.stepDay(days)
+                        })
                     }
                     .frame(maxWidth: .infinity)
 

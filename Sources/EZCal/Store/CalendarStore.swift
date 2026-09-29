@@ -31,7 +31,9 @@ final class CalendarStore {
     // Loaded
     var calendars: [Source] = []
     var eventsBySource: [String: [CalEvent]] = [:]
-    private(set) var displayEvents: [CalEvent] = []
+    private(set) var displayEvents: [CalEvent] = [] { didSet { dayIndexCache = nil } }
+    /// Per-day buckets of `displayEvents`, built lazily on first read after a change.
+    @ObservationIgnored private var dayIndexCache: DayEventIndex?
     var upcoming: [CalEvent] = []
     var personAccess: [String: PersonAccess] = [:]
     /// Latest per-source fetch error, keyed by `Source.id`. Currently only populated for .ics
@@ -208,8 +210,9 @@ final class CalendarStore {
             let s = weekStart(anchor)
             return s..<c.date(byAdding: .day, value: 7, to: s)!
         case .month:
-            let d = visibleDays
-            return d.first!..<c.endOfDay(d.last!)
+            // The scrolling month view shows more than one month at a time; fetch a buffer around it.
+            let g = MonthGrid(cal: c)
+            return g.fetchRange(aroundMonth: g.monthKey(of: anchor))
         }
     }
 
@@ -684,11 +687,13 @@ final class CalendarStore {
     // MARK: - Queries for views
 
     func events(on day: Date) -> (allDay: [CalEvent], timed: [CalEvent]) {
-        let c = cal
-        let s = c.startOfDay(for: day), e = c.endOfDay(day)
-        let hit = displayEvents.filter { $0.start < e && max($0.end, $0.start.addingTimeInterval(1)) > s }
-        return (hit.filter(\.isAllDay).sorted { $0.start < $1.start },
-                hit.filter { !$0.isAllDay }.sorted { $0.start < $1.start })
+        _ = displayEvents   // register observation; the index itself is a cache
+        let index: DayEventIndex
+        if let cached = dayIndexCache { index = cached } else {
+            index = DayEventIndex(events: displayEvents, cal: cal)
+            dayIndexCache = index
+        }
+        return index.events(on: day)
     }
 
     /// Optimistically patches one displayed event's time while a drag/save is in flight (`Store/EventDrag.swift`
