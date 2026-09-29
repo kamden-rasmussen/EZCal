@@ -2,7 +2,7 @@
 # Builds, signs (Developer ID), notarizes and zips EZCal. Usage: VERSION=1.0.0 scripts/release.sh
 # Needs: Developer ID Application cert in keychain, `xcrun notarytool store-credentials ezcal-notary`,
 # and Sources/EZCal/Core/Secrets.swift (compiled in), plus `gh` logged in with push access to the tap.
-# Publishes to the tap's GitHub Releases, bumps Casks/ezcal.rb, and tags this repo. PUBLISH=0 stops after the zip.
+# Publishes to the tap's GitHub Releases, bumps Casks/ezcal.rb (draft release -> bump cask -> publish release), and tags this repo. PUBLISH=0 stops after the zip.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${VERSION:?Set VERSION=x.y.z}"
@@ -30,7 +30,10 @@ shasum -a 256 "$ZIP"
 
 [ "$PUBLISH" = 1 ] || exit 0
 SHA=$(shasum -a 256 "$ZIP" | awk '{print $1}')
-gh release create "$TAG" "$ZIP" --repo "$TAP" --title "EZCal $VERSION" --notes "EZCal $VERSION"
+# The in-app update checker treats any visible ezcal-v* release as "new version available" and tells users to
+# run `brew upgrade`, so the release must not be visible until the cask points at it. Order: draft release
+# (asset uploaded, so the cask URL resolves) -> bump + push cask -> make the release visible.
+gh release create "$TAG" "$ZIP" --repo "$TAP" --title "EZCal $VERSION" --notes "EZCal $VERSION" --draft
 
 TMP=$(mktemp -d)
 gh repo clone "$TAP" "$TMP" -- --quiet
@@ -38,6 +41,8 @@ sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  
 git -C "$TMP" commit -qam "ezcal $VERSION"
 git -C "$TMP" push -q
 rm -rf "$TMP"
+
+gh release edit "$TAG" --repo "$TAP" --draft=false
 
 git tag "v$VERSION" && git push origin "v$VERSION"
 echo "Released $VERSION. Users: brew update && brew upgrade --cask ezcal"

@@ -41,7 +41,7 @@ extension CalendarStore {
         guard let f = days.first, let l = days.last else { return }
         let visible = f..<cal.endOfDay(l)
         if WeekScrollMath.needsReload(visible: visible, loaded: loadedRange, margin: 7 * 24 * 3600) {
-            scheduleReloadDebounced()
+            scheduleReload()   // already debounced (120ms)
         }
     }
 }
