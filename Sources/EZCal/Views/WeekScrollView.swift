@@ -38,12 +38,16 @@ final class WeekScrollModel {
     @ObservationIgnored var leading: Date?
     /// Column width the last offset was reported with; a change means the next offset is stale (see `handleOffset`).
     @ObservationIgnored var lastColW: CGFloat?
+    /// Latest column width, kept current from the width observer so offset callbacks can't pin with a stale one.
+    @ObservationIgnored var colW: CGFloat?
     /// Day a programmatic scroll is heading to; while set, scroll-derived anchor updates are suppressed.
     @ObservationIgnored var target: Date?
     /// Days this grid itself just wrote to `store.anchor`, so the anchor observer can tell them from external
     /// navigation (toolbar, keys, Today) and not scroll back to a stale value.
     @ObservationIgnored var recentPushes: [(day: Date, at: Date)] = []
     @ObservationIgnored var proxy: ScrollViewProxy?
+    /// The day grid's AppKit clip view, used to pin the leading day synchronously while the width animates.
+    @ObservationIgnored weak var clip: NSClipView?
     @ObservationIgnored var targetTask: Task<Void, Never>?
     @ObservationIgnored var extendTask: Task<Void, Never>?
     /// True while the grid's width is changing; offsets measured mid-resize are meaningless and are ignored.
@@ -71,7 +75,7 @@ struct WeekScrollGrid: View {
     private let trailing: CGFloat = 8
     private let coordinateSpaceName = "weekScroll"
     /// Window size in weeks either side of the anchor; extended by `extendWeeks` when within `edgeWeeks` of an end.
-    private let windowWeeks = 26, extendWeeks = 26, edgeWeeks = 4
+    private let windowWeeks = 8, extendWeeks = 8, edgeWeeks = 3
 
     private var rule: WeekScrollMath.ColumnRule { mode == .workWeek ? .monFri : (showWeekends ? .all : .localeWeekdays) }
     private var count: Int { (mode == .workWeek || !showWeekends) ? 5 : 7 }
@@ -82,6 +86,7 @@ struct WeekScrollGrid: View {
         GeometryReader { geo in
             let gridW = max(geo.size.width - gutter - secondaryWidth - trailing, 1)
             let colW = gridW / CGFloat(count)
+            let _ = model.colW = colW   // current before AppKit lays the columns out, for `onContentResize` below
             VStack(spacing: 0) {
                 WeekHeaderStrip(model: model, days: days, colW: colW, gridW: gridW, gutter: gutter,
                                 secondaryZone: secondaryZone, secondaryWidth: secondaryWidth)
@@ -93,6 +98,10 @@ struct WeekScrollGrid: View {
                 // Width changing (window resize, panel animating in/out): stop trusting offsets until it settles,
                 // then have the parent rebuild the grid on the day we were on (`store.anchor`).
                 guard ready else { return }
+                // Keep the same day under the leading edge on every frame of the animation instead of letting the
+                // point offset drift onto other days until the resize settles.
+                model.colW = colW
+                if let lead = model.leading { pinNow(lead, colW: colW) }
                 model.resizing = true
                 model.resizeTask?.cancel()
                 model.resizeTask = Task { @MainActor in
@@ -149,7 +158,11 @@ struct WeekScrollGrid: View {
     private func dayScroller(colW: CGFloat) -> some View {
         ScrollViewReader { hproxy in
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 0) {
+                // Not lazy: a LazyHStack caches the widths of columns it has measured, so after the grid's width changes
+                // (detail panel, sidebar, window resize) it mixes old and new sizes, realizes the wrong days or none,
+                // and scrollTo lands off target. A plain HStack puts day `i` at exactly `i * colW`, which is what
+                // the pinning below relies on; the window is kept small enough for that to stay cheap.
+                HStack(alignment: .top, spacing: 0) {
                     ForEach(days, id: \.self) { day in
                         DayColumn(day: day, hourHeight: hourHeight)
                             .frame(width: colW, height: hourHeight * 24)
@@ -157,7 +170,7 @@ struct WeekScrollGrid: View {
                     }
                 }
                 .scrollTargetLayout()
-                .background(ScrollOffsetReader { handleOffset($0, colW: colW) })
+                .background(ScrollOffsetReader(onChange: { handleOffset($0, colW: colW) }, onAttach: { model.clip = $0 }, onContentResize: { pinLeadingAfterLayout() }))
                 .background {
                     // Fallback path; the AppKit reader above is the reliable per-frame source.
                     GeometryReader { g in
@@ -167,6 +180,10 @@ struct WeekScrollGrid: View {
                 }
             }
             .coordinateSpace(name: coordinateSpaceName)
+            // The panel's 0.2s animation (ContentView) also reaches this scroller: pinning the day back through an
+            // animated transaction glides the offset there instead of jumping, so the grid visibly slides in from
+            // the wrong week. Width changes must not animate the offset (week-step scrolls animate explicitly).
+            .transaction(value: colW) { $0.animation = nil }
             .scrollTargetBehavior(.viewAligned)
             .scrollIndicators(.hidden)
             .onAppear { model.proxy = hproxy }
@@ -221,7 +238,7 @@ struct WeekScrollGrid: View {
     /// Called for every content-offset change of the day grid (every frame while scrolling).
     private func handleOffset(_ offset: CGFloat, colW: CGFloat) {
         model.offset = offset
-        guard ready, !days.isEmpty, !model.resizing else { return }
+        guard ready, !days.isEmpty else { return }
         // The grid was resized (e.g. the detail panel opened or closed): this offset was measured against the old
         // column width, so dividing it by the new one would name the wrong day and push it to `store.anchor`.
         // Keep the day we were on and pin it back instead.
@@ -229,8 +246,16 @@ struct WeekScrollGrid: View {
             model.lastColW = colW
             if let lead = model.leading {
                 beginProgrammatic(target: lead)
-                scrollTo(lead, animated: false)
+                // This runs inside SwiftUI's own scroll-view update (the resize moves the clip view), where
+                // ScrollViewProxy.scrollTo traps its precondition: pin through AppKit, or hop a turn if we can't.
+                if !pinNow(lead, colW: colW) { Task { @MainActor in scrollTo(lead, animated: false) } }
             }
+            return
+        }
+        if model.resizing {
+            // SwiftUI re-applies its own offset while it lays the resized content out (drifting us off the day);
+            // keep putting the leading day back on the edge until the width settles.
+            if let lead = model.leading { pinNow(lead, colW: model.colW ?? colW) }
             return
         }
         model.lastColW = colW
@@ -269,6 +294,25 @@ struct WeekScrollGrid: View {
                 scrollTo(target, animated: false)
             }
         }
+    }
+
+    /// Keeps the leading day on the leading edge when the columns' layout size changes under the scroller.
+    private func pinLeadingAfterLayout() {
+        guard ready, let lead = model.leading, let colW = model.colW else { return }
+        pinNow(lead, colW: colW)
+    }
+
+    /// Moves the day grid's clip view straight onto `day`'s column at this width. Safe inside a SwiftUI update,
+    /// unlike `ScrollViewProxy.scrollTo`. Returns false when the clip view or day isn't available.
+    @discardableResult
+    private func pinNow(_ day: Date, colW: CGFloat) -> Bool {
+        guard let clip = model.clip, let idx = days.firstIndex(of: day) else { return false }
+        let x = CGFloat(idx) * colW
+        if abs(clip.bounds.origin.x - x) > 0.5 {
+            clip.scroll(to: NSPoint(x: x, y: clip.bounds.origin.y))
+            clip.enclosingScrollView?.reflectScrolledClipView(clip)
+        }
+        return true
     }
 
     private func scrollTo(_ day: Date, animated: Bool) {
@@ -318,10 +362,23 @@ struct WeekScrollGrid: View {
 /// preference does not reliably fire while a ScrollView scrolls on macOS, so this reads AppKit directly.
 private struct ScrollOffsetReader: NSViewRepresentable {
     let onChange: (CGFloat) -> Void
+    var onAttach: (NSClipView) -> Void = { _ in }
+    var onContentResize: () -> Void = {}
 
     final class Tracker: NSView {
         var onChange: ((CGFloat) -> Void)?
+        var onAttach: ((NSClipView) -> Void)?
+        var onContentResize: (() -> Void)?
+
+        /// The columns were just laid out at a new size (panel, sidebar, window resize, columns added). This runs in
+        /// the same AppKit layout pass, before anything is drawn, so the offset can be corrected without a wrong frame.
+        override func setFrameSize(_ newSize: NSSize) {
+            let changed = newSize != frame.size
+            super.setFrameSize(newSize)
+            if changed { onContentResize?() }
+        }
         private var observer: NSObjectProtocol?
+        private var frameObserver: NSObjectProtocol?
         private weak var clip: NSClipView?
 
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); attach() }
@@ -330,7 +387,17 @@ private struct ScrollOffsetReader: NSViewRepresentable {
         func attach() {
             guard let clipView = enclosingScrollView?.contentView, clipView !== clip else { return }
             if let o = observer { NotificationCenter.default.removeObserver(o) }
+            if let o = frameObserver { NotificationCenter.default.removeObserver(o) }
             clip = clipView
+            // The scroll content was resized: posted synchronously inside the resize (no queue), so the offset can be
+            // corrected before the next draw instead of one run-loop turn later.
+            if let doc = clipView.documentView {
+                doc.postsFrameChangedNotifications = true
+                frameObserver = NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: doc, queue: nil) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.onContentResize?() }
+                }
+            }
+            onAttach?(clipView)
             clipView.postsBoundsChangedNotifications = true
             observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clipView, queue: .main) { [weak self, weak clipView] _ in
                 guard let clipView else { return }
@@ -338,17 +405,24 @@ private struct ScrollOffsetReader: NSViewRepresentable {
             }
             onChange?(clipView.bounds.origin.x)
         }
-        deinit { if let o = observer { NotificationCenter.default.removeObserver(o) } }
+        deinit {
+            if let o = observer { NotificationCenter.default.removeObserver(o) }
+            if let o = frameObserver { NotificationCenter.default.removeObserver(o) }
+        }
     }
 
     func makeNSView(context: Context) -> Tracker {
         let t = Tracker()
         t.onChange = onChange
+        t.onAttach = onAttach
+        t.onContentResize = onContentResize
         DispatchQueue.main.async { [weak t] in t?.attach() }   // superview chain may not be complete yet
         return t
     }
     func updateNSView(_ nsView: Tracker, context: Context) {
         nsView.onChange = onChange
+        nsView.onAttach = onAttach
+        nsView.onContentResize = onContentResize
         nsView.attach()
     }
 }

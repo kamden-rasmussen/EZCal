@@ -7,6 +7,8 @@ struct ContentView: View {
     @AppStorage("firstWeekday") private var firstWeekday = 0
     @State private var lastActivation = Date.distantPast
     @FocusState private var gridFocused: Bool
+    /// The last event shown in the docked panel, kept while the panel animates closed so it doesn't go blank mid-slide.
+    @State private var closingDetail: CalEvent?
 
     var body: some View {
         @Bindable var store = store
@@ -46,13 +48,7 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    if let event = detailEvent {
-                        EventDetailView(event: event)
-                            .id(event.id)
-                            .frame(width: 420)
-                            .overlay(alignment: .leading) { Rectangle().fill(Theme.line).frame(width: 1) }
-                            .transition(.move(edge: .trailing))
-                    }
+                    DetailDock(event: detailEvent ?? closingDetail, open: detailEvent != nil)
                 }
             }
         }
@@ -60,6 +56,14 @@ struct ContentView: View {
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.18), value: sidebarShown)
         .animation(.easeInOut(duration: 0.2), value: detailEvent?.id)
+        .onChange(of: detailEvent?.id) { _, _ in
+            if let e = detailEvent { closingDetail = e; return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                if case .detail = store.sheet { return }
+                closingDetail = nil
+            }
+        }
         .sheet(item: modalSheetBinding) { sheet in
             switch sheet {
             case .detail: EmptyView()   // shown as a docked panel above, not a modal
@@ -199,6 +203,28 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
         .background(Color.orange.opacity(0.14))
+    }
+}
+
+/// The docked event panel. It stays in the layout and its width animates between 0 and 420, so the calendar beside it is
+/// pushed over frame by frame. (Inserting it with a slide transition gives the calendar its final width at once and
+/// leaves a blank gap that the panel then slides into.)
+private struct DetailDock: View {
+    let event: CalEvent?
+    let open: Bool
+
+    var body: some View {
+        Group {
+            if let event {
+                EventDetailView(event: event)
+                    .id(event.id)
+                    .frame(width: 420)
+                    .overlay(alignment: .leading) { Rectangle().fill(Theme.line).frame(width: 1) }
+            }
+        }
+        .frame(width: open ? 420 : 0, alignment: .trailing)
+        .clipped()
+        .allowsHitTesting(open)
     }
 }
 
