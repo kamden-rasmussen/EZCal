@@ -148,10 +148,6 @@ struct WeekScrollGrid: View {
                 let now = Calendar.current.component(.hour, from: Date())
                 vproxy.scrollTo("hour-\(min(max(now - 4, start), start + 2))", anchor: .top)
             }
-            .onChange(of: store.focusedEventID) { _, _ in
-                guard let e = store.focusedEvent, !e.isAllDay else { return }
-                vproxy.scrollTo("hour-\(Calendar.current.component(.hour, from: e.start))", anchor: .center)
-            }
         }
     }
 
