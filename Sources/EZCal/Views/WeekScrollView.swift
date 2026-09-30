@@ -17,11 +17,15 @@ import AppKit
 struct WeekScrollView: View {
     @Environment(CalendarStore.self) private var store
     @AppStorage("showWeekends") private var showWeekends = true
+    /// Bumped when the grid's width has finished changing (detail panel or sidebar toggled, window resized).
+    @State private var resizeEpoch = 0
 
     var body: some View {
-        // A fresh grid (fresh scroll state, window and column width) whenever the column layout changes.
-        WeekScrollGrid(mode: store.mode, showWeekends: showWeekends)
-            .id("\(store.mode.rawValue)-\(showWeekends)")
+        // A fresh grid (fresh scroll state, window and column width) whenever the column layout changes, and once
+        // after a resize settles: pinning a lazy horizontal scroller through an animated width change can leave
+        // it blank or on the wrong day, so rebuild it from `store.anchor` instead.
+        WeekScrollGrid(mode: store.mode, showWeekends: showWeekends, onResizeSettled: { resizeEpoch += 1 })
+            .id("\(store.mode.rawValue)-\(showWeekends)-\(resizeEpoch)")
     }
 }
 
@@ -42,6 +46,9 @@ final class WeekScrollModel {
     @ObservationIgnored var proxy: ScrollViewProxy?
     @ObservationIgnored var targetTask: Task<Void, Never>?
     @ObservationIgnored var extendTask: Task<Void, Never>?
+    /// True while the grid's width is changing; offsets measured mid-resize are meaningless and are ignored.
+    @ObservationIgnored var resizing = false
+    @ObservationIgnored var resizeTask: Task<Void, Never>?
 }
 
 struct WeekScrollGrid: View {
@@ -51,6 +58,7 @@ struct WeekScrollGrid: View {
     @AppStorage("secondaryZoneID") private var secondaryZoneID = ""
     let mode: ViewMode
     let showWeekends: Bool
+    let onResizeSettled: () -> Void
 
     /// Columns rendered lazily (a few weeks either side of the anchor); extended as the user nears an end.
     @State private var days: [Date] = []
@@ -82,10 +90,17 @@ struct WeekScrollGrid: View {
             }
             .opacity(ready ? 1 : 0)
             .onChange(of: gridW) { _, _ in
-                // Window resized: the same offset now means a different day, so pin the current one back to the edge.
-                guard ready, let lead = model.leading else { return }
-                beginProgrammatic(target: lead)
-                Task { @MainActor in scrollTo(lead, animated: false) }
+                // Width changing (window resize, panel animating in/out): stop trusting offsets until it settles,
+                // then have the parent rebuild the grid on the day we were on (`store.anchor`).
+                guard ready else { return }
+                model.resizing = true
+                model.resizeTask?.cancel()
+                model.resizeTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    guard !Task.isCancelled else { return }
+                    model.resizing = false
+                    onResizeSettled()
+                }
             }
             .onPreferenceChange(WeekScrollOffsetKey.self) { handleOffset($0, colW: colW) }
         }
@@ -195,7 +210,7 @@ struct WeekScrollGrid: View {
     /// Called for every content-offset change of the day grid (every frame while scrolling).
     private func handleOffset(_ offset: CGFloat, colW: CGFloat) {
         model.offset = offset
-        guard ready, !days.isEmpty else { return }
+        guard ready, !days.isEmpty, !model.resizing else { return }
         // The grid was resized (e.g. the detail panel opened or closed): this offset was measured against the old
         // column width, so dividing it by the new one would name the wrong day and push it to `store.anchor`.
         // Keep the day we were on and pin it back instead.
