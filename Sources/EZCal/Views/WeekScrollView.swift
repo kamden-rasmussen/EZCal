@@ -32,6 +32,8 @@ final class WeekScrollModel {
     var offset: CGFloat = 0
     /// Leftmost (nearest-snap) day currently shown.
     @ObservationIgnored var leading: Date?
+    /// Column width the last offset was reported with; a change means the next offset is stale (see `handleOffset`).
+    @ObservationIgnored var lastColW: CGFloat?
     /// Day a programmatic scroll is heading to; while set, scroll-derived anchor updates are suppressed.
     @ObservationIgnored var target: Date?
     /// Days this grid itself just wrote to `store.anchor`, so the anchor observer can tell them from external
@@ -194,6 +196,18 @@ struct WeekScrollGrid: View {
     private func handleOffset(_ offset: CGFloat, colW: CGFloat) {
         model.offset = offset
         guard ready, !days.isEmpty else { return }
+        // The grid was resized (e.g. the detail panel opened or closed): this offset was measured against the old
+        // column width, so dividing it by the new one would name the wrong day and push it to `store.anchor`.
+        // Keep the day we were on and pin it back instead.
+        if let last = model.lastColW, abs(last - colW) > 0.5 {
+            model.lastColW = colW
+            if let lead = model.leading {
+                beginProgrammatic(target: lead)
+                scrollTo(lead, animated: false)
+            }
+            return
+        }
+        model.lastColW = colW
         let idx = WeekScrollMath.leadingIndex(offset: offset, colWidth: colW, count: days.count)
         let d = days[idx]
         if let t = model.target, d == t { model.target = nil; model.targetTask?.cancel() }   // arrived
