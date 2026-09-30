@@ -120,11 +120,25 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     /// Marked private, so others only see it as "Busy". Shown with a lock to the owner.
     var isPrivate: Bool { visibility == .private }
 
+    /// How long before a meeting starts it counts as joinable, and takes over as "the" next meeting.
+    static let joinLead: TimeInterval = 600
+
+    /// The meeting the menu bar, J and the initial keyboard focus should point at. Normally the first event that
+    /// hasn't ended; but once a video meeting is within `lead` of starting, it takes over from one already under
+    /// way (back-to-backs), so J joins what's next rather than what you're leaving.
+    static func nextMeeting(in events: [CalEvent], now: Date = Date(), lead: TimeInterval = joinLead) -> CalEvent? {
+        guard let current = events.first(where: { $0.end > now }) else { return nil }
+        guard current.start <= now,
+              let soon = events.first(where: { $0.start > now && $0.start <= now.addingTimeInterval(lead) && $0.meetingURL != nil })
+        else { return current }
+        return soon
+    }
+
     /// Whether `date` falls within the event's span — i.e. it's happening right now.
     func isInProgress(at date: Date = Date()) -> Bool { start <= date && date < end }
     /// True from `lead` seconds before the start until the end — the window where pressing J should
     /// just join, without asking.
-    func isJoinable(at date: Date = Date(), lead: TimeInterval = 600) -> Bool {
+    func isJoinable(at date: Date = Date(), lead: TimeInterval = CalEvent.joinLead) -> Bool {
         start.addingTimeInterval(-lead) <= date && date < end
     }
 }

@@ -41,7 +41,8 @@ extension CalendarStore {
             focusedEventID = list[min(max(i + delta, 0), list.count - 1)].id
         } else {
             let now = Date()
-            focusedEventID = (delta > 0 ? (list.first { $0.end >= now } ?? list.first) : list.last)?.id
+            let next = nextMeeting.flatMap { n in list.first { $0.id == n.id } }
+            focusedEventID = (delta > 0 ? (next ?? list.first { $0.end >= now } ?? list.first) : list.last)?.id
         }
     }
 
