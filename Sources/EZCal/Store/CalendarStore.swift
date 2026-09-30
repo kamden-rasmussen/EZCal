@@ -775,8 +775,7 @@ final class CalendarStore {
     }
 
     var nextMeeting: CalEvent? {
-        let now = Date()
-        return upcoming.first { $0.end > now }
+        CalEvent.nextMeeting(in: upcoming)
     }
 
     // MARK: - Creating / editing
