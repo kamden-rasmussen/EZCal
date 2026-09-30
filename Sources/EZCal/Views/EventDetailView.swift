@@ -44,11 +44,11 @@ struct EventDetailView: View {
                                 NSPasteboard.general.setString(url.absoluteString, forType: .string)
                             }
                             .buttonStyle(SecondaryButtonStyle())
-                            if event.meetingProvider == .zoom && event.canEdit {
+                            if event.meetingProvider == .zoom && event.canModify {
                                 Button("Remove") { confirmRemoveZoom = true }.buttonStyle(SecondaryButtonStyle())
                             }
                         }
-                    } else if event.canEdit && !event.isAllDay {
+                    } else if event.canModify && !event.isAllDay {
                         Button {
                             busy = true
                             Task { await store.attachZoom(to: event); busy = false }
@@ -114,8 +114,10 @@ struct EventDetailView: View {
                         if event.isRecurring { store.requestDelete(event) } else { confirmDelete = true }
                     } label: { HStack(spacing: 6) { Text("Delete"); KeyCap("⌫") } }
                         .buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.delete, modifiers: [])
+                    if event.canModify || event.isGuestInviteOnly {
                     Button { store.requestEdit(event) } label: { HStack(spacing: 6) { Text("Edit"); Text("E").font(.system(size: 11)).opacity(0.7) } }
                         .buttonStyle(PrimaryButtonStyle()).keyboardShortcut("e", modifiers: [])
+                    }
                 }
             }
             .padding(.horizontal, 20).padding(.vertical, 14)

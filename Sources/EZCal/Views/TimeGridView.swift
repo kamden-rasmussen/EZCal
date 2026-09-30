@@ -621,7 +621,7 @@ struct EventBlock: View {
     @State private var dragOrigin: (start: Date, end: Date)?
 
     /// Read-only events, coworker overlays and busy blocks can't be dragged (issue #1 scope).
-    private var canDrag: Bool { event.canEdit && !event.isOverlay && !event.isBusyOnly && !event.isAllDay }
+    private var canDrag: Bool { event.canModify && !event.isOverlay && !event.isBusyOnly && !event.isAllDay }
     private var isBeingDragged: Bool { store.dragPreview?.event.id == event.id }
 
     var body: some View {

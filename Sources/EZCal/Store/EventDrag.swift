@@ -26,7 +26,7 @@ extension CalendarStore {
     /// events are already resolved to a single occurrence's `eventId` upstream, so this only ever moves
     /// that one instance, matching the editor's `save(_:)`.
     func applyTimeChange(to e: CalEvent, start: Date, end: Date) async {
-        guard e.canEdit, !e.isOverlay, !e.isBusyOnly, !e.isAllDay else { return }
+        guard e.canModify, !e.isOverlay, !e.isBusyOnly, !e.isAllDay else { return }
         let original = (e.start, e.end)
         setDisplayedTime(eventID: e.id, start: start, end: end)   // optimistic; rolled back below on failure
 
@@ -58,7 +58,7 @@ extension CalendarStore {
     /// Keyboard equivalent of dragging: ⌥↑/↓ moves the focused event 15 minutes, ⌥⇧↑/↓ resizes it (bottom
     /// edge, 15-minute minimum). No-op for read-only events, overlays and all-day events.
     func nudgeFocused(minutes: Int, resize: Bool) {
-        guard let e = focusedEvent, e.canEdit, !e.isOverlay, !e.isBusyOnly, !e.isAllDay else { return }
+        guard let e = focusedEvent, e.canModify, !e.isOverlay, !e.isBusyOnly, !e.isAllDay else { return }
         let (s, en) = resize
             ? EventDragMath.resized(start: e.start, end: e.end, minutesDelta: minutes, cal: cal)
             : EventDragMath.moved(start: e.start, end: e.end, minutesDelta: minutes, dayDelta: 0, cal: cal)

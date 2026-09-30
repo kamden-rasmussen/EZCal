@@ -108,9 +108,19 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     /// EventKit one — EventKit doesn't distinguish instance vs. series ids the way Google does).
     var recurringEventId: String? = nil
     var visibility: EventVisibility = .default
+    /// Google-only. False when someone else organized the event; then what we may change depends on
+    /// the organizer's guest permissions below. Non-Google events keep the permissive defaults.
+    var isOrganizer: Bool = true
+    var guestsCanModify: Bool = false
+    var guestsCanInviteOthers: Bool = true
     var zoomMeetingID: String?
     var isTentative: Bool
     var isDeclined: Bool
+
+    /// May change the event's own fields (title, time, ...), as opposed to only its guest list.
+    var canModify: Bool { canEdit && (isOrganizer || guestsCanModify) }
+    /// A guest on someone else's event who may add people but nothing else.
+    var isGuestInviteOnly: Bool { canEdit && !canModify && guestsCanInviteOthers }
 
     var color: Color { Color(hex: colorHex) }
     var isEventKit: Bool { sourceId.hasPrefix("ek|") }

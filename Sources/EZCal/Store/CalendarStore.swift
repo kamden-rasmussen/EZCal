@@ -823,6 +823,17 @@ final class CalendarStore {
         sheet = .editor(d)
     }
 
+    nonisolated static func attendeeBody(_ attendees: [Attendee], existing: Bool) -> [[String: Any]] {
+        attendees.map { a -> [String: Any] in
+            var x: [String: Any] = ["email": a.email]
+            if existing { x["responseStatus"] = a.response }
+            if a.isOptional { x["optional"] = true }
+            if a.isResource { x["resource"] = true }
+            if let n = a.name, !n.isEmpty { x["displayName"] = n }
+            return x
+        }
+    }
+
     func save(_ d: EventDraft) async throws {
         let title = d.title.trimmingCharacters(in: .whitespaces)
         let existing = d.existing
@@ -884,6 +895,24 @@ final class CalendarStore {
             return
         }
 
+        // A guest on someone else's event may only add people; Google rejects any other field change.
+        if let existing, existing.isGuestInviteOnly {
+            if existing.isRecurring, d.recurrenceScope == .thisAndFollowing {
+                throw APIError.invalid("You can only add guests to this event or to the whole series.")
+            }
+            let guestBody: [String: Any] = ["attendees": Self.attendeeBody(d.attendees, existing: true)]
+            if existing.isRecurring {
+                try await patchGoogleRecurring(existing: existing, body: guestBody, calendarId: calendarId,
+                                               withMeet: false, scope: d.recurrenceScope)
+            } else {
+                try await api.patchEvent(calendarId: calendarId, eventId: existing.eventId, body: guestBody)
+            }
+            sheet = nil
+            await reload()
+            await refreshUpcoming()
+            return
+        }
+
         func timeDict(_ date: Date) -> [String: Any] {
             d.isAllDay ? ["date": RFC3339.dayString(date)]
                        : ["dateTime": RFC3339.string(date), "timeZone": TimeZone.current.identifier]
@@ -899,14 +928,7 @@ final class CalendarStore {
         if existing != nil || d.visibility != .default { body["visibility"] = d.visibility.rawValue }
         if let extProps { body["extendedProperties"] = extProps }
         if existing != nil || !d.attendees.isEmpty {
-            body["attendees"] = d.attendees.map { a -> [String: Any] in
-                var x: [String: Any] = ["email": a.email]
-                if existing != nil { x["responseStatus"] = a.response }
-                if a.isOptional { x["optional"] = true }
-                if a.isResource { x["resource"] = true }
-                if let n = a.name, !n.isEmpty { x["displayName"] = n }
-                return x
-            }
+            body["attendees"] = Self.attendeeBody(d.attendees, existing: existing != nil)
         }
         if wantsMeet {
             body["conferenceData"] = ["createRequest": [

@@ -36,12 +36,19 @@ struct GEvent: Decodable {
     var start: GTime?
     var end: GTime?
     var attendees: [GAttendee]?
+    var organizer: GOrganizer?
+    var guestsCanModify: Bool?
+    var guestsCanInviteOthers: Bool?
     var conferenceData: GConference?
     var extendedProperties: GExtProps?
 }
 struct GTime: Decodable {
     var date: String?
     var dateTime: String?
+}
+struct GOrganizer: Decodable {
+    var isSelf: Bool?
+    enum CodingKeys: String, CodingKey { case isSelf = "self" }
 }
 struct GAttendee: Decodable {
     var email: String?
@@ -308,6 +315,10 @@ enum EventMapper {
             isBusyOnly: false, isRecurring: g.recurringEventId != nil,
             recurringEventId: g.recurringEventId,
             visibility: visibility,
+            // No organizer block (e.g. imported events) means it's effectively ours.
+            isOrganizer: g.organizer?.isSelf ?? (g.organizer == nil),
+            guestsCanModify: g.guestsCanModify ?? false,
+            guestsCanInviteOthers: g.guestsCanInviteOthers ?? true,
             zoomMeetingID: g.extendedProperties?.private?["zoomMeetingId"],
             isTentative: me?.response == "tentative",
             isDeclined: me?.response == "declined"
