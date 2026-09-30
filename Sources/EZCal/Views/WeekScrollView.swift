@@ -99,7 +99,12 @@ struct WeekScrollGrid: View {
                     try? await Task.sleep(nanoseconds: 250_000_000)
                     guard !Task.isCancelled else { return }
                     model.resizing = false
-                    onResizeSettled()
+                    // Already showing the right day at the final width: leave the grid (and its events) alone.
+                    if isPinned(colW: colW) { return }
+                    if let lead = model.leading { beginProgrammatic(target: lead); scrollTo(lead, animated: false) }
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    guard !Task.isCancelled, !isPinned(colW: colW) else { return }
+                    onResizeSettled()   // pinning didn't take: rebuild from `store.anchor`
                 }
             }
             .onPreferenceChange(WeekScrollOffsetKey.self) { handleOffset($0, colW: colW) }
@@ -205,6 +210,12 @@ struct WeekScrollGrid: View {
         scrollTo(lead, animated: false)
         try? await Task.sleep(nanoseconds: 40_000_000)
         ready = true
+    }
+
+    /// Whether the scroller's live offset sits exactly on the leading day's column at this column width.
+    private func isPinned(colW: CGFloat) -> Bool {
+        guard let lead = model.leading, let idx = days.firstIndex(of: lead) else { return false }
+        return abs(model.offset - CGFloat(idx) * colW) < 1
     }
 
     /// Called for every content-offset change of the day grid (every frame while scrolling).
