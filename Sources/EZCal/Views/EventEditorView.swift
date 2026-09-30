@@ -20,6 +20,8 @@ struct EventEditorView: View {
     }
     private var source: Source? { store.calendars.first { $0.id == (draft.existing?.sourceId ?? draft.sourceId) } }
     private var isEK: Bool { draft.existing?.isEventKit ?? (source?.isEventKit ?? false) }
+    /// Editing someone else's event: only the guest list can change, so the rest is hidden.
+    private var guestsOnly: Bool { draft.existing?.isGuestInviteOnly == true }
     private var hasMeeting: Bool { draft.existing?.meetingURL != nil }
     private var guests: [Attendee] { draft.attendees.filter { !$0.isSelf && !$0.isResource } }
     private var cal: Calendar { Calendar.current }
@@ -30,13 +32,17 @@ struct EventEditorView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     titleBlock
                     divider
-                    whenBlock
-                    if isNew { divider; recurrenceBlock }
-                    if !isEK { peopleBlock }
-                    divider
-                    videoBlock
-                    divider
-                    detailsBlock
+                    if guestsOnly {
+                        peopleBlock
+                    } else {
+                        whenBlock
+                        if isNew { divider; recurrenceBlock }
+                        if !isEK { peopleBlock }
+                        divider
+                        videoBlock
+                        divider
+                        detailsBlock
+                    }
                 }
             }
             .scrollIndicators(.hidden)
@@ -92,11 +98,17 @@ struct EventEditorView: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField("New event", text: $draft.title)
-                .textFieldStyle(.plain)
-                .font(.system(size: 22, weight: .semibold))
-                .focused($titleFocused)
-                .onSubmit { submit() }
+            if guestsOnly {
+                Text(draft.title).font(.system(size: 22, weight: .semibold))
+                Text("You're a guest on this event, so you can add people but not change its details.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.text3)
+            } else {
+                TextField("New event", text: $draft.title)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 22, weight: .semibold))
+                    .focused($titleFocused)
+                    .onSubmit { submit() }
+            }
             calendarChip
         }
         .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 14)
@@ -234,7 +246,7 @@ struct EventEditorView: View {
                     .buttonStyle(.plain)
                 }
 
-                if !draft.isAllDay {
+                if !draft.isAllDay && !guestsOnly {
                     Button { showFindTime = true } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "calendar.badge.clock")
@@ -267,7 +279,7 @@ struct EventEditorView: View {
             Text(a.display).font(.system(size: 13))
             Circle().fill(dot).frame(width: 8, height: 8)
                 .help(!known ? "Availability unknown" : (isBusy ? "Busy at this time" : "Free"))
-            if !a.isOrganizer {
+            if !a.isOrganizer && !(guestsOnly && isExistingGuest(a)) {
                 Button { draft.attendees.removeAll { $0.email == a.email } } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.text3)
                 }
@@ -276,6 +288,11 @@ struct EventEditorView: View {
         }
         .padding(.leading, 4).padding(.trailing, 8).frame(height: 28)
         .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+    }
+
+    /// Guests already on the event can't be removed by another guest; ones added in this session can.
+    private func isExistingGuest(_ a: Attendee) -> Bool {
+        draft.existing?.attendees.contains { $0.email.lowercased() == a.email.lowercased() } == true
     }
 
     private func color(for a: Attendee) -> Color {

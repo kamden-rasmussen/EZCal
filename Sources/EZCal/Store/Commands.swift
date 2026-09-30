@@ -103,7 +103,7 @@ extension CalendarStore {
     }
 
     func openFocused() { if sheet == nil, let e = focusedEvent { sheet = .detail(e) } }
-    func editFocused() { if sheet == nil, let e = focusedEvent, e.canEdit { requestEdit(e) } }
+    func editFocused() { if sheet == nil, let e = focusedEvent, e.canModify || e.isGuestInviteOnly { requestEdit(e) } }
     func deleteFocused() { if sheet == nil, let e = focusedEvent, e.canEdit { requestDelete(e) } }
 
     func toggleSidebar() { columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly }
@@ -213,7 +213,7 @@ extension CalendarStore {
 
         // Add Zoom to the focused event.
         if "add zoom".hasPrefix(q) || q.contains("zoom") {
-            if let e = focusedEvent, e.canEdit, e.meetingURL == nil, zoomConnected {
+            if let e = focusedEvent, e.canModify, e.meetingURL == nil, zoomConnected {
                 out.append(PaletteItem(id: "zoom", group: "Actions", title: "Add Zoom to “\(e.title)”", icon: "Z",
                                        run: { Task { await self.attachZoom(to: e) } }))
             }
