@@ -28,31 +28,38 @@ struct ContentView: View {
                         TopBar(leadingInset: sidebarShown ? 20 : 84)
                         Divider().overlay(Theme.line)
                         if let msg = store.errorMessage { errorBanner(msg) }
-                        Group {
-                            switch store.mode {
-                            case .day: TimeGridView(days: store.visibleDays)
-                            case .workWeek, .week: WeekScrollView()
-                            case .month: MonthView()
+                        // The event panel floats over the calendar (below the toolbar) instead of being docked beside it, so
+                        // opening or closing it never resizes or scrolls the grid.
+                        ZStack(alignment: .trailing) {
+                            Group {
+                                switch store.mode {
+                                case .day: TimeGridView(days: store.visibleDays)
+                                case .workWeek, .week: WeekScrollView()
+                                case .month: MonthView()
+                                }
+                            }
+                            .focusable()
+                            .focused($gridFocused)
+                            .focusEffectDisabled()
+                            .onKeyPress(phases: .down) { handle($0) }
+                            .background(HorizontalSwipeNavigator(isEnabled: store.mode == .day) { days in
+                                guard store.mode != .month, store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }  // Month scrolls vertically; Week/Work Week pan natively
+                                store.stepDay(days)
+                            })
+
+                            if let event = detailEvent {
+                                EventDetailView(event: event)
+                                    .id(event.id)
+                                    .frame(width: 420)
+                                    .frame(maxHeight: .infinity)
+                                    .overlay(alignment: .leading) { Rectangle().fill(Theme.line).frame(width: 1) }
+                                    .shadow(color: .black.opacity(0.28), radius: 14, x: -4, y: 0)
+                                    .transition(.move(edge: .trailing))
+                                    .zIndex(1)   // a view animating out of a ZStack is otherwise drawn under its siblings, so it looks like it just vanishes
                             }
                         }
-                        .focusable()
-                        .focused($gridFocused)
-                        .focusEffectDisabled()
-                        .onKeyPress(phases: .down) { handle($0) }
-                        .background(HorizontalSwipeNavigator(isEnabled: store.mode == .day) { days in
-                            guard store.mode != .month, store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }  // Month scrolls vertically; Week/Work Week pan natively
-                            store.stepDay(days)
-                        })
                     }
                     .frame(maxWidth: .infinity)
-
-                    if let event = detailEvent {
-                        EventDetailView(event: event)
-                            .id(event.id)
-                            .frame(width: 420)
-                            .overlay(alignment: .leading) { Rectangle().fill(Theme.line).frame(width: 1) }
-                            .transition(.move(edge: .trailing))
-                    }
                 }
             }
         }
