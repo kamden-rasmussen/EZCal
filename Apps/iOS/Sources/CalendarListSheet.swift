@@ -30,6 +30,19 @@ struct CalendarListSheet: View {
                                 }
                             }
                             .accessibilityIdentifier("calendarToggle-\(s.name)")
+                            .contextMenu {
+                                Menu("Color") {
+                                    ForEach(Palette.people, id: \.self) { hex in
+                                        Button { store.setColor(hex, for: s) } label: {
+                                            Label(hex, systemImage: s.colorHex.uppercased() == hex.uppercased() ? "checkmark.circle.fill" : "circle.fill")
+                                                .tint(Color(hex: hex))
+                                        }
+                                    }
+                                }
+                                if store.hasColorOverride(s) {
+                                    Button("Reset Color") { store.resetColor(for: s) }
+                                }
+                            }
                         }
                     }
                 }

@@ -55,12 +55,11 @@ struct SidebarView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         SectionLabel("Subscribed").padding(.horizontal, 6).padding(.bottom, 4)
                         ReorderableSourceList(sources: subscriptions) { s in
-                            SourceRow(source: s)
-                                .contextMenu {
-                                    if let sub = store.icsSubscriptions.first(where: { $0.source.id == s.id }) {
-                                        Button("Remove", role: .destructive) { store.removeICSSubscription(sub) }
-                                    }
+                            SourceRow(source: s) {
+                                if let sub = store.icsSubscriptions.first(where: { $0.source.id == s.id }) {
+                                    Button("Remove", role: .destructive) { store.removeICSSubscription(sub) }
                                 }
+                            }
                         }
                     }
                 }
@@ -86,13 +85,12 @@ struct SidebarView: View {
                         .padding(.horizontal, 6).padding(.bottom, 4)
 
                         ForEach(store.people) { p in
-                            SourceRow(source: p, access: store.personAccess[p.id], isTemporary: store.temporaryPeople.contains(p.id))
-                                .contextMenu {
-                                    if store.temporaryPeople.contains(p.id) {
-                                        Button("Keep permanently") { store.makePersonPermanent(p) }
-                                    }
-                                    Button("Remove", role: .destructive) { store.removePerson(p) }
+                            SourceRow(source: p, access: store.personAccess[p.id], isTemporary: store.temporaryPeople.contains(p.id)) {
+                                if store.temporaryPeople.contains(p.id) {
+                                    Button("Keep permanently") { store.makePersonPermanent(p) }
                                 }
+                                Button("Remove", role: .destructive) { store.removePerson(p) }
+                            }
                         }
 
                         Button { store.requestAddPerson() } label: {
@@ -284,12 +282,22 @@ private struct ReorderableSourceList<RowContent: View>: View {
     }
 }
 
-private struct SourceRow: View {
+private struct SourceRow<ExtraMenuItems: View>: View {
     @Environment(CalendarStore.self) private var store
     let source: Source
     var access: PersonAccess?
     var isTemporary = false
+    @ViewBuilder var extraMenuItems: () -> ExtraMenuItems
     @State private var hovering = false
+    @State private var showColorPicker = false
+
+    init(source: Source, access: PersonAccess? = nil, isTemporary: Bool = false,
+         @ViewBuilder extraMenuItems: @escaping () -> ExtraMenuItems = { EmptyView() }) {
+        self.source = source
+        self.access = access
+        self.isTemporary = isTemporary
+        self.extraMenuItems = extraMenuItems
+    }
 
     var body: some View {
         let on = store.isVisible(source)
@@ -335,6 +343,59 @@ private struct SourceRow: View {
         .onHover { hovering = $0 }
         .accessibilityLabel("\(source.name), \(on ? "shown" : "hidden")")
         .accessibilityHint("Toggles this calendar")
+        .contextMenu {
+            Button("Change Color…") { showColorPicker = true }
+            if store.hasColorOverride(source) {
+                Button("Reset Color") { store.resetColor(for: source) }
+            }
+            extraMenuItems()
+        }
+        .popover(isPresented: $showColorPicker, arrowEdge: .trailing) {
+            ColorSwatchPicker(colorHex: source.colorHex, defaultHex: store.defaultColor(for: source),
+                              isOverridden: store.hasColorOverride(source)) {
+                store.setColor($0, for: source); showColorPicker = false
+            } onReset: {
+                store.resetColor(for: source); showColorPicker = false
+            }
+        }
+    }
+}
+
+/// Grid of color swatches used to pick a calendar's color, shown from `SourceRow`'s "Change Color…"
+/// context menu item — same palette/layout as the one on `AddICSSubscriptionView`'s color field.
+private struct ColorSwatchPicker: View {
+    let colorHex: String
+    /// What the calendar reports on its own; offered as the first swatch so it's recognisable.
+    let defaultHex: String
+    let isOverridden: Bool
+    let onPick: (String) -> Void
+    let onReset: () -> Void
+
+    private let columns = Array(repeating: GridItem(.fixed(20), spacing: 8), count: 5)
+
+    var body: some View {
+        VStack(spacing: 10) {
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(Palette.people, id: \.self) { hex in
+                    let selected = colorHex.uppercased() == hex.uppercased()
+                    Circle().fill(Color(hex: hex)).frame(width: 20, height: 20)
+                        .overlay(Circle().strokeBorder(Theme.text, lineWidth: selected ? 2 : 0))
+                        .onTapGesture { onPick(hex) }
+                        .accessibilityLabel("Color \(hex)")
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            if isOverridden {
+                Button { onReset() } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: defaultHex)).frame(width: 10, height: 10)
+                        Text("Reset to default")
+                    }
+                }
+                .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.text2)
+            }
+        }
+        .padding(14)
     }
 }
 
@@ -417,6 +478,7 @@ struct MiniMonthView: View {
                             .background { if sel && store.mode != .month { Theme.selection } }
                             .contentShape(Rectangle())
                             .onTapGesture { store.goTo(d) }
+                            .help(today ? "Jump to today (T)" : "")
                             .accessibilityLabel(d.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                             .accessibilityAddTraits(.isButton)
                     }
