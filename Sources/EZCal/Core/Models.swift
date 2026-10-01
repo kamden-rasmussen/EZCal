@@ -121,6 +121,8 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     var canModify: Bool { canEdit && (isOrganizer || guestsCanModify) }
     /// A guest on someone else's event who may add people but nothing else.
     var isGuestInviteOnly: Bool { canEdit && !canModify && guestsCanInviteOthers }
+    /// Google events whose guest list we may add to (from the detail panel's quick-add field).
+    var canAddGuests: Bool { !isEventKit && !isICS && !isOverlay && !isBusyOnly && (canModify || isGuestInviteOnly) }
 
     var color: Color { Color(hex: colorHex) }
     var isEventKit: Bool { sourceId.hasPrefix("ek|") }
