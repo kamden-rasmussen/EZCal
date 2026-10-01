@@ -22,7 +22,10 @@ fi
 # otherwise fall back to ad-hoc. Override with CODESIGN_IDENTITY="Developer ID Application: ..."
 IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development|Developer ID Application/ {print $2; exit}')}"
 IDENTITY="${IDENTITY:--}"
-codesign --force ${HARDENED:+--options runtime --timestamp} --sign "$IDENTITY" "$APP" >/dev/null
+codesign --force --entitlements Resources/EZCal.entitlements ${HARDENED:+--options runtime --timestamp} --sign "$IDENTITY" "$APP" >/dev/null
+# Without the Calendars entitlement a hardened-runtime build is silently denied calendar access (no prompt).
+codesign -d --entitlements - "$APP" 2>/dev/null | grep -q "personal-information.calendars" \
+  || { echo "error: $APP is missing the Calendars entitlement"; exit 1; }
 echo "Built $APP (signed with: $IDENTITY)"
 
 for arg in "$@"; do
