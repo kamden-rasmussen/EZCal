@@ -62,3 +62,26 @@ extension GuestPermissionTests {
         XCTAssertNil(body[0]["responseStatus"])
     }
 }
+
+extension GuestPermissionTests {
+    func testQuickAddAllowedOnOwnAndInvitableEventsOnly() throws {
+        XCTAssertTrue(try event(",\"organizer\":{\"email\":\"a@x.com\",\"self\":true}").canAddGuests)
+        XCTAssertTrue(try event(",\"organizer\":{\"email\":\"b@x.com\"}").canAddGuests)
+        XCTAssertFalse(try event(",\"organizer\":{\"email\":\"b@x.com\"},\"guestsCanInviteOthers\":false").canAddGuests)
+    }
+
+    func testQuickAddNotOfferedOnOverlayOrBusyEvents() throws {
+        var e = try event("")
+        e.isOverlay = true
+        XCTAssertFalse(e.canAddGuests)
+        e.isOverlay = false; e.isBusyOnly = true
+        XCTAssertFalse(e.canAddGuests)
+    }
+
+    func testNewGuestsSkipsExistingAndDuplicates() {
+        let fresh = CalendarStore.newGuests(
+            [Attendee(email: "Boss@x.com"), Attendee(email: "new@x.com"), Attendee(email: "NEW@x.com")],
+            existing: [Attendee(email: "boss@x.com")])
+        XCTAssertEqual(fresh.map(\.email), ["new@x.com"])
+    }
+}

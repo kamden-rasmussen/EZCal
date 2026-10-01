@@ -18,6 +18,13 @@ struct EventDetailView: View {
     @State private var confirmDelete = false
     @State private var confirmRemoveZoom = false
     @State private var busy = false
+    @State private var guestQuery = ""
+    @State private var suggestions: [DirectoryPerson] = []
+    @State private var addingGuest = false
+    @State private var addError: String?
+    /// Typing in the guest field must not trigger the panel's single-key shortcuts (E, J, Z, Y/M/N, ⌫, ↩).
+    @FocusState private var guestFieldFocused: Bool
+    private var shortcutsOn: Bool { !guestFieldFocused }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,7 +45,7 @@ struct EventDetailView: View {
                                 }
                             }
                             .buttonStyle(PrimaryButtonStyle())
-                            .keyboardShortcut("j", modifiers: [])
+                            .plainShortcut("j", enabled: shortcutsOn)
                             Button("Copy link") {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(url.absoluteString, forType: .string)
@@ -56,7 +63,7 @@ struct EventDetailView: View {
                             HStack(spacing: 8) { Image(systemName: "video.badge.plus"); Text("Add Zoom meeting"); KeyCap("Z") }
                         }
                         .buttonStyle(SecondaryButtonStyle())
-                        .keyboardShortcut("z", modifiers: [])
+                        .plainShortcut("z", enabled: shortcutsOn)
                         .disabled(!store.zoomConnected || busy)
                         .help(store.zoomConnected ? "Create a Zoom meeting and attach it (Z)" : "Connect Zoom in Settings first")
                     }
@@ -73,9 +80,10 @@ struct EventDetailView: View {
                     }
 
                     let people = event.attendees.filter { !$0.isResource }
-                    if !people.isEmpty {
+                    if !people.isEmpty || event.canAddGuests {
                         info("person.2") {
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                if !people.isEmpty {
                                 Text("\(people.count) \(people.count == 1 ? "guest" : "guests")").font(.system(size: 13, weight: .semibold))
                                 VStack(alignment: .leading, spacing: 4) {
                                     ForEach(people, id: \.email) { a in
@@ -87,6 +95,8 @@ struct EventDetailView: View {
                                         .accessibilityElement(children: .combine)
                                     }
                                 }.frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                if event.canAddGuests { addGuestField }
                             }
                         }
                     }
@@ -113,10 +123,10 @@ struct EventDetailView: View {
                     Button {
                         if event.isRecurring { store.requestDelete(event) } else { confirmDelete = true }
                     } label: { HStack(spacing: 6) { Text("Delete"); KeyCap("⌫") } }
-                        .buttonStyle(SecondaryButtonStyle()).keyboardShortcut(.delete, modifiers: [])
+                        .buttonStyle(SecondaryButtonStyle()).plainShortcut(.delete, enabled: shortcutsOn)
                     if event.canModify || event.isGuestInviteOnly {
                     Button { store.requestEdit(event) } label: { HStack(spacing: 6) { Text("Edit"); Text("E").font(.system(size: 11)).opacity(0.7) } }
-                        .buttonStyle(PrimaryButtonStyle()).keyboardShortcut("e", modifiers: [])
+                        .buttonStyle(PrimaryButtonStyle()).plainShortcut("e", enabled: shortcutsOn)
                     }
                 }
             }
@@ -124,7 +134,11 @@ struct EventDetailView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.side)
-        .background { ShortcutProxy(key: .return) { if let u = event.meetingURL { NSWorkspace.shared.open(u) } else if event.canEdit { store.requestEdit(event) } } }
+        .background {
+            if shortcutsOn {
+                ShortcutProxy(key: .return) { if let u = event.meetingURL { NSWorkspace.shared.open(u) } else if event.canEdit { store.requestEdit(event) } }
+            }
+        }
         // Recurring events go through RecurrenceScopeView (store.requestDelete) instead of this dialog.
         .confirmationDialog("Delete “\(event.title)”?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { Task { await store.delete(event) } }
@@ -135,6 +149,71 @@ struct EventDetailView: View {
             Button("Remove", role: .destructive) { Task { await store.removeZoom(from: event) } }
         } message: {
             Text("This deletes the Zoom meeting and removes its link from the event.")
+        }
+    }
+
+    // MARK: Quick add guests
+
+    private var addGuestField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                TextField("Add people…", text: $guestQuery)
+                    .textFieldStyle(.plain)
+                    .focused($guestFieldFocused)
+                    .disabled(addingGuest)
+                    .onSubmit { addFromQuery() }
+                    .accessibilityLabel("Add people by name or email")
+                if addingGuest { ProgressView().controlSize(.small) }
+            }
+            .padding(.horizontal, 10).frame(height: 30)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(guestFieldFocused ? Theme.accent : Theme.line, lineWidth: 1))
+            ForEach(suggestions.prefix(5)) { p in
+                Button { addGuest(email: p.email, name: p.name) } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(p.name)
+                            Text(p.email).font(.system(size: 11)).foregroundStyle(Theme.text3)
+                        }
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            if let addError { Text(addError).font(.system(size: 12)).foregroundStyle(.red) }
+            else if event.isRecurring && guestFieldFocused {
+                Text("Adds to this occurrence only. Use Edit to change the whole series.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.text3)
+            }
+        }
+        .task(id: guestQuery) {
+            addError = nil
+            guard guestQuery.count >= 2 else { suggestions = []; return }
+            try? await Task.sleep(nanoseconds: 250_000_000)   // debounce; cancelled when the query changes
+            guard !Task.isCancelled else { return }
+            let have = Set(event.attendees.map { $0.email.lowercased() })
+            let found = await store.searchDirectory(guestQuery).filter { !have.contains($0.email.lowercased()) }
+            if !Task.isCancelled { suggestions = found }
+        }
+    }
+
+    private func addFromQuery() {
+        let q = guestQuery.trimmingCharacters(in: .whitespaces)
+        if q.contains("@") { addGuest(email: q, name: suggestions.first { $0.email.lowercased() == q.lowercased() }?.name) }
+        else if let first = suggestions.first { addGuest(email: first.email, name: first.name) }
+    }
+
+    private func addGuest(email: String, name: String?) {
+        let e = email.trimmingCharacters(in: .whitespaces).lowercased()
+        guard e.contains("@"), !addingGuest else { return }
+        addingGuest = true; addError = nil
+        Task {
+            do {
+                try await store.addGuests([Attendee(email: e, name: name)], to: event)
+                guestQuery = ""; suggestions = []
+            } catch { addError = error.localizedDescription }
+            addingGuest = false
+            guestFieldFocused = true
         }
     }
 
@@ -186,7 +265,7 @@ struct EventDetailView: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Color.clear : Theme.line, lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .keyboardShortcut(key, modifiers: [])
+        .plainShortcut(key, enabled: shortcutsOn)
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
@@ -217,5 +296,12 @@ struct EventDetailView: View {
         case "tentative": return .orange
         default: return Theme.text3
         }
+    }
+}
+
+private extension View {
+    /// A bare-key shortcut that can be switched off, e.g. while a text field has focus.
+    @ViewBuilder func plainShortcut(_ key: KeyEquivalent, enabled: Bool) -> some View {
+        if enabled { keyboardShortcut(key, modifiers: []) } else { self }
     }
 }
