@@ -480,7 +480,7 @@ struct MiniMonthView: View {
                                 else if today { Circle().strokeBorder(Theme.accent, lineWidth: 1.5) }
                             }
                             .frame(maxWidth: .infinity).frame(height: 26)
-                            .background { if sel && store.mode != .month { Theme.selection } }
+                            .background { if sel { Theme.selection } }
                             .contentShape(Rectangle())
                             .onTapGesture { store.goToDay(d) }
                             .help(today ? "Jump to today (T)" : "")
