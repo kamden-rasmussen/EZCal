@@ -27,6 +27,23 @@ final class MonthGridTests: XCTestCase {
         }
     }
 
+    func testJumpWeekLandsOnTheDatesWeekWithinItsMonth() {
+        for fw in [1, 2] {
+            let cal = makeCal(firstWeekday: fw)
+            let g = MonthGrid(cal: cal)
+            for day in 1...30 {
+                let d = date(cal, 2026, 9, day, 15)
+                let w = g.jumpWeek(to: d)
+                XCTAssertEqual(g.monthKey(forWeek: w), g.monthKey(of: d), "Sep \(day), firstWeekday \(fw)")
+                // Either the date's own week, or (straddling week of another month) the month's first week.
+                XCTAssertTrue(w == g.weekIndex(of: d) || w == g.firstWeek(ofMonth: g.monthKey(of: d)))
+            }
+            // A mid-month date is always shown in its own week.
+            let mid = date(cal, 2026, 9, 17, 9)
+            XCTAssertEqual(g.jumpWeek(to: mid), g.weekIndex(of: mid))
+        }
+    }
+
     func testDayColumnsAreConsecutiveAcrossDST() {
         let cal = makeCal(firstWeekday: 1)
         let g = MonthGrid(cal: cal)

@@ -71,8 +71,7 @@ struct MonthView: View {
                         if let echo = pushedAnchor, store.cal.isDate(echo, inSameDayAs: anchor) { pushedAnchor = nil; return }   // our own echo
                         if key == visibleKey {
                             // Jump-to-date inside the month already showing (e.g. the mini calendar): bring that week to the top.
-                            let w = grid.weekIndex(of: anchor)
-                            scroll(proxy, toWeek: grid.monthKey(forWeek: w) == key ? w : grid.firstWeek(ofMonth: key), animated: true)
+                            scroll(proxy, toWeek: grid.jumpWeek(to: anchor), animated: true)
                             return
                         }
                         if key == lastPushedKey { return }
