@@ -33,6 +33,14 @@ extension CalendarStore {
         }
     }
 
+    /// Mini-calendar click: in Week / Work Week the clicked day itself becomes the leading column (the next column
+    /// day if it's hidden), so the click always visibly moves the grid; other modes behave like `goTo`.
+    func goToDay(_ d: Date) {
+        guard Self.continuousWeekScroll, mode == .week || mode == .workWeek else { goTo(d); return }
+        anchor = WeekScrollMath.firstColumnDay(onOrAfter: d, rule: weekColumns.rule, cal: cal)
+        scheduleReload()
+    }
+
     /// The scrolling grid reports a new leftmost day. Updates the anchor (and so the title) immediately, and
     /// refetches events (debounced) only once the visible range nears the edge of what is already loaded.
     func weekScrollAnchorChanged(to day: Date) {
