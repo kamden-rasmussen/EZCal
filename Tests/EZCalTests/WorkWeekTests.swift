@@ -45,6 +45,17 @@ final class WorkWeekTests: XCTestCase {
         XCTAssertEqual(cal.component(.day, from: store.anchor), 21)                     // Mon Sep 21
     }
 
+    func testMiniCalendarClickMakesTheClickedDayLeadInWeekModes() {
+        let cal = Calendar.current
+        let store = CalendarStore()
+        store.mode = .workWeek
+        store.anchor = cal.date(from: DateComponents(year: 2026, month: 9, day: 21))!   // Mon
+        store.goToDay(cal.date(from: DateComponents(year: 2026, month: 9, day: 24))!)   // Thu, same week
+        XCTAssertEqual(cal.component(.day, from: store.anchor), 24)
+        store.goToDay(cal.date(from: DateComponents(year: 2026, month: 9, day: 26))!)   // Sat, hidden column
+        XCTAssertEqual(cal.component(.day, from: store.anchor), 28)                     // -> Mon
+    }
+
     /// Swipe/scroll navigation should glide a day at a time, never a whole week or month, regardless
     /// of which view is showing.
     func testStepDayMovesExactlyOneDayRegardlessOfMode() {

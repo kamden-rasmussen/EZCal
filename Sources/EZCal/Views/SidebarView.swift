@@ -469,24 +469,74 @@ struct MiniMonthView: View {
                         let today = c.isDateInToday(d)
                         let inMonth = c.isDate(d, equalTo: first, toGranularity: .month)
                         let sel = visible.contains(c.startOfDay(for: d))
+                        let focus = c.isDate(d, inSameDayAs: store.anchor)
                         Text(d.formatted(.dateTime.day()))
-                            .font(.system(size: 11, weight: today ? .bold : .regular).monospacedDigit())
-                            .foregroundStyle(today ? Theme.accentText : (inMonth ? Theme.text : Theme.text3))
+                            .font(.system(size: 11, weight: today || focus ? .bold : .regular).monospacedDigit())
+                            .foregroundStyle(focus ? Theme.accentText : (today ? Theme.accent : (inMonth ? Theme.text : Theme.text3)))
                             .frame(width: 24, height: 24)
-                            .background { if today { Circle().fill(Theme.accent) } }
+                            .background {
+                                // The filled bubble marks the focus date (what the main view is on); today keeps a ring.
+                                if focus { Circle().fill(Theme.accent) }
+                                else if today { Circle().strokeBorder(Theme.accent, lineWidth: 1.5) }
+                            }
                             .frame(maxWidth: .infinity).frame(height: 26)
                             .background { if sel && store.mode != .month { Theme.selection } }
                             .contentShape(Rectangle())
-                            .onTapGesture { store.goTo(d) }
+                            .onTapGesture { store.goToDay(d) }
                             .help(today ? "Jump to today (T)" : "")
                             .accessibilityLabel(d.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                             .accessibilityAddTraits(.isButton)
                     }
                 }
             }
+            .background(SwipeStepper { n in month = c.date(byAdding: .month, value: n, to: month)! })
             .onChange(of: store.anchor) { _, new in
                 if !c.isDate(new, equalTo: month, toGranularity: .month) { month = new }
             }
         }
+    }
+}
+
+/// Two-finger horizontal swipe over the view it's attached to (as a `.background`), one `onStep` per gesture:
+/// -1 = swipe right (earlier), +1 = swipe left (later). Events outside the view's bounds are left alone.
+private struct SwipeStepper: NSViewRepresentable {
+    let onStep: (Int) -> Void
+
+    final class Coordinator {
+        var monitor: Any?
+        var accumulated: CGFloat = 0
+        var fired = false
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        let c = context.coordinator
+        c.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak view, weak c] event in
+            guard let view, let c, event.window === view.window else { return event }
+            let p = view.convert(event.locationInWindow, from: nil)
+            guard view.bounds.contains(p) else { return event }
+            if event.phase.contains(.began) { c.accumulated = 0; c.fired = false }
+            defer { if event.phase.contains(.ended) || event.phase.contains(.cancelled) { c.accumulated = 0; c.fired = false } }
+            guard event.momentumPhase == [] else { return c.fired ? nil : event }
+            let dx = event.scrollingDeltaX, dy = event.scrollingDeltaY
+            guard abs(dx) > abs(dy) else { return event }
+            if !c.fired {
+                c.accumulated += dx
+                if abs(c.accumulated) > 40 {
+                    c.fired = true
+                    onStep(c.accumulated < 0 ? 1 : -1)
+                }
+            }
+            return nil
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        if let m = coordinator.monitor { NSEvent.removeMonitor(m) }
     }
 }
