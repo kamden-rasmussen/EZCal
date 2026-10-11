@@ -24,12 +24,12 @@ struct SettingsView: View {
     @AppStorage("zoomHostVideo") private var zoomHostVideo = true
     @AppStorage("zoomParticipantVideo") private var zoomParticipantVideo = false
     @AppStorage("zoomPasscodeEnabled") private var zoomPasscodeEnabled = true
-    /// Which tab opens first; overridden by the "settings" debug snapshot (`EZCAL_SETTINGS_TAB` = accounts|zoom|general|hours)
+    /// Which tab opens first; overridden by the "settings" debug snapshot (`EZCAL_SETTINGS_TAB` = accounts|zoom|general|hours|agents)
     /// so a screenshot can land on any tab.
     var initialTab: Tab = .accounts
     @State private var tab: Tab = .accounts
 
-    enum Tab { case accounts, zoom, general, hours }
+    enum Tab { case accounts, zoom, general, hours, agents }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -219,6 +219,10 @@ struct SettingsView: View {
             .formStyle(.grouped)
             .tabItem { Label("Hours & zones", systemImage: "clock") }
             .tag(Tab.hours)
+
+            AgentsSettingsView()
+                .tabItem { Label("Agents", systemImage: "sparkles") }
+                .tag(Tab.agents)
         }
         .frame(width: 520, height: 460)
         .onAppear {
@@ -226,6 +230,7 @@ struct SettingsView: View {
             case "zoom": tab = .zoom
             case "general": tab = .general
             case "hours": tab = .hours
+            case "agents": tab = .agents
             case "accounts": tab = .accounts
             default: tab = initialTab
             }

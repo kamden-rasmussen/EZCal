@@ -3,7 +3,7 @@ import SwiftUI
 import Observation
 import EventKit
 
-private struct FetchResult: Sendable {
+struct FetchResult: Sendable {
     var sourceId: String
     var events: [CalEvent] = []
     var access: PersonAccess?
@@ -695,7 +695,7 @@ final class CalendarStore {
         if text != menuBarText { menuBarText = text }
     }
 
-    nonisolated private static func fetch(_ s: Source, _ range: Range<Date>) async -> FetchResult {
+    nonisolated static func fetch(_ s: Source, _ range: Range<Date>) async -> FetchResult {
         if s.isEventKit {
             return FetchResult(sourceId: s.id, events: EventKitService.shared.events(for: s, range: range))
         }

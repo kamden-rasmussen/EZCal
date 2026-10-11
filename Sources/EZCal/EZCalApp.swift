@@ -9,6 +9,9 @@ struct EZCalApp: App {
         let s = CalendarStore()
         _store = State(initialValue: s)
         DebugSnapshot.scheduleIfRequested(store: s)
+        #if os(macOS)
+        MCPServer.shared.attach(s)   // local agent (MCP) server, if enabled in Settings → Agents
+        #endif
     }
 
     var body: some Scene {
