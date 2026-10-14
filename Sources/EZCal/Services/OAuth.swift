@@ -274,9 +274,14 @@ enum TokenStore {
 actor TokenManager {
     static let shared = TokenManager()
     private var inflight: [String: Task<TokenSet, Error>] = [:]
+    /// Provider keys whose stored credentials were rejected (refresh token expired/revoked, or missing),
+    /// so the UI can offer a sign-in button. Network failures don't land here.
+    private var rejected: Set<String> = []
+
+    func needsSignIn(_ p: Provider) -> Bool { rejected.contains(p.key) }
 
     func accessToken(for p: Provider, force: Bool = false) async throws -> String {
-        guard let t = TokenStore.load(p) else { throw APIError.notSignedIn }
+        guard let t = TokenStore.load(p) else { rejected.insert(p.key); throw APIError.notSignedIn }
         if !force && !t.isExpired { return t.accessToken }
         if let task = inflight[p.key] { return try await task.value.accessToken }
 
@@ -284,7 +289,13 @@ actor TokenManager {
         let task = Task { try await OAuth.refresh(cfg, token: t) }
         inflight[p.key] = task
         defer { inflight[p.key] = nil }
-        let fresh = try await task.value
+        let fresh: TokenSet
+        do { fresh = try await task.value }
+        catch let e as APIError {
+            switch e { case .oauth, .notSignedIn: rejected.insert(p.key); default: break }
+            throw e
+        }
+        rejected.remove(p.key)
         TokenStore.save(fresh, for: p)
         return fresh.accessToken
     }

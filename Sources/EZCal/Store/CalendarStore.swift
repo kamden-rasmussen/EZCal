@@ -62,6 +62,8 @@ final class CalendarStore {
     /// True only when a Zoom call just failed because the token was expired/revoked — distinct from
     /// `!zoomConnected` so the error banner doesn't offer "Reconnect" for someone who never connected Zoom.
     var zoomNeedsReconnect = false
+    /// True when a Google account's token was rejected and refreshing can't fix it — the banner then offers "Sign in".
+    var googleNeedsSignIn = false
     var eventKitEnabled = false
     /// `EZCAL_DEMO=1`: fake calendars and events, nothing read from or written to your accounts.
     let isDemo = ProcessInfo.processInfo.environment["EZCAL_DEMO"] != nil
@@ -524,6 +526,12 @@ final class CalendarStore {
         }
     }
 
+    private func updateGoogleSignInState() async {
+        var needs = false
+        for a in accounts where await TokenManager.shared.needsSignIn(.google(a.email)) { needs = true }
+        googleNeedsSignIn = needs
+    }
+
     func signOut(_ a: Account) {
         TokenStore.remove(.google(a.email))
         accounts.removeAll { $0.id == a.id }
@@ -582,6 +590,7 @@ final class CalendarStore {
             errorMessage = firstError
             result = calendars.filter { !$0.isEventKit }   // keep what we had
         }
+        await updateGoogleSignInState()
         if eventKitEnabled {
             for s in EventKitService.shared.sources() {
                 if !knownCalendars.contains(s.id) {
@@ -635,6 +644,7 @@ final class CalendarStore {
         // empty), there's nothing here to report success or failure on — don't clobber whatever
         // error loadCalendars() set with a false-positive "all clear".
         if !sources.isEmpty { errorMessage = firstError }
+        await updateGoogleSignInState()
         isLoading = false
         loadedRange = range
         rebuildDisplay()
