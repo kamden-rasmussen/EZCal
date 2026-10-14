@@ -201,6 +201,10 @@ struct ContentView: View {
             if store.zoomNeedsReconnect {
                 Button("Reconnect Zoom") { Task { await store.connectZoom() } }.buttonStyle(SecondaryButtonStyle())
             }
+            if store.googleNeedsSignIn {
+                Button(store.isSigningIn ? "Waiting…" : "Sign in with Google") { Task { await store.signIn() } }
+                    .buttonStyle(SecondaryButtonStyle()).disabled(store.isSigningIn)
+            }
             Button { store.errorMessage = nil; store.zoomNeedsReconnect = false } label: { Image(systemName: "xmark") }
                 .buttonStyle(IconButtonStyle()).accessibilityLabel("Dismiss")
         }
