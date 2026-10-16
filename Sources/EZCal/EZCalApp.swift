@@ -73,7 +73,7 @@ struct EZCalApp: App {
         // `CalendarStore`, so navigation state (anchor/mode/focus/sheet) is isolated per window; accounts,
         // calendars and Reminders lists are shared because they're read from the same UserDefaults/Keychain/
         // EventKit store, but each window fetches and caches its own copy of events rather than sharing one
-        // in-memory cache. See README "Multi-window" for the tradeoffs of this approach.
+        // in-memory cache. See docs/architecture.md "Multi-window" for the tradeoffs of this approach.
         WindowGroup("EZCal", id: "secondary") {
             ContentView()
                 .environment(CalendarStore())

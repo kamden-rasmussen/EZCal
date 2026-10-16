@@ -254,7 +254,7 @@ extension OAuthConfig {
             fixedPort: 48291,
             redirectHost: "localhost",
             callbackPath: "/callback",
-            nativeRedirectScheme: "ezcal"   // TODO(iOS): register `ezcal:/oauth2redirect` as a redirect URL in the Zoom app
+            nativeRedirectScheme: "ezcal"   // iOS: `ezcal:/oauth2redirect` must be registered as a redirect URL in the Zoom app
         )
     }
 }
