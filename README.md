@@ -62,7 +62,7 @@ Issues and pull requests are welcome. Run `swift test` before opening a PR. If y
 
 ## Privacy
 
-EZCal collects no data and has no analytics. Read the full [privacy policy](PRIVACY.md).
+EZCal collects no data and has no analytics. Read the full [privacy policy](PRIVACY.md) and [terms of use](TERMS.md).
 
 ## License
 
