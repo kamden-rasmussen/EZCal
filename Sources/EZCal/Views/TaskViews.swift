@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A due-dated task with no specific due time, shown in the all-day row next to `AllDayChip`s.
-/// Tapping the checkbox toggles completion; there's no dedicated task editor yet (see README), so
+/// Tapping the checkbox toggles completion; there's no dedicated task editor yet (see docs/known-limitations.md), so
 /// editing anything else happens in Reminders.app.
 struct TaskChip: View {
     @Environment(CalendarStore.self) private var store
@@ -34,7 +34,7 @@ struct TaskChip: View {
 
 /// A due-dated task with a specific due time, positioned in `DayColumn` at that time like a small pill.
 /// It doesn't participate in `EventLayout`'s overlap packing, so on a very busy hour it may sit on top
-/// of an event block — acceptable for a first pass (see README known limitations).
+/// of an event block — acceptable for a first pass (see docs/known-limitations.md).
 struct TimedTaskMarker: View {
     @Environment(CalendarStore.self) private var store
     let task: EZTask

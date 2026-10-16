@@ -50,7 +50,7 @@ struct AgentsSettingsView: View {
                         }
                     }
                     LabeledContent("Claude Code") { copyButton("Copy setup command", claudeCodeCommand) }
-                    Text("Claude Desktop: add a connector through the mcp-remote bridge, pointing at the address with the header Authorization: Bearer <token>. See the README for the exact config. Regenerating the token disconnects every agent until you update it.")
+                    Text("Claude Desktop: add a connector through the mcp-remote bridge, pointing at the address with the header Authorization: Bearer <token>. See docs/agents.md for the exact config. Regenerating the token disconnects every agent until you update it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
