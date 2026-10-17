@@ -843,11 +843,43 @@ final class CalendarStore {
         }
     }
 
-    func save(_ d: EventDraft) async throws {
+    func save(_ d: EventDraft) async throws { try await save(d, carriedZoomId: nil) }
+
+    /// `carriedZoomId` re-attaches an existing Zoom meeting when an event is re-created on another calendar.
+    private func save(_ d: EventDraft, carriedZoomId: String?) async throws {
         let title = d.title.trimmingCharacters(in: .whitespaces)
         let existing = d.existing
+        var destination: Source?
+        if let old = existing, !isDemo, let dest = calendars.first(where: { $0.id == d.sourceId }) {
+            switch EventMove.plan(from: old, to: dest) {
+            case .none: break
+            case .unsupported: throw APIError.invalid("This event can't be moved to that calendar.")
+            case .eventKit: destination = dest
+            case .googleMove:
+                try await GoogleAPI(accountId: old.accountId).moveEvent(calendarId: old.calendarId, eventId: old.eventId,
+                                                                        destination: dest.calendarId)
+                destination = dest
+            case .recreate:
+                // Create first so a failure never loses the event, then remove the original (keeping its Zoom meeting).
+                var nd = d
+                nd.existing = nil
+                nd.recurrence = .none
+                nd.video = .none
+                try await save(nd, carriedZoomId: old.zoomMeetingID)
+                do {
+                    if old.isEventKit { try EventKitService.shared.delete(old) }
+                    else { try await GoogleAPI(accountId: old.accountId).deleteEvent(calendarId: old.calendarId, eventId: old.eventId) }
+                } catch {
+                    throw APIError.invalid("The event was copied to \(dest.name), but the original couldn't be deleted: \(error.localizedDescription)")
+                }
+                await reload()
+                await refreshUpcoming()
+                return
+            }
+        }
         let calendarId: String, accountId: String
-        if let existing { calendarId = existing.calendarId; accountId = existing.accountId }
+        if let destination { calendarId = destination.calendarId; accountId = destination.accountId }
+        else if let existing { calendarId = existing.calendarId; accountId = existing.accountId }
         else if let src = calendars.first(where: { $0.id == d.sourceId }) { calendarId = src.calendarId; accountId = src.accountId }
         else { throw APIError.invalid("Pick a calendar.") }
         let api = GoogleAPI(accountId: accountId)
@@ -868,7 +900,7 @@ final class CalendarStore {
         var notes = d.notes
         var notesChanged = existing == nil || d.notes != existing!.notes.strippingHTML
         var rawNotes = notesChanged ? d.notes : (existing?.notes ?? "")
-        var zoomId = existing?.zoomMeetingID
+        var zoomId = existing?.zoomMeetingID ?? carriedZoomId
         var extProps: [String: Any]?
         var wantsMeet = false
 
@@ -880,6 +912,8 @@ final class CalendarStore {
             if location.isEmpty { location = m.joinURL }
             zoomId = String(m.id)
             extProps = ["private": ["zoomMeetingId": String(m.id)]]
+        } else if existing == nil, let zid = carriedZoomId {
+            extProps = ["private": ["zoomMeetingId": zid]]
         } else if d.video == .meet, existing?.meetingURL == nil, !isEK {
             wantsMeet = true
         }
