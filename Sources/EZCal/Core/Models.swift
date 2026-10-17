@@ -251,6 +251,13 @@ enum ActiveSheet: Identifiable {
     /// Shown before editing or deleting an occurrence of a recurring event.
     case recurrenceScope(CalEvent, RecurrenceAction)
 
+    /// True for modal presentations that own the keyboard. The docked event panel (`.detail`) is not modal, so
+    /// the grid's single-key shortcuts (T, D, W, M, ...) keep working while it is open.
+    var blocksGridShortcuts: Bool {
+        if case .detail = self { return false }
+        return true
+    }
+
     var id: String {
         switch self {
         case .palette: return "palette"
