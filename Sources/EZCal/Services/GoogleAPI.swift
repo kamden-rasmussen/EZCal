@@ -183,6 +183,13 @@ struct GoogleAPI: Sendable {
         _ = try await data("PATCH", c.url!, json: body)
     }
 
+    /// Moves an event to another calendar of the same account (`events.move`); the event keeps its id.
+    func moveEvent(calendarId: String, eventId: String, destination: String) async throws {
+        var c = URLComponents(string: "\(Self.calendarBase)/calendars/\(Self.enc(calendarId))/events/\(Self.enc(eventId))/move")!
+        c.queryItems = [.init(name: "destination", value: destination), .init(name: "sendUpdates", value: "all")]
+        _ = try await data("POST", c.url!)
+    }
+
     /// Fetches a single event by id, including its `recurrence` (RRULE) lines when it's a series master —
     /// used to split a series for a "this and following" edit/delete (see RecurrenceScope).
     func getEvent(calendarId: String, eventId: String) async throws -> GEvent {

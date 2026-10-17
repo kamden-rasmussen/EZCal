@@ -18,7 +18,13 @@ struct EventEditorView: View {
     private var accountId: String? {
         draft.existing?.accountId ?? store.calendars.first { $0.id == draft.sourceId }?.accountId
     }
-    private var source: Source? { store.calendars.first { $0.id == (draft.existing?.sourceId ?? draft.sourceId) } }
+    private var source: Source? { store.calendars.first { $0.id == draft.sourceId } }
+    /// Calendars the event can be saved to: any writable one for a new event, else those it can be moved to (issue #78).
+    private var calendarOptions: [Source] {
+        if let e = draft.existing { return EventMove.destinations(for: e, in: store.calendars) }
+        return store.calendars.filter(\.canWrite)
+    }
+    private var canPickCalendar: Bool { !guestsOnly && (isNew || calendarOptions.count > 1) }
     private var isEK: Bool { draft.existing?.isEventKit ?? (source?.isEventKit ?? false) }
     /// Editing someone else's event: only the guest list can change, so the rest is hidden.
     private var guestsOnly: Bool { draft.existing?.isGuestInviteOnly == true }
@@ -115,9 +121,9 @@ struct EventEditorView: View {
     }
 
     @ViewBuilder private var calendarChip: some View {
-        if isNew {
+        if canPickCalendar {
             Menu {
-                ForEach(store.calendars.filter(\.canWrite)) { s in
+                ForEach(calendarOptions) { s in
                     Button { draft.sourceId = s.id } label: {
                         Text(s.isEventKit ? "\(s.name) — \(s.groupTitle)" : s.name)
                     }
@@ -135,7 +141,7 @@ struct EventEditorView: View {
             RoundedRectangle(cornerRadius: 3).fill(s?.color ?? Theme.text3).frame(width: 10, height: 10)
             Text(s.map { $0.isEventKit ? "\($0.name) · \($0.groupTitle)" : $0.name } ?? draft.existing?.sourceName ?? "Calendar")
                 .font(.system(size: 13, weight: .medium))
-            if isNew { Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.text3) }
+            if canPickCalendar { Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.text3) }
         }
         .padding(.horizontal, 10).frame(height: 28)
         .background(RoundedRectangle(cornerRadius: 8).fill(Theme.hover))

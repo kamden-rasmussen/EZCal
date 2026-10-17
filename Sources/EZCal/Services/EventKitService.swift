@@ -111,6 +111,10 @@ final class EventKitService: @unchecked Sendable {
         if let existing {
             guard let found = find(existing) else { throw APIError.invalid("That event no longer exists in Calendar.") }
             ev = found
+            // Moving to another calendar (issue #78); `calendarId` is the destination.
+            if found.calendar.calendarIdentifier != calendarId, let cal = store.calendar(withIdentifier: calendarId) {
+                ev.calendar = cal
+            }
         } else {
             guard let cal = store.calendar(withIdentifier: calendarId) else { throw APIError.invalid("Calendar not found.") }
             ev = EKEvent(eventStore: store)
