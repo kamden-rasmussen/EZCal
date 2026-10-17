@@ -146,6 +146,7 @@ struct SettingsView: View {
                 Picker("Default event length", selection: $defaultDuration) {
                     ForEach([15, 30, 45, 60, 90], id: \.self) { Text("\($0) min").tag($0) }
                 }
+                Section("Default calendar for new events") { DefaultCalendarSettingsRows() }
                 Picker("Add video to new events", selection: $defaultVideo) {
                     Text("Never").tag("none")
                     Text("Zoom").tag("zoom")

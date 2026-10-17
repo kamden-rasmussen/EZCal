@@ -351,6 +351,8 @@ final class CalendarStore {
 
     func toggle(_ s: Source) {
         if hidden.contains(s.id) {
+            // Turning a calendar on counts as "selecting" it for the follow-sidebar default.
+            if s.canWrite { UserDefaults.standard.set(s.id, forKey: DefaultCalendarSettings.lastSelectedKey) }
             hidden.remove(s.id)
             persist()
             if eventsBySource[s.id] == nil { scheduleReload() } else { rebuildDisplay() }
@@ -790,7 +792,14 @@ final class CalendarStore {
 
     // MARK: - Creating / editing
 
+    /// Calendar new events start on: the user's "Default calendar" setting (see `DefaultCalendarResolver`),
+    /// falling back to the account's primary calendar when that yields nothing usable.
     var defaultSource: Source? {
+        let all = calendars.filter(\.canWrite)
+        if let id = DefaultCalendarResolver.resolve(
+                DefaultCalendarSettings.load(), writable: Set(all.map(\.id)),
+                lastSelected: UserDefaults.standard.string(forKey: DefaultCalendarSettings.lastSelectedKey)),
+           let s = all.first(where: { $0.id == id }) { return s }
         let writable = calendars.filter { $0.canWrite && isVisible($0) }
         return writable.first { $0.calendarId == $0.accountId } ?? writable.first ?? calendars.first { $0.canWrite }
     }
