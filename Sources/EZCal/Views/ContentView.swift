@@ -142,7 +142,7 @@ struct ContentView: View {
 
     /// Single-key shortcuts for the calendar grid. Modified keys are handled by the menu bar.
     private func handle(_ press: KeyPress) -> KeyPress.Result {
-        guard store.sheet == nil, store.deleteRequest == nil else { return .ignored }
+        guard store.sheet?.blocksGridShortcuts != true, store.deleteRequest == nil else { return .ignored }
 
         // Esc cancels a drag in progress (mouse still down) before anything else claims it.
         if store.dragPreview != nil, press.key == .escape { store.cancelDrag(); return .handled }
