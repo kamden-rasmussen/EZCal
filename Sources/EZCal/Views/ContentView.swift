@@ -122,6 +122,10 @@ struct ContentView: View {
         .onChange(of: store.sheet?.id) { _, id in if id == nil { gridFocused = true } }
         // The person-picker's search field owns focus while open; hand it back so Esc/P work afterwards.
         .onChange(of: store.showAddPerson) { _, open in if !open { gridFocused = true } }
+        // Coming back from Settings or another app can leave focus elsewhere, which silently kills the single-key shortcuts.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if store.sheet == nil || store.sheet?.blocksGridShortcuts == false { gridFocused = true }
+        }
         .onChange(of: firstWeekday) { _, _ in store.scheduleReload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             guard Date().timeIntervalSince(lastActivation) > 60 else { return }
@@ -142,7 +146,7 @@ struct ContentView: View {
 
     /// Single-key shortcuts for the calendar grid. Modified keys are handled by the menu bar.
     private func handle(_ press: KeyPress) -> KeyPress.Result {
-        guard store.sheet == nil, store.deleteRequest == nil else { return .ignored }
+        guard store.sheet?.blocksGridShortcuts != true, store.deleteRequest == nil else { return .ignored }
 
         // Esc cancels a drag in progress (mouse still down) before anything else claims it.
         if store.dragPreview != nil, press.key == .escape { store.cancelDrag(); return .handled }
