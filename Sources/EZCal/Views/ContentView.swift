@@ -122,6 +122,10 @@ struct ContentView: View {
         .onChange(of: store.sheet?.id) { _, id in if id == nil { gridFocused = true } }
         // The person-picker's search field owns focus while open; hand it back so Esc/P work afterwards.
         .onChange(of: store.showAddPerson) { _, open in if !open { gridFocused = true } }
+        // Coming back from Settings or another app can leave focus elsewhere, which silently kills the single-key shortcuts.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if store.sheet == nil || store.sheet?.blocksGridShortcuts == false { gridFocused = true }
+        }
         .onChange(of: firstWeekday) { _, _ in store.scheduleReload() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             guard Date().timeIntervalSince(lastActivation) > 60 else { return }
