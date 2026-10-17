@@ -14,7 +14,12 @@ struct EventEditorSheet: View {
     init(draft: EventDraft) { _draft = State(initialValue: draft) }
 
     private var isNew: Bool { draft.existing == nil }
-    private var writable: [Source] { store.calendars.filter(\.canWrite) }
+    /// Any writable calendar for a new event; for an existing one, only calendars it can be moved to (issue #78).
+    private var writable: [Source] {
+        if let e = draft.existing { return EventMove.destinations(for: e, in: store.calendars) }
+        return store.calendars.filter(\.canWrite)
+    }
+    private var canPickCalendar: Bool { isNew || writable.count > 1 }
     private var source: Source? { store.calendars.first { $0.id == draft.sourceId } }
     private var isEK: Bool { draft.existing?.isEventKit ?? (source?.isEventKit ?? false) }
 
@@ -26,7 +31,7 @@ struct EventEditorSheet: View {
                         .font(.title3.weight(.semibold))
                         .focused($titleFocused)
                         .accessibilityIdentifier("editorTitle")
-                    if isNew {
+                    if canPickCalendar {
                         Picker("Calendar", selection: $draft.sourceId) {
                             ForEach(writable) { s in
                                 Label { Text(s.isEventKit ? "\(s.name) · \(s.groupTitle)" : s.name) }
