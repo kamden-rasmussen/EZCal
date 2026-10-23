@@ -1,6 +1,15 @@
 import SwiftUI
 
+/// `EZCal --mcp-stdio` serves MCP over stdin/stdout for Claude Desktop (issue #86) and must exit before SwiftUI
+/// starts, so it never shows a Dock icon or window; anything else launches the app.
 @main
+enum EZCalMain {
+    static func main() {
+        if MCPStdioBridge.isRequested() { MCPStdioBridge.run() }
+        EZCalApp.main()
+    }
+}
+
 struct EZCalApp: App {
     @State private var store: CalendarStore
     @State private var updates = UpdateChecker()
@@ -60,6 +69,9 @@ struct EZCalApp: App {
                 Button("Previous Event") { store.moveFocus(-1) }.keyboardShortcut(.upArrow, modifiers: [.command, .option])
             }
 
+            CommandGroup(replacing: .appInfo) {
+                Button("About EZCal") { AboutPanel.show() }
+            }
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton()
             }

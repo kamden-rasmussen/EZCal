@@ -10,12 +10,13 @@ Claude Code (use the **Copy setup command** button, or):
 claude mcp add --transport http ezcal http://127.0.0.1:47900/mcp --header "Authorization: Bearer <token>"
 ```
 
-Claude Desktop (via the `mcp-remote` bridge) in `claude_desktop_config.json`:
+Claude Desktop: use **Copy config** in Settings → Agents and paste it into `claude_desktop_config.json` (Claude → Settings → Developer → Edit Config), then restart Claude Desktop:
 
 ```json
-{ "mcpServers": { "ezcal": { "command": "npx", "args": ["-y", "mcp-remote", "http://127.0.0.1:47900/mcp",
-  "--header", "Authorization: Bearer <token>"] } } }
+{ "mcpServers": { "ezcal": { "command": "/Applications/EZCal.app/Contents/MacOS/EZCal", "args": ["--mcp-stdio"] } } }
 ```
+
+`EZCal --mcp-stdio` is a stdio bridge built into the app binary: it reads the token from the Keychain (no prompt, same signed binary) and forwards each message to the running app on `127.0.0.1`, so there is no Node dependency and no token in the config file. It works for any stdio-only MCP client. EZCal still has to be running with agent access switched on; otherwise tool calls come back with an error saying so.
 
 | Tool | What it does |
 |---|---|
@@ -29,4 +30,4 @@ Claude Desktop (via the `mcp-remote` bridge) in `claude_desktop_config.json`:
 | `create_reminder`, `update_reminder`, `delete_reminder` | title, due date or date-time, list, notes, priority, `repeat`; `update_reminder` also marks done/not done and needs `current_title`, as does delete |
 | `find_free_time` | free slots in your working hours, optionally checking other people's Google availability |
 
-Notes: event ids from any tool work in every other tool. Without `calendar_id`, `create_event` uses your default writable calendar (the same one ⌘N uses). Times are ISO 8601; without an offset they are in your local zone. Subscriptions (`.ics`) and coworker overlays are read-only and refuse changes. Apple calendars can't take guests or private visibility through EZCal, so those fields are ignored with a warning. The change shows up in the app straight away. `update_event` and `delete_event` require the event's current title and start (copied from `list_events` / `get_event`) and refuse if they don't match the event behind `event_id`, so an approval prompt names the event and a stale id can't hit the wrong one. Tools carry titles and read-only / destructive hints so clients can auto-approve reads, and the server asks agents to show you the event and wait for a yes before changing anything. Moving an event with `calendar_id` follows the editor's rules: not for recurring events or events you don't organize, and moves between Google and Apple calendars copy the event (guests and Meet links don't carry over). Reminder tools need Reminders switched on in Settings → Accounts, respect the same Read-only switch, and use the same confirm-before-change rules; reminders you've hidden in the sidebar are skipped unless you pass their `list_ids`. The server speaks plain-JSON Streamable HTTP; there is no stdio shim, so clients without HTTP support need `mcp-remote`.
+Notes: event ids from any tool work in every other tool. Without `calendar_id`, `create_event` uses your default writable calendar (the same one ⌘N uses). Times are ISO 8601; without an offset they are in your local zone. Subscriptions (`.ics`) and coworker overlays are read-only and refuse changes. Apple calendars can't take guests or private visibility through EZCal, so those fields are ignored with a warning. The change shows up in the app straight away. `update_event` and `delete_event` require the event's current title and start (copied from `list_events` / `get_event`) and refuse if they don't match the event behind `event_id`, so an approval prompt names the event and a stale id can't hit the wrong one. Tools carry titles and read-only / destructive hints so clients can auto-approve reads, and the server asks agents to show you the event and wait for a yes before changing anything. Moving an event with `calendar_id` follows the editor's rules: not for recurring events or events you don't organize, and moves between Google and Apple calendars copy the event (guests and Meet links don't carry over). Reminder tools need Reminders switched on in Settings → Accounts, respect the same Read-only switch, and use the same confirm-before-change rules; reminders you've hidden in the sidebar are skipped unless you pass their `list_ids`. The server speaks plain-JSON Streamable HTTP; clients that only speak stdio use `EZCal --mcp-stdio` (above).

@@ -280,3 +280,54 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertTrue(r.isError); XCTAssertTrue(r.text.contains("30 days"))
     }
 }
+
+final class MCPStdioBridgeTests: XCTestCase {
+    private func json(_ d: Data?) -> [String: Any]? {
+        d.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    }
+
+    func testFlagDetection() {
+        XCTAssertTrue(MCPStdioBridge.isRequested(["EZCal", "--mcp-stdio"]))
+        XCTAssertFalse(MCPStdioBridge.isRequested(["EZCal"]))
+    }
+
+    func testUndeliverableRequestsGetAJSONRPCError() {
+        let req = Data(#"{"jsonrpc":"2.0","id":7,"method":"tools/list"}"#.utf8)
+        let r = json(MCPStdioBridge.errorReply(for: req, message: "down"))
+        XCTAssertEqual(r?["id"] as? Int, 7)
+        XCTAssertEqual((r?["error"] as? [String: Any])?["message"] as? String, "down")
+    }
+
+    func testNotificationsGetNoErrorReply() {
+        let note = Data(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.utf8)
+        XCTAssertNil(MCPStdioBridge.errorReply(for: note, message: "down"))
+    }
+
+    func testRepliesAreCompactedToOneLine() {
+        let pretty = Data("{\n  \"a\": 1,\n  \"b\": [1, 2]\n}".utf8)
+        let line = MCPStdioBridge.compact(pretty).flatMap { String(data: $0, encoding: .utf8) }
+        XCTAssertEqual(line, #"{"a":1,"b":[1,2]}"#)
+    }
+
+    func testTargetNeedsATokenAndHonoursThePort() throws {
+        let d = UserDefaults(suiteName: "MCPStdioBridgeTests")!
+        d.removePersistentDomain(forName: "MCPStdioBridgeTests")
+        XCTAssertEqual(MCPStdioBridge.target(defaults: d, token: nil).failureValue, .noToken)
+        XCTAssertEqual(try MCPStdioBridge.target(defaults: d, token: "t").get().0.absoluteString, "http://127.0.0.1:47900/mcp")
+        d.set(48001, forKey: "mcpPort")
+        XCTAssertEqual(try MCPStdioBridge.target(defaults: d, token: "t").get().0.port, 48001)
+    }
+
+    func testDesktopConfigPointsAtTheBinaryWithoutAToken() throws {
+        let cfg = MCPStdioBridge.claudeDesktopConfig(executable: "/Applications/EZCal.app/Contents/MacOS/EZCal")
+        let obj = try JSONSerialization.jsonObject(with: Data(cfg.utf8)) as? [String: Any]
+        let entry = (obj?["mcpServers"] as? [String: Any])?["ezcal"] as? [String: Any]
+        XCTAssertEqual(entry?["command"] as? String, "/Applications/EZCal.app/Contents/MacOS/EZCal")
+        XCTAssertEqual(entry?["args"] as? [String], ["--mcp-stdio"])
+        XCTAssertFalse(cfg.lowercased().contains("bearer"))
+    }
+}
+
+private extension Result {
+    var failureValue: Failure? { if case .failure(let e) = self { return e }; return nil }
+}
