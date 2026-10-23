@@ -16,6 +16,12 @@ if [ -n "${VERSION:-}" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD:-$VERSION}" "$APP/Contents/Info.plist"
 fi
+# Record the source commit so an installed app can be traced to its code (shown in About EZCal).
+COMMIT="$(git rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$COMMIT" ]; then
+  [ -z "$(git status --porcelain 2>/dev/null)" ] || COMMIT="$COMMIT-dirty"
+  /usr/libexec/PlistBuddy -c "Add :EZCalGitCommit string $COMMIT" "$APP/Contents/Info.plist"
+fi
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # Sign with a stable identity if you have one (keeps Keychain from re-prompting after every rebuild);

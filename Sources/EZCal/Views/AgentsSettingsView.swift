@@ -16,6 +16,10 @@ struct AgentsSettingsView: View {
         "claude mcp add --transport http ezcal \(url) --header \"Authorization: Bearer \(token)\""
     }
 
+    private var claudeDesktopConfig: String {
+        MCPStdioBridge.claudeDesktopConfig(executable: Bundle.main.executablePath ?? "/Applications/EZCal.app/Contents/MacOS/EZCal")
+    }
+
     var body: some View {
         Form {
             Section("Agent access (MCP)") {
@@ -50,7 +54,8 @@ struct AgentsSettingsView: View {
                         }
                     }
                     LabeledContent("Claude Code") { copyButton("Copy setup command", claudeCodeCommand) }
-                    Text("Claude Desktop: add a connector through the mcp-remote bridge, pointing at the address with the header Authorization: Bearer <token>. See docs/agents.md for the exact config. Regenerating the token disconnects every agent until you update it.")
+                    LabeledContent("Claude Desktop") { copyButton("Copy config", claudeDesktopConfig) }
+                    Text("Claude Desktop: paste the config into the mcpServers section of claude_desktop_config.json (Claude → Settings → Developer → Edit Config) and restart it. It launches EZCal itself as a bridge, so it needs no Node and no token in the file. Regenerating the token disconnects HTTP agents (Claude Code) until you update them.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

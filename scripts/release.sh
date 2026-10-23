@@ -8,9 +8,11 @@ cd "$(dirname "$0")/.."
 : "${VERSION:?Set VERSION=x.y.z}"
 TAP="${TAP_REPO:-kamden-rasmussen/homebrew-tap}"
 TAG="ezcal-v$VERSION"
+SRC="${SRC_REPO:-kamden-rasmussen/EZCal}"
 PUBLISH="${PUBLISH:-1}"
 if [ "$PUBLISH" = 1 ]; then
   [ -z "$(git status --porcelain)" ] || { echo "Working tree is dirty; commit first"; exit 1; }
+  git fetch -q origin && [ -n "$(git branch -r --contains HEAD)" ] || { echo "HEAD isn't pushed; the release notes link to it"; exit 1; }
   git rev-parse "v$VERSION" >/dev/null 2>&1 && { echo "Tag v$VERSION already exists"; exit 1; }
   gh release view "$TAG" --repo "$TAP" >/dev/null 2>&1 && { echo "Release $TAG already exists on $TAP"; exit 1; }
 fi
@@ -33,11 +35,16 @@ SHA=$(shasum -a 256 "$ZIP" | awk '{print $1}')
 # The in-app update checker treats any visible ezcal-v* release as "new version available" and tells users to
 # run `brew upgrade`, so the release must not be visible until the cask points at it. Order: draft release
 # (asset uploaded, so the cask URL resolves) -> bump + push cask -> make the release visible.
-gh release create "$TAG" "$ZIP" --repo "$TAP" --title "EZCal $VERSION" --notes "EZCal $VERSION" --draft
+# Notes link back to the source. They use the commit (the v$VERSION tag is only pushed at the very end).
+FULL=$(git rev-parse HEAD)
+NOTES="EZCal $VERSION, built from [$SRC@v$VERSION](https://github.com/$SRC/commit/$FULL) (\`${FULL:0:7}\`)."
+PREV=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+[ -z "$PREV" ] || NOTES="$NOTES"$'\n\n'"Changes since $PREV: https://github.com/$SRC/compare/$PREV...$FULL"
+gh release create "$TAG" "$ZIP" --repo "$TAP" --title "EZCal $VERSION" --notes "$NOTES" --draft
 
 TMP=$(mktemp -d)
 gh repo clone "$TAP" "$TMP" -- --quiet
-sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" "$TMP/Casks/ezcal.rb"
+sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/; s|^  homepage \".*\"|  homepage \"https://github.com/$SRC\"|" "$TMP/Casks/ezcal.rb"
 git -C "$TMP" commit -qam "ezcal $VERSION"
 git -C "$TMP" push -q
 rm -rf "$TMP"
