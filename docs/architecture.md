@@ -16,6 +16,7 @@ Sources/EZCal/
   Core/MCPProtocol.swift    MCP JSON-RPC dispatcher + tiny HTTP framing (pure, unit tested)
   Services/MCPServer.swift  loopback listener, token auth, Settings → Agents switch
   Store/MCPTools.swift      the calendar tools agents call (list/get/create/update/delete/find time)
+  Store/MCPReminderTools.swift  the Apple Reminders tools (list/create/update/delete)
   Services/SlotFinder.swift pure "find a time" slot-search logic (no I/O)
   Services/NotificationPlanner.swift  pure "which events get which reminder" logic (unit tested)
   Services/NotificationService.swift  UNUserNotificationCenter: permission, scheduling, Join/Open actions

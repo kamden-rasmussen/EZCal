@@ -167,11 +167,33 @@ extension EventKitService {
         let hasTime = r.dueDateComponents?.hour != nil
         return EZTask(id: "\(list.id)|\(r.calendarItemIdentifier)", taskId: r.calendarItemIdentifier, listId: list.id,
                       title: (r.title?.isEmpty == false ? r.title! : "(No title)"), notes: r.notes ?? "",
-                      dueDate: due, hasDueTime: hasTime, isCompleted: r.isCompleted, colorHex: list.colorHex)
+                      dueDate: due, hasDueTime: hasTime, isCompleted: r.isCompleted, colorHex: list.colorHex,
+                      priority: r.priority, repeats: r.recurrenceRules?.first.map(Self.repeatName))
+    }
+
+    private static func repeatName(_ rule: EKRecurrenceRule) -> String {
+        guard rule.interval == 1 else { return "custom" }
+        switch rule.frequency {
+        case .daily: return "daily"
+        case .monthly: return "monthly"
+        case .weekly: return (rule.daysOfTheWeek?.count ?? 0) == 5 ? "weekdays" : "weekly"
+        default: return "custom"
+        }
+    }
+
+    /// One reminder by the id `EZTask.id` carries (`<list id>|<reminder identifier>`) or its bare identifier.
+    func task(withId id: String) -> EZTask? {
+        let raw = id.split(separator: "|").last.map(String.init) ?? id
+        guard let r = store.calendarItem(withIdentifier: raw) as? EKReminder,
+              let list = taskLists().first(where: { $0.listId == r.calendar.calendarIdentifier }) else { return nil }
+        return Self.map(r, list: list)
     }
 
     /// `existing == nil` creates a new reminder in `listId`. `due == nil` clears the due date.
-    func saveTask(existing: EZTask?, listId: String, title: String, due: Date?, hasDueTime: Bool, notes: String) throws {
+    /// `priority` / `recurrence` nil leave the existing value alone.
+    @discardableResult
+    func saveTask(existing: EZTask?, listId: String, title: String, due: Date?, hasDueTime: Bool, notes: String,
+                  priority: Int? = nil, recurrence: RecurrenceOption? = nil) throws -> String {
         let r: EKReminder
         if let existing, let found = store.calendarItem(withIdentifier: existing.taskId) as? EKReminder {
             r = found
@@ -188,7 +210,16 @@ extension EventKitService {
         } else {
             r.dueDateComponents = nil
         }
+        if let priority { r.priority = priority }
+        if let recurrence {
+            for old in r.recurrenceRules ?? [] { r.removeRecurrenceRule(old) }
+            if let rule = recurrence.ekRule {
+                guard due != nil else { throw APIError.invalid("A repeating reminder needs a due date.") }
+                r.addRecurrenceRule(rule)
+            }
+        }
         try store.save(r, commit: true)
+        return r.calendarItemIdentifier
     }
 
     func setTaskCompleted(_ task: EZTask, completed: Bool) throws {

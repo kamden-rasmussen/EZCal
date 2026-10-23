@@ -180,8 +180,9 @@ final class MCPToolsTests: XCTestCase {
 
     func testEveryToolIsListedAndWritesAreFlagged() {
         let tools = MCPTools.all(store: store())
-        XCTAssertEqual(Set(tools.map(\.name)), ["list_calendars", "list_events", "get_event", "create_event", "update_event", "delete_event", "find_free_time"])
-        XCTAssertEqual(Set(tools.filter(\.writes).map(\.name)), ["create_event", "update_event", "delete_event"])
+        XCTAssertEqual(Set(tools.map(\.name)), ["list_calendars", "list_events", "get_event", "create_event", "update_event", "delete_event", "find_free_time",
+                                                   "list_reminder_lists", "list_reminders", "create_reminder", "update_reminder", "delete_reminder"])
+        XCTAssertEqual(Set(tools.filter(\.writes).map(\.name)), ["create_event", "update_event", "delete_event", "create_reminder", "update_reminder", "delete_reminder"])
     }
 
     func testToolsCarryTitlesAndBehaviourHints() {
@@ -206,6 +207,26 @@ final class MCPToolsTests: XCTestCase {
             XCTAssertEqual(Set(tools[n]!.schema["required"] as! [String]), ["event_id", "current_title", "current_start"], n)
         }
         XCTAssertNotNil((tools["update_event"]!.schema["properties"] as! [String: Any])["calendar_id"])
+    }
+
+    func testReminderToolsNeedRemindersSwitchedOn() async {
+        let s = store()
+        s.tasks.enabled = false
+        for (tool, args) in [("list_reminder_lists", [:]), ("list_reminders", [:]), ("create_reminder", ["title": "x"]),
+                             ("update_reminder", ["reminder_id": "r", "current_title": "x"]), ("delete_reminder", ["reminder_id": "r", "current_title": "x"])] as [(String, [String: Any])] {
+            let r = await run(s, tool, args)
+            XCTAssertTrue(r.isError, tool)
+            XCTAssertTrue(r.text.contains("Reminders isn't switched on"), "\(tool): \(r.text)")
+        }
+    }
+
+    func testReminderWritesAreDestructiveOnlyForUpdateAndDelete() {
+        let tools = Dictionary(uniqueKeysWithValues: MCPTools.all(store: store()).map { ($0.name, MCPDispatcher.listing($0)) })
+        func hints(_ n: String) -> [String: Any] { tools[n]!["annotations"] as! [String: Any] }
+        XCTAssertEqual(hints("list_reminders")["readOnlyHint"] as? Bool, true)
+        XCTAssertEqual(hints("create_reminder")["destructiveHint"] as? Bool, false)
+        XCTAssertEqual(hints("update_reminder")["destructiveHint"] as? Bool, true)
+        XCTAssertEqual(hints("delete_reminder")["destructiveHint"] as? Bool, true)
     }
 
     func testListCalendarsReportsKindAndWritable() async throws {
