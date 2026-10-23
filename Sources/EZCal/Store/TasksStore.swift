@@ -24,6 +24,10 @@ struct EZTask: Identifiable, Hashable, Sendable {
     var hasDueTime: Bool = false
     var isCompleted: Bool = false
     var colorHex: String
+    /// EventKit priority: 0 none, 1-4 high, 5 medium, 6-9 low.
+    var priority: Int = 0
+    /// "daily" / "weekly" / "monthly" / "weekdays" / "custom" when the reminder repeats.
+    var repeats: String?
 
     var color: Color { Color(hex: colorHex) }
 }

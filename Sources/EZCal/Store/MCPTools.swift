@@ -83,15 +83,15 @@ enum MCPTools {
                         "attendee_emails": ["type": "array", "items": ["type": "string"]],
                         "limit": ["type": "integer", "description": "Max slots (default 10)."],
                     ], required: ["duration_minutes", "start", "end"]), writes: false, title: "Find free time") { try await h.findFreeTime($0) },
-        ]
+        ] + MCPReminderTools.all(store: store)
     }
 
-    private static func obj(_ props: [String: Any], required: [String] = []) -> [String: Any] {
+    static func obj(_ props: [String: Any], required: [String] = []) -> [String: Any] {
         var s: [String: Any] = ["type": "object", "properties": props]
         if !required.isEmpty { s["required"] = required }
         return s
     }
-    private static func str(_ d: String) -> [String: Any] { ["type": "string", "description": d] }
+    static func str(_ d: String) -> [String: Any] { ["type": "string", "description": d] }
 }
 
 @MainActor
