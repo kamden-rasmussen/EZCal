@@ -10,7 +10,7 @@ enum MCPTools {
         return [
             MCPTool(name: "list_calendars",
                     description: "List the user's calendars (Google, Apple/iCloud, subscriptions) with ids, whether each is writable, and which one create_event uses by default.",
-                    schema: obj([:]), writes: false) { _ in h.listCalendars() },
+                    schema: obj([:]), writes: false, title: "List calendars") { _ in h.listCalendars() },
 
             MCPTool(name: "list_events",
                     description: "List events between start and end (max 62 days) across all visible calendars, sorted by start. Busy-only and private events appear as \"Busy\" without details; use get_event for full detail.",
@@ -21,12 +21,12 @@ enum MCPTools {
                         "query": str("Case-insensitive text match on title, location and notes."),
                         "limit": ["type": "integer", "description": "Max events to return (default 50, max 200)."],
                         "cursor": str("`next_cursor` from a previous call."),
-                    ], required: ["start", "end"]), writes: false) { try await h.listEvents($0) },
+                    ], required: ["start", "end"]), writes: false, title: "List calendar events") { try await h.listEvents($0) },
 
             MCPTool(name: "get_event",
                     description: "Full detail for one event: times, location, notes, attendees with RSVP status, video link, recurrence, calendar, and whether it can be edited.",
                     schema: obj(["event_id": str("Event id from any tool.")], required: ["event_id"]),
-                    writes: false) { try await h.getEvent($0) },
+                    writes: false, title: "Get calendar event") { try await h.getEvent($0) },
 
             MCPTool(name: "create_event",
                     description: "Create an event. Uses the user's default writable calendar unless calendar_id is given. Works for Google and Apple/iCloud calendars. Overlapping events are reported in `conflicts` (the event is still created).",
@@ -42,12 +42,15 @@ enum MCPTools {
                         "video": ["type": "string", "enum": ["none", "zoom", "meet"], "description": "Attach a Zoom or Google Meet link (meet: Google calendars only)."],
                         "recurrence": ["type": "string", "enum": ["none", "daily", "weekly", "monthly", "weekdays"], "description": "Repeat rule."],
                         "visibility": ["type": "string", "enum": ["default", "public", "private"], "description": "Google only; private shows others just \"Busy\"."],
-                    ], required: ["title", "start"]), writes: true) { try await h.createEvent($0) },
+                    ], required: ["title", "start"]), writes: true, title: "Create calendar event") { try await h.createEvent($0) },
 
             MCPTool(name: "update_event",
-                    description: "Change an event. Only the fields you pass are changed. For a recurring event, `scope` picks which occurrences change (default this_event).",
+                    description: "Change an event. Only the fields you pass are changed. current_title and current_start must match the event as it is now (copy them from list_events or get_event); a mismatch is refused. For a recurring event, `scope` picks which occurrences change (default this_event).",
                     schema: obj([
                         "event_id": str("Event id."),
+                        "current_title": str("The event's current title, as returned by list_events or get_event."),
+                        "current_start": str("The event's current start, as returned by list_events or get_event."),
+                        "calendar_id": str("Move the event to this calendar (id from list_calendars). Not available for recurring events or events you don't organize."),
                         "title": str("New title."),
                         "start": str("New start (ISO 8601 date-time, or date for all-day)."),
                         "end": str("New end (all-day: last day, inclusive)."),
@@ -58,14 +61,18 @@ enum MCPTools {
                         "video": ["type": "string", "enum": ["zoom", "meet"], "description": "Add a video link if the event has none."],
                         "visibility": ["type": "string", "enum": ["default", "public", "private"]],
                         "scope": ["type": "string", "enum": ["this_event", "this_and_following", "all"], "description": "Recurring events only."],
-                    ], required: ["event_id"]), writes: true) { try await h.updateEvent($0) },
+                    ], required: ["event_id", "current_title", "current_start"]), writes: true,
+                    title: "Update calendar event", destructive: true) { try await h.updateEvent($0) },
 
             MCPTool(name: "delete_event",
-                    description: "Delete an event and report what was deleted. For a recurring event, `scope` picks which occurrences go (default this_event).",
+                    description: "Delete an event and report what was deleted. current_title and current_start must match the event as it is now (copy them from list_events or get_event); a mismatch is refused. For a recurring event, `scope` picks which occurrences go (default this_event).",
                     schema: obj([
                         "event_id": str("Event id."),
+                        "current_title": str("The event's current title, as returned by list_events or get_event."),
+                        "current_start": str("The event's current start, as returned by list_events or get_event."),
                         "scope": ["type": "string", "enum": ["this_event", "this_and_following", "all"], "description": "Recurring events only."],
-                    ], required: ["event_id"]), writes: true) { try await h.deleteEvent($0) },
+                    ], required: ["event_id", "current_title", "current_start"]), writes: true,
+                    title: "Delete calendar event", destructive: true) { try await h.deleteEvent($0) },
 
             MCPTool(name: "find_free_time",
                     description: "Find slots within the user's working hours where the user (and optionally other people) are free. Other people's availability is Google-only; people whose calendars aren't visible are reported as unknown.",
@@ -75,7 +82,7 @@ enum MCPTools {
                         "end": str("Day after the last day to search (max 30 days)."),
                         "attendee_emails": ["type": "array", "items": ["type": "string"]],
                         "limit": ["type": "integer", "description": "Max slots (default 10)."],
-                    ], required: ["duration_minutes", "start", "end"]), writes: false) { try await h.findFreeTime($0) },
+                    ], required: ["duration_minutes", "start", "end"]), writes: false, title: "Find free time") { try await h.findFreeTime($0) },
         ]
     }
 
@@ -229,6 +236,25 @@ struct MCPToolHelper {
         if !e.canEdit { throw MCPToolError("\"\(e.sourceName)\" is read-only for you; this event can't be changed.") }
     }
 
+    /// Refuses when the agent's idea of the event (`current_title`, `current_start`) differs from what `event_id`
+    /// points at, so the approval prompt names the event and a stale or mistyped id can't hit the wrong one.
+    private func confirmCurrent(_ a: [String: Any], _ e: CalEvent) throws {
+        let title = try required(a, "current_title")
+        guard let start = try date(a, "current_start") else { throw MCPToolError("Missing required argument `current_start`.") }
+        let titleOK = title == e.title.trimmingCharacters(in: .whitespacesAndNewlines) || (masked(e) && title == "Busy")
+        let startOK = e.isAllDay
+            ? MCPDate.day(start.date, calendar: cal) == MCPDate.day(e.start, calendar: cal)
+            : !start.dateOnly && abs(start.date.timeIntervalSince(e.start)) < 60
+        if !titleOK || !startOK {
+            throw MCPToolError("`event_id` points at a different event than current_title/current_start describe, so nothing was changed. "
+                               + "The event with that id is: \(Self.describe(summary(e, masked: false))). Re-check with get_event.")
+        }
+    }
+
+    private static func describe(_ s: [String: Any]) -> String {
+        "\"\(s["title"] ?? "")\" starting \(s["start"] ?? "") on \(s["calendar"] ?? "")"
+    }
+
     // MARK: Tools
 
     func listEvents(_ a: [String: Any]) async throws -> Any {
@@ -328,6 +354,7 @@ struct MCPToolHelper {
         let id = try required(a, "event_id")
         let e = try await locate(id)
         try requireEditable(e)
+        try confirmCurrent(a, e)
         let scope = try scope(a)
 
         var d = EventDraft(existing: e, title: e.title, start: e.start,
@@ -377,12 +404,28 @@ struct MCPToolHelper {
             if !e.isEventKit { d.visibility = vis }
         }
 
+        var targetId = e.sourceId
+        if let id = string(a, "calendar_id"), id != e.sourceId {
+            guard let dest = store.calendars.first(where: { $0.id == id }) else { throw MCPToolError("Unknown calendar id \"\(id)\". Call list_calendars.") }
+            guard dest.canWrite, !dest.isICS else { throw MCPToolError("\"\(dest.name)\" is read-only. Pick a writable calendar (list_calendars).") }
+            let plan = EventMove.plan(from: e, to: dest)
+            if plan == .unsupported {
+                throw MCPToolError("This event can't be moved to \"\(dest.name)\": recurring events and events you don't organize can't change calendar.")
+            }
+            if plan == .recreate {
+                warnings.append("Moving between \(e.isEventKit ? "Apple" : "Google") and \(dest.isEventKit ? "Apple" : "Google") calendars copies the event and deletes the original: guests, Meet links, visibility and the event id don't carry over.")
+            }
+            d.sourceId = dest.id
+            targetId = dest.id
+        }
+
         try await save(d)
 
         let around = d.start.addingTimeInterval(-86_400)..<d.end.addingTimeInterval(2 * 86_400)
-        let (after, _) = await fetchEvents([store.calendars.first { $0.id == e.sourceId }].compactMap { $0 }, around)
+        let (after, _) = await fetchEvents([store.calendars.first { $0.id == targetId }].compactMap { $0 }, around)
         var out: [String: Any] = ["updated": true]
-        if let now = after.first(where: { $0.eventId == e.eventId && $0.start >= d.start.addingTimeInterval(-60) }) ?? after.first(where: { $0.eventId == e.eventId }) {
+        if let now = after.first(where: { $0.eventId == e.eventId && $0.start >= d.start.addingTimeInterval(-60) }) ?? after.first(where: { $0.eventId == e.eventId })
+            ?? (targetId == e.sourceId ? nil : after.first(where: { $0.title == d.title && abs($0.start.timeIntervalSince(d.start)) < 60 })) {
             out["event"] = detail(now)
         }
         if e.isRecurring { out["scope"] = scopeName(scope) }
@@ -394,6 +437,7 @@ struct MCPToolHelper {
         let id = try required(a, "event_id")
         let e = try await locate(id)
         try requireEditable(e)
+        try confirmCurrent(a, e)
         let scope = try scope(a)
         let summarized = summary(e, masked: false)
 

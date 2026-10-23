@@ -19,6 +19,10 @@ struct MCPTool {
     let schema: [String: Any]
     /// Tools that create, change or delete data; refused while the server is in read-only mode.
     let writes: Bool
+    /// Short human name shown in client approval prompts (e.g. "Delete calendar event").
+    var title: String? = nil
+    /// Writes that remove or overwrite existing data (`destructiveHint`); creating is a write but not destructive.
+    var destructive = false
     /// Returns any JSON-serializable value; it is sent to the agent as pretty text.
     let run: @MainActor ([String: Any]) async throws -> Any
 }
@@ -71,14 +75,14 @@ final class MCPDispatcher {
                 "serverInfo": ["name": "ezcal", "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"],
                 "instructions": "Read and manage the user's calendar events across Google and Apple Calendar accounts. "
                     + "Times are ISO 8601 (e.g. 2026-10-12T14:30:00-06:00); without an offset they are in the user's local time zone. "
-                    + "Call list_calendars first to see calendar ids; event ids from any tool work in every other tool.",
+                    + "Call list_calendars first to see calendar ids; event ids from any tool work in every other tool. "
+                    + "Before create_event, update_event or delete_event, show the user the exact event (title, day, time, calendar) and wait for a yes. "
+                    + "update_event and delete_event need the event's current_title and current_start (copied from list_events or get_event) so the user can see which event is affected.",
             ])
         case "ping":
             return result(id: id, [:])
         case "tools/list":
-            return result(id: id, ["tools": tools.map { t -> [String: Any] in
-                ["name": t.name, "description": t.description, "inputSchema": t.schema]
-            }])
+            return result(id: id, ["tools": tools.map { Self.listing($0) }])
         case "tools/call":
             guard let name = params["name"] as? String, let tool = tools.first(where: { $0.name == name }) else {
                 return error(id: id, code: -32602, message: "Unknown tool")
@@ -87,6 +91,15 @@ final class MCPDispatcher {
         default:
             return error(id: id, code: -32601, message: "Method not found: \(method)")
         }
+    }
+
+    /// The `tools/list` entry for one tool, including `title` and the behaviour hints clients use to auto-approve reads.
+    static func listing(_ t: MCPTool) -> [String: Any] {
+        var annotations: [String: Any] = ["readOnlyHint": !t.writes]
+        if t.writes { annotations["destructiveHint"] = t.destructive }
+        var d: [String: Any] = ["name": t.name, "description": t.description, "inputSchema": t.schema, "annotations": annotations]
+        if let title = t.title { d["title"] = title; annotations["title"] = title; d["annotations"] = annotations }
+        return d
     }
 
     private func call(_ tool: MCPTool, _ args: [String: Any]) async -> [String: Any] {

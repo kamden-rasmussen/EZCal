@@ -184,6 +184,30 @@ final class MCPToolsTests: XCTestCase {
         XCTAssertEqual(Set(tools.filter(\.writes).map(\.name)), ["create_event", "update_event", "delete_event"])
     }
 
+    func testToolsCarryTitlesAndBehaviourHints() {
+        let tools = Dictionary(uniqueKeysWithValues: MCPTools.all(store: store()).map { ($0.name, MCPDispatcher.listing($0)) })
+        for (name, t) in tools { XCTAssertNotNil(t["title"], name) }
+        func hints(_ n: String) -> [String: Any] { tools[n]!["annotations"] as! [String: Any] }
+        for n in ["list_calendars", "list_events", "get_event", "find_free_time"] {
+            XCTAssertEqual(hints(n)["readOnlyHint"] as? Bool, true, n)
+            XCTAssertNil(hints(n)["destructiveHint"], n)
+        }
+        XCTAssertEqual(hints("create_event")["readOnlyHint"] as? Bool, false)
+        XCTAssertEqual(hints("create_event")["destructiveHint"] as? Bool, false)
+        for n in ["update_event", "delete_event"] {
+            XCTAssertEqual(hints(n)["readOnlyHint"] as? Bool, false, n)
+            XCTAssertEqual(hints(n)["destructiveHint"] as? Bool, true, n)
+        }
+    }
+
+    func testUpdateAndDeleteRequireTheCurrentEventState() {
+        let tools = Dictionary(uniqueKeysWithValues: MCPTools.all(store: store()).map { ($0.name, $0) })
+        for n in ["update_event", "delete_event"] {
+            XCTAssertEqual(Set(tools[n]!.schema["required"] as! [String]), ["event_id", "current_title", "current_start"], n)
+        }
+        XCTAssertNotNil((tools["update_event"]!.schema["properties"] as! [String: Any])["calendar_id"])
+    }
+
     func testListCalendarsReportsKindAndWritable() async throws {
         let (text, isError) = await run(store(), "list_calendars", [:])
         XCTAssertFalse(isError)
