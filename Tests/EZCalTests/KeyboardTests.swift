@@ -29,6 +29,12 @@ final class KeyboardTests: XCTestCase {
         XCTAssertNil(store.focusedEventID)
     }
 
+    func testDetailPanelDoesNotBlockGridShortcuts() {
+        XCTAssertFalse(ActiveSheet.detail(sampleEvent()).blocksGridShortcuts)
+        XCTAssertTrue(ActiveSheet.palette.blocksGridShortcuts)
+        XCTAssertTrue(ActiveSheet.shortcuts.blocksGridShortcuts)
+    }
+
     // MARK: Drag to move / resize (issue #1)
 
     func testNudgeFocusedIsSafeWithNoFocusedEvent() {
