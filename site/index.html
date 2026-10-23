@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EZCal — a native macOS calendar for Google & iCloud: features, tradeoffs, demos</title>
+<meta name="description" content="A feature-by-feature look at EZCal, a free, open-source, keyboard-driven macOS calendar for Google Calendar and iCloud. Screenshots, short demos, and an honest list of limitations.">
+<meta property="og:title" content="EZCal — features, tradeoffs, demos">
+<meta property="og:description" content="A free, open-source, native macOS calendar for Google Calendar and iCloud. See what it does and what it doesn't.">
+<meta property="og:image" content="assets/hero-week-light.jpg">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="assets/icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><img src="assets/icon.png" alt="" width="26" height="26" onerror="this.remove()"><span>EZCal</span></a>
+    <nav aria-label="Sections">
+      <a href="#tour">Feature tour</a>
+      <a href="#tradeoffs">Pros &amp; cons</a>
+      <a href="#keyboard">Keyboard</a>
+      <a href="#install">Install</a>
+      <a href="#fit">Is it for you?</a>
+    </nav>
+    <a class="btn btn-ghost" href="https://github.com/kamden-rasmussen/EZCal">Source</a>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Open-source · macOS 14+ · SwiftUI · MIT</p>
+    <h1>A fast, keyboard-first calendar for people who live in Google&nbsp;Calendar&nbsp;— and iCloud.</h1>
+    <p class="lede">EZCal is a native Mac app that puts Google Calendar, Apple Calendar accounts, subscribed <code>.ics</code> feeds and Reminders in one grid. This page walks through what it does, what it deliberately doesn't, and where the rough edges are.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#tour">Take the tour</a>
+      <a class="btn" href="#tradeoffs">Skip to pros &amp; cons</a>
+    </div>
+
+    <figure class="shot hero-shot media" data-theme-swap>
+      <picture>
+        <source srcset="assets/hero-week-dark.jpg" media="(prefers-color-scheme: dark)">
+        <img src="assets/hero-week-light.jpg" alt="EZCal's week view with a sidebar of calendars, coworker overlays and a day of meetings." width="2000" height="1280">
+      </picture>
+      <figcaption>Week view with demo data: personal, team and iCloud calendars, a subscribed league schedule, and coworker overlays.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- FACTS -->
+<section class="facts" aria-label="At a glance">
+  <div class="wrap facts-grid">
+    <div><b>Free</b><span>MIT licensed. Bring your own API credentials; nothing is shared.</span></div>
+    <div><b>Native</b><span>Pure SwiftUI, no third-party dependencies, no Electron.</span></div>
+    <div><b>No server</b><span>Requests go from your Mac straight to Google and Zoom. Tokens live in the Keychain.</span></div>
+    <div><b>Keyboard-first</b><span>Every action is reachable without a mouse, plus a ⌘K command palette.</span></div>
+  </div>
+</section>
+
+<!-- TOUR -->
+<section id="tour" class="section">
+  <div class="wrap">
+    <p class="eyebrow">Feature tour</p>
+    <h2>What's in it</h2>
+    <p class="sub">Everything below is from the app as it ships. Clips are short and unedited, recorded against built-in demo data.</p>
+
+    <article class="feature" id="views">
+      <div class="copy">
+        <h3>Day, work week, week and month</h3>
+        <p>Switch views with <kbd>D</kbd> <kbd>5</kbd> <kbd>W</kbd> <kbd>M</kbd>. The grid opens scrolled to the start of your working day, and hours outside your working hours are shaded. Two-finger swipes glide a day at a time rather than jumping a whole week.</p>
+        <ul class="tags"><li>Working hours</li><li>Hide weekends</li><li>Second time zone gutter</li></ul>
+      </div>
+      <figure class="media"><video muted loop playsinline preload="none" poster="assets/demo-views-poster.jpg"><source src="assets/demo-views.mp4" type="video/mp4"></video><figcaption>Cycling through the four views.</figcaption></figure>
+    </article>
+
+    <article class="feature flip" id="palette">
+      <div class="copy">
+        <h3>⌘K command palette</h3>
+        <p>Search events, jump to natural-language dates like "next friday", show or hide a coworker, or run any command in the app. It's the fastest way to do almost everything, which is the point.</p>
+        <ul class="tags"><li>Event search</li><li>Date jump</li><li>Every command</li></ul>
+      </div>
+      <figure class="media"><video muted loop playsinline preload="none" poster="assets/demo-palette-poster.jpg"><source src="assets/demo-palette.mp4" type="video/mp4"></video><figcaption>Jumping to a date and toggling a coworker, entirely from the keyboard.</figcaption></figure>
+    </article>
+
+    <article class="feature" id="create">
+      <div class="copy">
+        <h3>Create, edit and RSVP</h3>
+        <p>Click or drag on the grid to create an event at that time, or press <kbd>N</kbd>. Save with <kbd>⌘↩</kbd>. Recurring events ask whether a change applies to this event, this and following, or all. Pick Zoom or Google Meet from the editor, and an availability warning appears while you invite people.</p>
+        <ul class="tags"><li>Recurrence scopes</li><li>RSVP with Y / M / N</li><li>Visibility: default · public · private</li></ul>
+      </div>
+      <figure class="media"><video muted loop playsinline preload="none" poster="assets/demo-create-poster.jpg"><source src="assets/demo-create.mp4" type="video/mp4"></video><figcaption>New event, typed title, saved with ⌘↩.</figcaption></figure>
+    </article>
+
+    <article class="feature flip" id="move">
+      <div class="copy">
+        <h3>Move and resize without the mouse</h3>
+        <p>Arrow keys walk between events. <kbd>⌥↓</kbd> moves the focused event 15 minutes later; <kbd>⌥⇧↓</kbd> resizes it. With a mouse, drag a block to move it (snapping to 15 minutes, across day columns) or drag its bottom edge to resize. <kbd>esc</kbd> cancels a drag mid-gesture.</p>
+      </div>
+      <figure class="media"><video muted loop playsinline preload="none" poster="assets/demo-keyboard-move-poster.jpg"><source src="assets/demo-keyboard-move.mp4" type="video/mp4"></video><figcaption>Nudging and resizing an event with the keyboard only.</figcaption></figure>
+    </article>
+
+    <article class="feature" id="coworkers">
+      <div class="copy">
+        <h3>Coworker overlay</h3>
+        <p>Search your Google Workspace directory, click a person, and their calendar appears in your grid. If they share details you see full events; if only availability is shared you see dashed "Busy" blocks; if nothing is shared you get a warning icon. The same meeting on several calendars is drawn once.</p>
+        <p class="note">Workspace directory search needs a Workspace account. On personal Gmail you can still add people by email.</p>
+      </div>
+      <figure class="media"><img src="assets/hero-week-light.jpg" alt="Week view with coworker events drawn lighter and outlined, and busy-only blocks for a coworker who shares only availability." loading="lazy"><figcaption>Overlaid events are lighter, outlined and prefixed with the person's name.</figcaption></figure>
+    </article>
+
+    <article class="feature flip" id="findtime">
+      <div class="copy">
+        <h3>Find a time</h3>
+        <p>Press <kbd>⌘F</kbd> in the editor. EZCal lists the best slots where every attendee it can see is free, with a per-day availability grid. People whose calendars aren't shared show as "unknown" and never block a slot, so treat results as a strong suggestion, not a guarantee.</p>
+      </div>
+      <figure class="media"><video muted loop playsinline preload="none" poster="assets/demo-find-time-poster.jpg"><source src="assets/demo-find-time.mp4" type="video/mp4"></video><figcaption>Choosing a slot from the ranked list.</figcaption></figure>
+    </article>
+
+    <article class="feature" id="video">
+      <div class="copy">
+        <h3>One-click video calls</h3>
+        <p>Every event with a Zoom, Meet or Teams link gets a Join button; <kbd>J</kbd> joins the focused event or your next meeting. Zoom meetings are real: created through the Zoom API with your defaults (waiting room, mute on entry, passcode and so on), updated when you move the event, and deleted when you delete it. A menu bar item shows your next meeting, and optional reminders arrive a few minutes before with a Join action.</p>
+      </div>
+      <figure class="media"><img src="assets/event-detail.jpg" alt="Event detail panel with a Join button, attendees and RSVP controls." loading="lazy"><figcaption>Event detail: join, edit, RSVP, delete.</figcaption></figure>
+    </article>
+
+    <article class="feature flip" id="sources">
+      <div class="copy">
+        <h3>Google, iCloud and subscribed feeds together</h3>
+        <p>Sign in with multiple Google accounts. Any account macOS already syncs (iCloud, Exchange, Fastmail, CalDAV) appears too, with no passwords or API keys. Paste a <code>webcal://</code> or <code>https://</code> link to subscribe to a sports schedule or shared team calendar: read-only, refreshed in the background. Events present on more than one source are de-duplicated.</p>
+        <ul class="tags"><li>Multiple Google accounts</li><li>EventKit / Apple Calendar</li><li>.ics subscriptions</li></ul>
+      </div>
+      <figure class="media"><img src="assets/view-month.jpg" alt="Month view combining several calendars." loading="lazy"><figcaption>Month view across Google, iCloud and a subscribed feed.</figcaption></figure>
+    </article>
+
+    <article class="feature" id="tasks">
+      <div class="copy">
+        <h3>Reminders as tasks, in the grid</h3>
+        <p>Due-dated Apple Reminders appear as chips in the all-day row or small timed markers, with a checkbox to complete them. Quick-add from ⌘K: <code>task: call dentist tomorrow 3pm</code>. There's no task editor; anything beyond create and complete happens in Reminders.app.</p>
+      </div>
+      <figure class="media"><video muted loop playsinline preload="none" poster="assets/demo-tasks-poster.jpg"><source src="assets/demo-tasks.mp4" type="video/mp4"></video><figcaption>Quick-adding a task from the palette.</figcaption></figure>
+    </article>
+
+    <article class="feature flip" id="more">
+      <div class="copy">
+        <h3>Smaller things that add up</h3>
+        <ul class="plain">
+          <li><b>Private events.</b> Mark an event private and anyone viewing your calendar, including EZCal's overlay, sees only "Busy". Google calendars only.</li>
+          <li><b>Multiple windows.</b> <kbd>⌘⇧N</kbd> opens another window with its own date and view, handy for comparing two weeks.</li>
+          <li><b>Light and dark.</b> Follows the system.</li>
+          <li><b>Update pill.</b> Checks the Homebrew tap for new releases and shows how to upgrade.</li>
+        </ul>
+      </div>
+      <figure class="media" data-theme-swap><picture><source srcset="assets/view-month-dark.jpg" media="(prefers-color-scheme: dark)"><img src="assets/settings.jpg" alt="Settings window showing accounts, hours and zones." loading="lazy"></picture><figcaption>Settings: accounts, Zoom defaults, working hours and time zones.</figcaption></figure>
+    </article>
+  </div>
+</section>
+
+<!-- PROS & CONS -->
+<section id="tradeoffs" class="section alt">
+  <div class="wrap">
+    <p class="eyebrow">Pros &amp; cons</p>
+    <h2>The honest version</h2>
+    <p class="sub">Drawn from the project's own documentation of what works and what doesn't.</p>
+
+    <div class="pc">
+      <div class="pc-col pro">
+        <h3><span aria-hidden="true">＋</span> What it does well</h3>
+        <ul>
+          <li><b>Speed and feel.</b> Native SwiftUI, a command palette, and a shortcut for nearly everything.</li>
+          <li><b>One grid, many sources.</b> Google, iCloud, Exchange, CalDAV and <code>.ics</code> feeds side by side, de-duplicated.</li>
+          <li><b>Privacy by architecture.</b> No server in the middle. Tokens are in your Keychain; requests go from your Mac to Google or Zoom.</li>
+          <li><b>Scheduling tools.</b> Coworker overlay, availability warnings and Find a time.</li>
+          <li><b>Real Zoom integration.</b> Meetings are created, updated and deleted with the event.</li>
+          <li><b>Free and hackable.</b> MIT, no dependencies, small readable codebase with unit tests.</li>
+        </ul>
+      </div>
+      <div class="pc-col con">
+        <h3><span aria-hidden="true">−</span> Where it falls short</h3>
+        <ul>
+          <li><b>Mac only.</b> Requires macOS 14+. An iOS build exists but reads on-device calendars only; Google and Zoom aren't wired up there yet.</li>
+          <li><b>Apple calendars are second-class for invites.</b> EventKit can't invite people or set your RSVP, so those controls, Google Meet and private events are hidden on iCloud calendars.</li>
+          <li><b>Credentials.</b> Google and Zoom OAuth clients are compiled into the build. Building it yourself means creating a Google Cloud project (about five minutes).</li>
+          <li><b>Limited recurrence authoring.</b> Only daily, weekly, monthly and weekdays; no custom rule builder.</li>
+          <li><b>Read-only feeds are basic.</b> <code>.ics</code> subscriptions skip per-occurrence overrides and some RRULE forms.</li>
+          <li><b>No task editor.</b> Tasks without a due date don't show in the grid.</li>
+          <li><b>No moving an event between calendars</b> from the editor.</li>
+        </ul>
+      </div>
+    </div>
+
+    <details class="limits">
+      <summary>Full list of known limitations</summary>
+      <ul>
+        <li>"This and following events" on Google splits the series by truncating the old rule; all-day recurring series' <code>UNTIL</code> isn't handled correctly yet.</li>
+        <li>Deleting less than the whole series never detaches its Zoom meeting.</li>
+        <li>A Google calendar that reaches EZCal only through macOS Internet Accounts has no Visibility control; connect the account directly to mark events private.</li>
+        <li>"Remove Zoom link" can remove more than the Zoom lines when a Google event's description is HTML.</li>
+        <li>Very old Outlook-style time zone names in <code>.ics</code> feeds fall back to your Mac's time zone.</li>
+        <li>A timed task marker doesn't take part in overlap layout, so a busy hour can show it over an event.</li>
+        <li>Multiple windows share accounts and selections but not a live event cache; an edit in one window appears in the other after its next refresh (⌘R).</li>
+      </ul>
+    </details>
+  </div>
+</section>
+
+<!-- KEYBOARD -->
+<section id="keyboard" class="section">
+  <div class="wrap">
+    <p class="eyebrow">Keyboard</p>
+    <h2>The shortcuts worth learning first</h2>
+    <p class="sub">Press <kbd>?</kbd> in the app for the full cheat sheet.</p>
+    <div class="kb">
+      <div><h4>Move around</h4>
+        <dl><dt><kbd>T</kbd></dt><dd>Today</dd><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Previous / next period</dd><dt><kbd>G</kbd></dt><dd>Go to date</dd><dt><kbd>D</kbd> <kbd>5</kbd> <kbd>W</kbd> <kbd>M</kbd></dt><dd>Day / work week / week / month</dd><dt><kbd>/</kbd> <kbd>⌘K</kbd></dt><dd>Command palette</dd></dl></div>
+      <div><h4>Events</h4>
+        <dl><dt><kbd>N</kbd></dt><dd>New event</dd><dt><kbd>↓</kbd> <kbd>↑</kbd></dt><dd>Next / previous event</dd><dt><kbd>↩</kbd></dt><dd>Open</dd><dt><kbd>J</kbd></dt><dd>Join video call</dd><dt><kbd>⌥↑</kbd> <kbd>⌥↓</kbd></dt><dd>Move 15 minutes</dd></dl></div>
+      <div><h4>On an open event</h4>
+        <dl><dt><kbd>E</kbd></dt><dd>Edit</dd><dt><kbd>Z</kbd></dt><dd>Add Zoom meeting</dd><dt><kbd>Y</kbd> <kbd>M</kbd> <kbd>N</kbd></dt><dd>RSVP yes / maybe / no</dd><dt><kbd>⌫</kbd></dt><dd>Delete</dd><dt><kbd>⌘F</kbd></dt><dd>Find a time (in editor)</dd></dl></div>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section id="install" class="section alt">
+  <div class="wrap narrow">
+    <p class="eyebrow">Install</p>
+    <h2>Getting it running</h2>
+    <h3>With Homebrew</h3>
+    <div class="code"><code>brew install --cask kamden-rasmussen/tap/ezcal</code><button type="button" data-copy="brew install --cask kamden-rasmussen/tap/ezcal">Copy</button></div>
+    <p>Releases are signed and notarized. Update with <code>brew update &amp;&amp; brew upgrade --cask ezcal</code>; the app also tells you when a new version is out.</p>
+    <h3>From source</h3>
+    <div class="code"><code>scripts/build_app.sh --run</code><button type="button" data-copy="scripts/build_app.sh --run">Copy</button></div>
+    <p>Needs macOS 14+ and Xcode / Swift 5.9+. For Google or Zoom sign-in you supply your own OAuth client; iCloud and Apple Calendar need no setup at all.</p>
+    <h3>Try it without an account</h3>
+    <div class="code"><code>EZCAL_DEMO=1 build/EZCal.app/Contents/MacOS/EZCal</code><button type="button" data-copy="EZCAL_DEMO=1 build/EZCal.app/Contents/MacOS/EZCal">Copy</button></div>
+    <p>Demo mode loads fake calendars and events and touches none of your accounts. Every screenshot and clip on this page was recorded this way.</p>
+  </div>
+</section>
+
+<!-- FIT -->
+<section id="fit" class="section">
+  <div class="wrap">
+    <p class="eyebrow">Is it for you?</p>
+    <h2>A quick gut check</h2>
+    <div class="fit">
+      <div><h3>Probably a good fit if you…</h3>
+        <ul><li>Work mostly on a Mac and in Google Calendar, maybe with iCloud alongside.</li><li>Prefer keyboards and command palettes to clicking.</li><li>Schedule with coworkers and want their availability in view.</li><li>Like open-source tools you can read and change.</li></ul></div>
+      <div><h3>Probably not yet if you…</h3>
+        <ul><li>Need Windows, Linux or a polished iPhone app.</li><li>Rely on complex custom recurrence rules.</li><li>Want to invite people or set RSVPs on iCloud calendars.</li><li>Don't want to set up credentials and can't use the prebuilt Homebrew build.</li></ul></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>EZCal is MIT-licensed open-source software. Not affiliated with Google, Apple, Zoom or Notion.</span>
+    <span><a href="https://github.com/kamden-rasmussen/EZCal">Source</a> · <a href="https://github.com/kamden-rasmussen/EZCal/issues">Issues</a></span>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
