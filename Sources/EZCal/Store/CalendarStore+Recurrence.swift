@@ -15,6 +15,18 @@ extension CalendarStore {
         if e.isRecurring { sheet = .recurrenceScope(e, .delete) } else { deleteRequest = e }
     }
 
+    /// Opens the editor with a copy of `e` as a brand-new event on `source` (issue #93). The original is
+    /// untouched; recurrence, meeting links and the signed-in user's own attendee row aren't carried over.
+    func duplicateDraft(_ e: CalEvent, to source: Source) {
+        let end = e.isAllDay ? (cal.date(byAdding: .day, value: -1, to: e.end) ?? e.end) : e.end
+        var d = EventDraft(title: e.title, start: e.start, end: end, isAllDay: e.isAllDay,
+                           sourceId: source.id, location: e.meetingURL?.absoluteString == e.location ? "" : e.location,
+                           notes: e.notes.strippingHTML,
+                           attendees: e.attendees.filter { !$0.isSelf && !$0.isResource })
+        d.visibility = e.visibility
+        sheet = .editor(d)
+    }
+
     /// Called by RecurrenceScopeView once the person picks a scope.
     func chooseRecurrenceScope(_ scope: RecurrenceScope, for e: CalEvent, action: RecurrenceAction) {
         switch action {

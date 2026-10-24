@@ -119,6 +119,18 @@ struct EventDetailView: View {
                     Link(event.isICS ? "Open link" : "Open in Google Calendar", destination: link).font(.system(size: 12))
                 }
                 Spacer()
+                if !event.isBusyOnly && !event.isOverlay && !duplicateTargets.isEmpty {
+                    Menu {
+                        ForEach(duplicateTargets) { s in
+                            Button { store.duplicateDraft(event, to: s) } label: {
+                                Text(s.name + (store.calendars.filter { $0.name == s.name }.count > 1 ? " (\(s.groupTitle))" : ""))
+                            }
+                        }
+                    } label: { Text("Duplicate") }
+                        .menuStyle(.button).buttonStyle(SecondaryButtonStyle()).menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("Copy this event to another calendar")
+                }
                 if event.canEdit {
                     Button {
                         if event.isRecurring { store.requestDelete(event) } else { confirmDelete = true }
@@ -151,6 +163,8 @@ struct EventDetailView: View {
             Text("This deletes the Zoom meeting and removes its link from the event.")
         }
     }
+
+    private var duplicateTargets: [Source] { store.calendars.filter(\.canWrite) }
 
     // MARK: Quick add guests
 
