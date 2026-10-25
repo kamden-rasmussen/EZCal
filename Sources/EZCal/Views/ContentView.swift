@@ -31,7 +31,9 @@ struct ContentView: View {
                         // The event panel floats over the calendar (below the toolbar) instead of being docked beside it, so
                         // opening or closing it never resizes or scrolls the grid.
                         ZStack(alignment: .trailing) {
-                            Group {
+                            // A single container (not a Group, which hands its modifiers to whichever child is current), so
+                            // focus survives a mode switch instead of being left on the view that was just removed.
+                            ZStack {
                                 switch store.mode {
                                 case .day: TimeGridView(days: store.visibleDays)
                                 case .workWeek, .week: WeekScrollView()
@@ -119,6 +121,7 @@ struct ContentView: View {
             }
         }
         .onAppear { gridFocused = true }
+        .onChange(of: store.mode) { _, _ in gridFocused = true }
         .onChange(of: store.sheet?.id) { _, id in if id == nil { gridFocused = true } }
         // The person-picker's search field owns focus while open; hand it back so Esc/P work afterwards.
         .onChange(of: store.showAddPerson) { _, open in if !open { gridFocused = true } }
