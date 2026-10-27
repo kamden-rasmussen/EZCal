@@ -261,17 +261,26 @@ struct ModePicker: View {
 /// Lets a plain region of a hidden-title-bar window drag the window.
 struct WindowDragArea: NSViewRepresentable {
     final class DragView: NSView {
+        private var observers: [NSObjectProtocol] = []
+
         override var mouseDownCanMoveWindow: Bool { true }
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
             guard let w = window else { return }
             TrafficLights.apply(to: w)
-            for n in [NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification, NSWindow.didBecomeKeyNotification] {
+            observers = TrafficLights.relayoutNotifications.map { n in
                 NotificationCenter.default.addObserver(forName: n, object: w, queue: .main) { [weak w] _ in
-                    if let w { TrafficLights.apply(to: w) }
+                    guard let w else { return }
+                    TrafficLights.apply(to: w)
+                    // AppKit sometimes lays the titlebar out again after posting; catch that pass too.
+                    DispatchQueue.main.async { [weak w] in if let w { TrafficLights.apply(to: w) } }
                 }
             }
         }
+
+        deinit { observers.forEach(NotificationCenter.default.removeObserver) }
     }
     func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
@@ -352,31 +361,39 @@ struct TopBar: View {
 }
 
 
-/// Enlarges the close/minimize/zoom buttons and centers them in the 56pt top bar.
+/// Centers the close/minimize/zoom buttons in the 56pt top bar. They stay at their native size:
+/// scaling them by growing the frame past the bounds clips the circles into squares on macOS 14.
 enum TrafficLights {
-    static let scale: CGFloat = 1.3
     static let barHeight: CGFloat = 56
     static let leading: CGFloat = 12
     static let gap: CGFloat = 8
+
+    /// Events after which AppKit may lay the titlebar out again and put the buttons back.
+    static let relayoutNotifications: [Notification.Name] = [
+        NSWindow.didResizeNotification, NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
+        NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+        NSWindow.didChangeScreenNotification, NSWindow.didChangeBackingPropertiesNotification,
+    ]
 
     static func apply(to window: NSWindow) {
         let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
         let buttons = kinds.compactMap { window.standardWindowButton($0) }
         guard buttons.count == 3, let bar = buttons[0].superview?.superview ?? buttons[0].superview else { return }
+        let scale = window.backingScaleFactor > 0 ? window.backingScaleFactor : 2
+        func pixel(_ v: CGFloat) -> CGFloat { (v * scale).rounded() / scale }
         // Grow the titlebar container to the bar's height, pinned to the top of the window.
-        if bar.frame.height != barHeight, let content = window.contentView?.superview {
-            bar.frame = NSRect(x: 0, y: content.bounds.height - barHeight, width: bar.frame.width, height: barHeight)
+        if let content = window.contentView?.superview {
+            let target = NSRect(x: 0, y: content.bounds.height - barHeight, width: bar.frame.width, height: barHeight)
+            if bar.frame != target { bar.frame = target }
         }
         var x = leading
         for b in buttons {
-            // Keep bounds at the native size and grow the frame, so AppKit draws the button scaled up.
-            let native = b.bounds.size.width > 0 && b.bounds.size.width < 20 ? b.bounds.size : NSSize(width: 14, height: 14)
-            let side = native.width * scale
-            b.layer?.setAffineTransform(.identity)
-            b.setFrameSize(NSSize(width: side, height: native.height * scale))
-            b.bounds = NSRect(origin: .zero, size: native)
-            b.setFrameOrigin(NSPoint(x: x, y: (b.superview?.bounds.height ?? barHeight) / 2 - b.frame.height / 2))
-            x += side + gap
+            // Undo any frame/bounds mismatch left by an earlier scaled layout, so the button draws 1:1.
+            let size = b.bounds.size.width > 0 && b.bounds.size.width < 20 ? b.bounds.size : NSSize(width: 14, height: 14)
+            if b.frame.size != size { b.setFrameSize(size) }
+            let y = pixel((b.superview?.bounds.height ?? barHeight) / 2 - size.height / 2)
+            b.setFrameOrigin(NSPoint(x: pixel(x), y: y))
+            x += size.width + gap
         }
     }
 }
