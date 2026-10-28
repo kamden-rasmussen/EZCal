@@ -238,6 +238,19 @@ struct EventEditorView: View {
                     .textFieldStyle(.plain)
                     .onSubmit { addFromQuery() }
                     .accessibilityLabel("Add people by name or email")
+                if !peekedSuggestions.isEmpty {
+                    FlowLayout(spacing: 6) {
+                        ForEach(peekedSuggestions) { p in
+                            Button { add(email: p.email, name: p.name) } label: {
+                                Label(p.name, systemImage: "plus")
+                                    .font(.system(size: 12))
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .accessibilityLabel("Invite \(p.name)")
+                        }
+                    }
+                }
                 ForEach(suggestions.prefix(5)) { p in
                     Button { add(email: p.email, name: p.name) } label: {
                         HStack {
@@ -556,6 +569,13 @@ struct EventEditorView: View {
             content().frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 24)
+    }
+
+    /// Coworkers peeked at with "p" this session who aren't already invited; new events only.
+    private var peekedSuggestions: [DirectoryPerson] {
+        guard isNew, attendeeQuery.isEmpty else { return [] }
+        let have = Set(draft.attendees.map { $0.email.lowercased() })
+        return store.peekedPeople.filter { !have.contains($0.email.lowercased()) }
     }
 
     private func addFromQuery() {

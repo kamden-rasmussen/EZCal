@@ -19,6 +19,9 @@ final class CalendarStore {
     /// never written to `UserDefaults`, so they vanish next launch instead of cluttering the sidebar
     /// permanently. `⇧P` skips this and adds straight to `people` for good.
     private(set) var temporaryPeople: Set<String> = []
+    /// `temporaryPeople` ids in the order they were peeked at, most recent first — drives the attendee
+    /// suggestions in the new-event editor.
+    private var peekOrder: [String] = []
     var icsSubscriptions: [ICSSubscription] = []
     private(set) var hidden: Set<String> = []
     /// Per-calendar colors the user has manually chosen, keyed by `Source.id` — takes precedence over
@@ -383,6 +386,7 @@ final class CalendarStore {
         if people.contains(where: { $0.id == id }) {
             hidden.remove(id)
             if !temporary { temporaryPeople.remove(id) }   // ⇧P on an existing overlay makes it stick
+            else if temporaryPeople.contains(id) { notePeek(id) }
             persist()
             scheduleReload()
             return
@@ -391,9 +395,23 @@ final class CalendarStore {
         people.append(applyingOverride(Source(id: id, accountId: acct, calendarId: email,
                              name: name.isEmpty ? email : name, colorHex: color, kind: .person)))
         hidden.remove(id)
-        if temporary { temporaryPeople.insert(id) } else { temporaryPeople.remove(id) }
+        if temporary { temporaryPeople.insert(id); notePeek(id) } else { temporaryPeople.remove(id) }
         persist()
         scheduleReload()
+    }
+
+    private func notePeek(_ id: String) {
+        peekOrder.removeAll { $0 == id }
+        peekOrder.insert(id, at: 0)
+    }
+
+    /// Coworkers peeked at with plain "p" this session (not ⇧P ones), most recent first, offered as
+    /// attendee suggestions when creating an event.
+    var peekedPeople: [DirectoryPerson] {
+        peekOrder.compactMap { id in
+            guard temporaryPeople.contains(id), let s = people.first(where: { $0.id == id }) else { return nil }
+            return DirectoryPerson(name: s.name, email: s.calendarId)
+        }
     }
 
     /// First palette color no visible source (calendar, coworker, subscription) is already using, so a
@@ -421,6 +439,7 @@ final class CalendarStore {
         people.removeAll { ids.contains($0.id) }
         for id in ids { eventsBySource[id] = nil; hidden.remove(id); personAccess[id] = nil }
         temporaryPeople = []
+        peekOrder = []
         persist()
         rebuildDisplay()
     }

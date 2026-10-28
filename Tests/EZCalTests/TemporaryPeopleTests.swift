@@ -49,6 +49,33 @@ final class TemporaryPeopleTests: XCTestCase {
         XCTAssertFalse(store.hasTemporaryPeople)
         XCTAssertTrue(store.people.isEmpty)
     }
+
+    // MARK: - Attendee suggestions (#98)
+
+    func testPeekedPeopleAreSuggestedMostRecentFirst() {
+        let store = makeStore()
+        store.addPerson(name: "A", email: "a@x.com", temporary: true)
+        store.addPerson(name: "B", email: "b@x.com", temporary: true)
+        XCTAssertEqual(store.peekedPeople.map(\.email), ["b@x.com", "a@x.com"])
+
+        store.addPerson(name: "A", email: "a@x.com", temporary: true)   // re-peeking bumps to the front
+        XCTAssertEqual(store.peekedPeople.map(\.email), ["a@x.com", "b@x.com"])
+    }
+
+    func testPermanentPeopleAreNotSuggested() {
+        let store = makeStore()
+        store.addPerson(name: "Perm", email: "p@x.com", temporary: false)
+        store.addPerson(name: "A", email: "a@x.com", temporary: true)
+        store.addPerson(name: "A", email: "a@x.com", temporary: false)   // ⇧P promotes the overlay
+        XCTAssertTrue(store.peekedPeople.isEmpty)
+    }
+
+    func testClearingOverlaysClearsSuggestions() {
+        let store = makeStore()
+        store.addPerson(name: "A", email: "a@x.com", temporary: true)
+        store.clearTemporaryPeople()
+        XCTAssertTrue(store.peekedPeople.isEmpty)
+    }
 }
 
 @MainActor
