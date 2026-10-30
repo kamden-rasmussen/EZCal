@@ -770,13 +770,24 @@ final class CalendarStore {
 
     /// Flattens visible sources into one list, merging the same meeting seen on several calendars.
     func rebuildDisplay() {
-        var seen = Set<String>()
+        // Google gives one event the same iCalUID on every calendar it's on. Copies on my own calendars must
+        // survive to `EventGrouping` so they stack like the iCloud ones, so those dedupe per calendar; a
+        // coworker overlay of an event I already have is still dropped outright.
+        var seenInCalendar = Set<String>()
+        var seenAnywhere = Set<String>()
         var real: [CalEvent] = []
         var busy: [CalEvent] = []
         for s in allSources where isVisible(s) {
             for e in eventsBySource[s.id] ?? [] {
                 if e.isBusyOnly { busy.append(e); continue }
-                if seen.insert("\(e.uid)|\(e.start.timeIntervalSince1970)").inserted { real.append(e) }
+                let slot = "\(e.uid)|\(e.start.timeIntervalSince1970)"
+                if e.isOverlay {
+                    guard !seenAnywhere.contains(slot) else { continue }
+                } else {
+                    guard seenInCalendar.insert("\(slot)|\(e.sourceId)").inserted else { continue }
+                }
+                seenAnywhere.insert(slot)
+                real.append(e)
             }
         }
         // A "Busy" block that exactly matches a real event is just that event.
