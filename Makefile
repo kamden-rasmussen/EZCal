@@ -2,7 +2,7 @@ APP_NAME := EZCal
 APP      := build/$(APP_NAME).app
 
 .DEFAULT_GOAL := help
-.PHONY: help version release build run restart install uninstall test debug quit clean ios-test ios-device
+.PHONY: help version release build run restart install uninstall test debug quit clean ios-test ios-device ios-testflight
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -56,3 +56,7 @@ ios-device: ## Build & install on a connected iPhone (TEAM=<team id> DEVICE=<udi
 		-allowProvisioningUpdates $(if $(TEAM),DEVELOPMENT_TEAM=$(TEAM),)
 	xcrun devicectl device install app --device $(DEVICE) build/ios-device-dd/Build/Products/Debug-iphoneos/EZCaliOS.app
 	xcrun devicectl device process launch --device $(DEVICE) com.ezcal.app.ios
+
+# Archive + export an .ipa to build/ios/export (UPLOAD=1 uploads to App Store Connect instead). See Apps/iOS/README.md.
+ios-testflight: ## Archive iOS app for TestFlight (TEAM=<team id> BUILD=<n> UPLOAD=1 to upload)
+	scripts/ios_testflight.sh
