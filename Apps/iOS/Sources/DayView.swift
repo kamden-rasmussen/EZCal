@@ -180,6 +180,10 @@ struct DayView: View {
                         ForEach(layout(r.timed)) { item in
                             block(item, day: day, width: width, gridWidth: geo.size.width)
                         }
+                        if store.cal.isDateInToday(day) {
+                            NowIndicator(day: day, hourHeight: hourHeight, width: width, cal: store.cal)
+                                .offset(x: gutter).zIndex(3)
+                        }
                         if let d = drag, !d.committing {
                             timeLabel(d, day: day)
                         }
@@ -290,6 +294,10 @@ struct DayView: View {
                                     })
                             ForEach(layout(timedByDay[i])) { item in
                                 weekBlock(item, day: d, colIndex: i, colWidth: colWidth)
+                            }
+                            if store.cal.isDateInToday(d) {
+                                NowIndicator(day: d, hourHeight: hourHeight, width: colWidth, cal: store.cal)
+                                    .offset(x: gutter + colWidth * CGFloat(i)).zIndex(3)
                             }
                         }
                     }
@@ -517,8 +525,13 @@ struct DayView: View {
         store.newDraft(start: start)
     }
 
+    /// Hour the grid scrolls to when it opens or the date changes: a little before "now" when today is
+    /// showing, otherwise an hour before the first event (8 on an empty day).
     private func startHour(_ timed: [CalEvent]) -> Int {
-        max((timed.first.map { store.cal.component(.hour, from: $0.start) } ?? 8) - 1, 0)
+        if visibleDays.contains(where: { store.cal.isDateInToday($0) }) {
+            return max(store.cal.component(.hour, from: Date()) - 2, 0)
+        }
+        return max((timed.first.map { store.cal.component(.hour, from: $0.start) } ?? 8) - 1, 0)
     }
 
     private func hourLabel(_ h: Int) -> String {

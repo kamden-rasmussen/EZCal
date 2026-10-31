@@ -327,4 +327,16 @@ final class EZCaliOSUITests: XCTestCase {
         app.scrollViews.firstMatch.swipeRight()
         XCTAssertEqual(dayTitle.label, before)
     }
+
+    // MARK: - Current-time indicator (#108)
+
+    func testNowLineOnTodayOnly() throws {
+        selectTab("Day")
+        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "today should show the now line")
+        app.buttons["nextButton"].tap()
+        XCTAssertTrue(anyEl("nowLine").waitForNonExistence(timeout: 5), "other days must not")
+        app.buttons["todayButton"].tap()
+        app.segmentedControls["gridModePicker"].buttons["Week"].tap()
+        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "week containing today shows it too")
+    }
 }
