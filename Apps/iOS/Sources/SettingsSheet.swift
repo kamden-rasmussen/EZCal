@@ -23,6 +23,7 @@ struct SettingsSheet: View {
                         ForEach([15, 30, 45, 60, 90, 120], id: \.self) { Text("\($0) min").tag($0) }
                     }
                 }
+                Section("Default alerts for new events") { DefaultAlertsSettingsRows() }
                 Section("Default calendar for new events") { DefaultCalendarSettingsRows() }
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)

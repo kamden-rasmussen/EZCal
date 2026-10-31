@@ -116,6 +116,7 @@ extension CalendarStore {
                 guard ids.contains(ev.id) else { return ev }
                 var n = ev
                 n.title = title; n.location = d.location; n.notes = d.notes; n.isAllDay = d.isAllDay; n.visibility = d.visibility
+                if let a = d.alerts { n.alertMinutes = EventAlert.normalized(a) }
                 n.start = ev.start.addingTimeInterval(dStart); n.end = ev.end.addingTimeInterval(dEnd)
                 return n
             }
@@ -135,7 +136,8 @@ extension CalendarStore {
                     title: title, start: s, end: en, isAllDay: d.isAllDay, location: d.location, notes: d.notes,
                     attendees: [], htmlLink: nil, meetingURL: nil, colorHex: src.colorHex, sourceName: src.name,
                     ownerName: nil, isOverlay: false, canEdit: true, isBusyOnly: false, isRecurring: series != nil,
-                    recurringEventId: series, visibility: d.visibility, zoomMeetingID: nil, isTentative: false, isDeclined: false))
+                    recurringEventId: series, visibility: d.visibility, zoomMeetingID: nil, isTentative: false, isDeclined: false,
+                    alertMinutes: d.alerts.map(EventAlert.normalized)))
             }
             eventsBySource[src.id, default: []] += made
         }

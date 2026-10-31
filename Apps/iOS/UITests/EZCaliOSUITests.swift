@@ -118,6 +118,16 @@ final class EZCaliOSUITests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + text)
     }
 
+    /// The editor is a lazy list: scroll until `id` has been realised.
+    private func scrollEditor(to id: String) {
+        let el = id == "editorAddAlert" ? anyEl("editorAddAlert") : anyEl(id)
+        for _ in 0..<8 where !el.exists || !el.isHittable {
+            // Drag inside the form (above the keyboard) so the keyboard dismisses and the list scrolls.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        }
+    }
+
     private func createEvent(titled title: String) {
         app.buttons["addButton"].tap()
         let field = anyEl("editorTitle")
@@ -153,6 +163,7 @@ final class EZCaliOSUITests: XCTestCase {
         // Delete it with confirmation.
         app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Renamed'")).firstMatch.tap()
         app.buttons["editButton"].tap()
+        scrollEditor(to: "editorDelete")
         XCTAssertTrue(app.buttons["editorDelete"].waitForExistence(timeout: 5))
         app.buttons["editorDelete"].tap()
         let confirm = app.buttons["Delete"]
@@ -178,12 +189,36 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(app.buttons["This and following events"].waitForExistence(timeout: 5), "scope dialog missing")
         XCTAssertTrue(app.buttons["All events"].exists)
         app.buttons["This event"].tap()
+        scrollEditor(to: "editorDelete")
         XCTAssertTrue(app.buttons["editorDelete"].waitForExistence(timeout: 5))
         app.buttons["editorDelete"].tap()
         let all = app.buttons["Delete all events"]
         XCTAssertTrue(all.waitForExistence(timeout: 5), "delete scope dialog missing")
         all.tap()
         XCTAssertTrue(row.waitForNonExistence(timeout: 5))
+    }
+
+    func testAddAlertToNewEventAndPersist() throws {
+        selectTab("Day")
+        app.buttons["nextButton"].tap()
+        app.buttons["addButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText("UITest Alerts")
+        scrollEditor(to: "editorAddAlert")
+        XCTAssertTrue(anyEl("editorAlertsDefault").waitForExistence(timeout: 5))
+        anyEl("editorAddAlert").tap()
+        XCTAssertTrue(anyEl("editorAlert-0").waitForExistence(timeout: 5))
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Alerts'")).firstMatch.tap()
+        app.buttons["editButton"].tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        scrollEditor(to: "editorAddAlert")
+        let alert = anyEl("editorAlert-0")
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "saved alert missing after reopening")
+        XCTAssertTrue(alert.label.contains("10 minutes"), "alert label was \(alert.label)")
+        app.buttons["editorCancel"].tap()
     }
 
     func testLongPressEmptyDayCreatesEventAtTime() throws {
