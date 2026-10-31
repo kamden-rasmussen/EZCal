@@ -355,7 +355,9 @@ final class EZCaliOSUITests: XCTestCase {
         dayTitle.tap()
         XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
         // Pick tomorrow in the month grid (its accessibility label is the full date).
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
+        let cal = Calendar.current
+        var tomorrow = cal.date(byAdding: .day, value: 1, to: Date())!
+        if !cal.isDate(tomorrow, equalTo: Date(), toGranularity: .month) { tomorrow = cal.date(byAdding: .day, value: -1, to: Date())! }
         let label = tomorrow.formatted(.dateTime.weekday(.wide).month(.wide).day())
         let target = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: 5), "no day button '\(label)'")
