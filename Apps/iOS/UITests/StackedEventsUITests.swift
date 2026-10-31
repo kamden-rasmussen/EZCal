@@ -10,8 +10,6 @@ final class StackedEventsUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchEnvironment["EZCAL_DEMO"] = "1"
-        // Settings persist between tests in the simulator; start every test from the default layout.
-        app.launchArguments += ["-overlapLayoutMode", "sideBySide"]
         app.launch()
     }
 
