@@ -96,7 +96,7 @@ struct RootView: View {
         .sheet(item: $store.sheet) { sheet in
             switch sheet {
             case .detail(let ev):
-                EventDetailSheet(event: ev).presentationDetents([.medium, .large])
+                EventDetailSheet(event: ev).presentationDetents([.medium, .fraction(0.94)])
             case .editor(let d):
                 EventEditorSheet(draft: d).interactiveDismissDisabled()
             default:
