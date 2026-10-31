@@ -23,9 +23,16 @@ rm -rf "$ARCHIVE" "$OUT/export"
 mkdir -p "$OUT"
 
 (cd Apps/iOS && xcodegen generate)
+# Archive unsigned: an automatically signed archive wants a development profile, which needs a registered device, and
+# Apple's cloud-managed distribution cert has no private key on this Mac (it signs at export). Unsigned archives drop
+# the entitlements, so ad-hoc sign each bundle with its entitlements file; the export re-signs for distribution and
+# keeps them (the app group is how the widget reads the app's data).
 xcodebuild archive -project Apps/iOS/EZCaliOS.xcodeproj -scheme EZCaliOS \
   -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" \
-  -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$BUILD"
+  CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM="$TEAM" CURRENT_PROJECT_VERSION="$BUILD"
+APP="$ARCHIVE/Products/Applications/EZCaliOS.app"
+codesign -f -s - --entitlements Apps/iOS/Widget/EZCalWidget.entitlements "$APP/PlugIns/EZCalWidget.appex"
+codesign -f -s - --entitlements Apps/iOS/EZCaliOS.entitlements "$APP"
 
 if [ "$UPLOAD" = 1 ]; then DEST=upload; else DEST=export; fi
 cat > "$OUT/ExportOptions.plist" <<PLIST
