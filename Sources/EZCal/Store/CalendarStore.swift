@@ -849,6 +849,7 @@ final class CalendarStore {
         }
         let e = end ?? s.addingTimeInterval(Double(AppSettings.defaultDuration) * 60)
         var d = EventDraft(start: s, end: e, isAllDay: allDay, sourceId: src.id)
+        d.alerts = AppSettings.defaultAlerts
         switch AppSettings.defaultVideo {
         case "zoom": d.video = .zoom
         case "meet": d.video = .meet
@@ -866,6 +867,7 @@ final class CalendarStore {
                            sourceId: e.sourceId, location: e.location, notes: e.notes.strippingHTML,
                            attendees: e.attendees)
         d.visibility = e.visibility
+        d.alerts = e.alertMinutes
         d.video = .none
         d.recurrenceScope = scope
         sheet = .editor(d)
@@ -966,7 +968,8 @@ final class CalendarStore {
                                             allDay: d.isAllDay, location: location,
                                             notes: ekNotes,
                                             span: existing?.isRecurring == true ? d.recurrenceScope.ekSpan : .thisEvent,
-                                            recurrenceRule: existing == nil ? d.recurrence.ekRule : nil)
+                                            recurrenceRule: existing == nil ? d.recurrence.ekRule : nil,
+                                            alertMinutes: EventAlert.changes(draft: d.alerts, existing: existing?.alertMinutes, isNew: existing == nil))
             if let zid = zoomId, let existing, existing.zoomMeetingID != nil,
                (existing.start != start || existing.end != end || existing.title != title) {
                 await ZoomAPI.updateMeeting(id: zid, topic: displayTitle, start: start, end: end)
@@ -1009,6 +1012,9 @@ final class CalendarStore {
         // Always sent on edit so changing back to "default" clears it; a new default event omits it.
         if existing != nil || d.visibility != .default { body["visibility"] = d.visibility.rawValue }
         if let extProps { body["extendedProperties"] = extProps }
+        if let alerts = EventAlert.changes(draft: d.alerts, existing: existing?.alertMinutes, isNew: existing == nil) {
+            body["reminders"] = EventAlert.googleReminders(alerts)
+        }
         if existing != nil || !d.attendees.isEmpty {
             body["attendees"] = Self.attendeeBody(d.attendees, existing: existing != nil)
         }

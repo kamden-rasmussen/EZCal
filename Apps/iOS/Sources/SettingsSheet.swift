@@ -55,6 +55,7 @@ struct SettingsSheet: View {
                     }
                     .accessibilityIdentifier("defaultVideoPicker")
                 }
+                Section("Default alerts for new events") { DefaultAlertsSettingsRows() }
                 Section("Default calendar for new events") { DefaultCalendarSettingsRows() }
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)
