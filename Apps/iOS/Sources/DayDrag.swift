@@ -15,6 +15,9 @@ struct DayDragState {
     var valid = true             // false when the finger is outside the grid: releasing cancels
     var awaitingScope = false    // released on a recurring event; waiting for the scope dialog
     var committing = false       // save in flight; the preview stays until it finishes
+    var day: Date = Date()       // start of the day the event was dragged from
+    var col0 = 0                 // grid column the drag began in
+    var dayDelta = 0             // columns moved sideways (move only)
 }
 
 /// Pure time math for touch dragging; reuses the shared `EventDragMath` for snapping/moving/bottom resize.
@@ -22,7 +25,8 @@ enum DayDragMath {
     static let minimumMinutes = 15
 
     static func compute(kind: DayDragState.Kind, origStart: Date, origEnd: Date, deltaY: CGFloat,
-                        hourHeight: CGFloat, day: Date, cal: Calendar) -> (start: Date, end: Date) {
+                        hourHeight: CGFloat, day: Date, cal: Calendar,
+                        dayDelta: Int = 0) -> (start: Date, end: Date) {
         let delta = EventDragMath.snap(minutes: Double(deltaY / hourHeight * 60))
         let dayEnd = cal.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(86400)
         switch kind {
@@ -33,7 +37,7 @@ enum DayDragMath {
                 let hi = Int(dayEnd.timeIntervalSince(origEnd) / 60)
                 d = min(max(d, lo), hi)
             }
-            return EventDragMath.moved(start: origStart, end: origEnd, minutesDelta: d, dayDelta: 0, cal: cal)
+            return EventDragMath.moved(start: origStart, end: origEnd, minutesDelta: d, dayDelta: dayDelta, cal: cal)
         case .resizeBottom:
             var r = EventDragMath.resized(start: origStart, end: origEnd, minutesDelta: delta,
                                           minimumMinutes: minimumMinutes, cal: cal)

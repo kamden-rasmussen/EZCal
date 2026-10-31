@@ -16,8 +16,14 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(b.waitForExistence(timeout: 10))
         b.tap()
     }
+    private func pickGrid(_ name: String) {
+        let p = anyEl("gridModePicker")
+        XCTAssertTrue(p.waitForExistence(timeout: 5))
+        p.tap()
+        app.buttons[name].firstMatch.tap()
+    }
     private func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
-    private var dayTitle: XCUIElement { app.staticTexts["dayTitle"] }
+    private var dayTitle: XCUIElement { app.buttons["dayTitle"] }
 
     /// Saturday events in demo data are day 5 of the week; we just need a day with events, so use Today.
     func testAgendaShowsEventsAndDetailSheet() throws {
@@ -338,9 +344,7 @@ final class EZCaliOSUITests: XCTestCase {
 
     private func openMonth() {
         selectTab("Day")
-        let b = app.segmentedControls["gridModePicker"].buttons["Month"]
-        XCTAssertTrue(b.waitForExistence(timeout: 5))
-        b.tap()
+        pickGrid("Month")
         XCTAssertTrue(anyEl("monthGrid").waitForExistence(timeout: 5))
     }
 
@@ -386,7 +390,7 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertFalse(anyEl("monthGrid").exists)
         XCTAssertFalse(header.isEmpty)
         // Back to Month and to Agenda keeps working.
-        app.segmentedControls["gridModePicker"].buttons["Month"].tap()
+        pickGrid("Month")
         XCTAssertTrue(anyEl("monthGrid").waitForExistence(timeout: 5))
         selectTab("Agenda")
         XCTAssertTrue(app.collectionViews["agendaList"].waitForExistence(timeout: 5))
@@ -518,6 +522,167 @@ final class EZCaliOSUITests: XCTestCase {
         app.buttons.matching(identifier: "searchResult").firstMatch.tap()
         XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["detailTitle"].label, "Roadmap planning")
+    }
+
+    // MARK: - Swipe paging (#106)
+
+    func testSwipeChangesDayAndVerticalSwipeDoesNot() throws {
+        selectTab("Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let today = dayTitle.label
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.swipeUp()
+        XCTAssertEqual(dayTitle.label, today, "vertical scroll must not change the day")
+        grid.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, today, "swipe left goes to the next day")
+        grid.swipeRight()
+        XCTAssertEqual(dayTitle.label, today, "swipe right goes back")
+        grid.swipeRight()
+        XCTAssertNotEqual(dayTitle.label, today)
+    }
+
+    func testSwipeChangesWeek() throws {
+        selectTab("Day")
+        pickGrid("Week")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let before = dayTitle.label
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.scrollViews.firstMatch.swipeRight()
+        XCTAssertEqual(dayTitle.label, before)
+    }
+
+    // MARK: - Current-time indicator (#108)
+
+    func testNowLineOnTodayOnly() throws {
+        selectTab("Day")
+        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "today should show the now line")
+        app.buttons["nextButton"].tap()
+        XCTAssertTrue(anyEl("nowLine").waitForNonExistence(timeout: 5), "other days must not")
+        app.buttons["todayButton"].tap()
+        pickGrid("Week")
+        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "week containing today shows it too")
+    }
+
+    // MARK: - Jump to date (#109)
+
+    func testTapTitleOpensDatePickerAndJumps() throws {
+        selectTab("Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let before = dayTitle.label
+        dayTitle.tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
+        // Pick tomorrow in the month grid (its accessibility label is the full date).
+        let cal = Calendar.current
+        var tomorrow = cal.date(byAdding: .day, value: 1, to: Date())!
+        if !cal.isDate(tomorrow, equalTo: Date(), toGranularity: .month) { tomorrow = cal.date(byAdding: .day, value: -1, to: Date())! }
+        let label = tomorrow.formatted(.dateTime.weekday(.wide).month(.wide).day())
+        let target = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "no day button '\(label)'")
+        target.tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.buttons["todayButton"].tap()
+        XCTAssertEqual(dayTitle.label, before)
+    }
+
+    func testMenuGoToDateFromAgenda() throws {
+        app.buttons["menuButton"].tap()
+        app.buttons["goToDateMenuButton"].tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
+        app.buttons["goToTodayButton"].tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
+    }
+
+    // MARK: - 3-day view (#133)
+
+    func testThreeDayViewShowsThreeColumnsAndPagesByThree() throws {
+        selectTab("Day")
+        pickGrid("3 Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(anyEl("weekDayGridBackground").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "weekDayGridBackground").count, 3)
+        let before = dayTitle.label
+        app.buttons["nextButton"].tap()
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.buttons["prevButton"].tap()
+        XCTAssertEqual(dayTitle.label, before)
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, before)
+    }
+
+    // MARK: - Polish (#137)
+
+    func testAgendaLastCardScrollsAboveFloatingBar() throws {
+        let list = app.collectionViews["agendaList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        for _ in 0..<10 { list.swipeUp(velocity: .fast) }
+        let rows = app.buttons.matching(identifier: "agendaRow")
+        let last = rows.element(boundBy: rows.count - 1)
+        XCTAssertLessThanOrEqual(last.frame.maxY, app.buttons["todayButton"].frame.minY + 1, "last agenda row hidden behind bar")
+    }
+
+    func testWeekGridPullToRefreshAndAllDayOverflow() throws {
+        selectTab("Day")
+        pickGrid("Week")
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            .press(forDuration: 0.1, thenDragTo: grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(anyEl("weekDayGridBackground").exists)
+    }
+
+    // MARK: - Drag / resize in multi-day grids (#116)
+
+    /// A week-grid event block that is on screen after scrolling the grid to the top.
+    private func visibleWeekEvent() -> XCUIElement? {
+        selectTab("Day")
+        pickGrid("Week")
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        for _ in 0..<3 { grid.swipeDown(velocity: .fast) }
+        // Demo events are week-relative; step through weeks until one is comfortably on screen.
+        for _ in 0..<3 {
+            let all = app.descendants(matching: .any).matching(identifier: "weekDayEvent").allElementsBoundByIndex
+            if let ev = all.first(where: { $0.isHittable && $0.frame.minY > 330 && $0.frame.maxY < 700 && $0.frame.height > 25 }) { return ev }
+            app.buttons["nextButton"].tap()
+        }
+        return nil
+    }
+
+    func testWeekLongPressDragMovesEventAcrossDays() throws {
+        let found = visibleWeekEvent()
+        let ev = try XCTUnwrap(found, "no week event on screen")
+        let label = ev.label
+        let before = ev.frame
+        let left = before.midX > 250
+        let from = ev.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        from.press(forDuration: 0.8, thenDragTo: from.withOffset(CGVector(dx: left ? -52 : 52, dy: 56)))
+        chooseScopeIfAsked()
+        let moved = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertTrue(moved.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(abs(moved.frame.midX - before.midX), 25, "event should land in the neighbouring day column")
+        XCTAssertGreaterThan(moved.frame.minY, before.minY + 20, "and an hour later")
+        XCTAssertFalse(app.staticTexts["detailTitle"].exists)
+    }
+
+    func testWeekResizeBottomHandle() throws {
+        let found = visibleWeekEvent()
+        let ev = try XCTUnwrap(found, "no week event on screen")
+        let label = ev.label
+        let beforeH = ev.frame.height
+        ev.press(forDuration: 0.8)
+        let bottom = anyEl("resizeBottom")
+        XCTAssertTrue(bottom.waitForExistence(timeout: 5))
+        let c = bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        c.press(forDuration: 0.1, thenDragTo: c.withOffset(CGVector(dx: 0, dy: 56)))
+        chooseScopeIfAsked()
+        let after = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertGreaterThan(after.frame.height, beforeH + 20)
     }
 }
 

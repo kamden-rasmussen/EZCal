@@ -12,6 +12,8 @@ struct RootView: View {
     @State private var gridMode: ViewMode = .day
     @State private var showCalendars = false
     @State private var showSettings = false
+    @State private var showGoTo = false
+    @AppStorage("gridThreeDay") private var threeDay = false
     @State private var authStatus = EKEventStore.authorizationStatus(for: .event)
 
     private var needsConnect: Bool { !store.isDemo && !store.eventKitEnabled }
@@ -37,6 +39,8 @@ struct RootView: View {
                             .accessibilityHidden(tab != .day)
                     }
                     .animation(.easeInOut(duration: 0.2), value: tab)
+                    // Keep the last row/card scrollable above the floating Prev/Today/Next bar (#137).
+                    .contentMargins(.bottom, 72, for: .scrollContent)
                 }
             }
             .navigationTitle(store.anchor.formatted(.dateTime.month(.abbreviated).day().year()))
@@ -49,6 +53,8 @@ struct RootView: View {
                         Button { store.joinNextMeeting() } label: { Label("Join next meeting", systemImage: "video") }
                             .disabled(!store.hasNextMeeting)
                             .accessibilityIdentifier("joinNextButton")
+                        Button { showGoTo = true } label: { Label("Go to date", systemImage: "calendar.badge.clock") }
+                            .accessibilityIdentifier("goToDateMenuButton")
                         Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                             .accessibilityIdentifier("settingsButton")
                     } label: { Image(systemName: "line.3.horizontal") }
@@ -80,6 +86,7 @@ struct RootView: View {
         .joinConfirmation()
         .sheet(isPresented: $showCalendars) { CalendarListSheet() }
         .sheet(isPresented: $showSettings) { SettingsSheet() }
+        .sheet(isPresented: $showGoTo) { GoToDateSheet() }
         .onChange(of: store.eventKitEnabled) { _, _ in authStatus = EKEventStore.authorizationStatus(for: .event) }
         .onChange(of: store.errorMessage) { _, _ in authStatus = EKEventStore.authorizationStatus(for: .event) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
@@ -110,7 +117,8 @@ struct RootView: View {
         if tab == .day, gridMode != .day {
             store.step(n)
         } else {
-            let d = store.cal.date(byAdding: .day, value: n, to: store.anchor) ?? store.anchor
+            let span = tab == .day && threeDay ? 3 : 1
+            let d = store.cal.date(byAdding: .day, value: n * span, to: store.anchor) ?? store.anchor
             store.goTo(d)
         }
     }
