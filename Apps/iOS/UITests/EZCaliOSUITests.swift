@@ -389,4 +389,16 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(row.label.contains("1 Infinite Loop"))
         // Tapping would leave the app for Maps; the URL builder is what we can check without that.
     }
+
+    func testDetailShowsAttendeesWithRSVPState() throws {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Design review"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 10))
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Marcus Lee, maybe'")).firstMatch
+        for _ in 0..<4 where !row.exists { app.staticTexts["detailTitle"].swipeUp() }
+        XCTAssertTrue(row.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Dana Cole, declined'")).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sam Ortiz, no response'")).firstMatch.exists)
+    }
 }
