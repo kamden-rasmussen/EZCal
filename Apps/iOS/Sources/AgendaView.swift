@@ -19,9 +19,12 @@ struct AgendaView: View {
             ForEach(days, id: \.day) { group in
                 Section(group.day.formatted(.dateTime.weekday(.wide).month().day())) {
                     ForEach(group.events) { ev in
-                        Button { store.sheet = .detail(ev) } label: { AgendaRow(event: ev) }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("agendaRow")
+                        HStack(spacing: 8) {
+                            Button { store.sheet = .detail(ev) } label: { AgendaRow(event: ev) }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("agendaRow")
+                            JoinIconButton(event: ev)
+                        }
                     }
                 }
             }

@@ -48,6 +48,8 @@ struct WidgetSync: ViewModifier {
                 switch url.host {
                 case "event":
                     Task { await store.openEvent(arg) }
+                case "join":
+                    store.joinNextMeeting()
                 case "day":
                     let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
                     store.goTo(f.date(from: arg) ?? Date())

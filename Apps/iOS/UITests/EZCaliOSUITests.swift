@@ -309,4 +309,31 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertEqual(title.label, "Roadmap planning")
     }
+
+    /// A meeting that isn't within 10 minutes of starting asks before joining (macOS parity, #30).
+    func testAgendaJoinButtonConfirmsWhenNotYetJoinable() throws {
+        XCTAssertTrue(app.buttons.matching(identifier: "joinButton").firstMatch.waitForExistence(timeout: 10))
+        let join = app.buttons.matching(identifier: "joinButton").allElementsBoundByIndex.last!
+        join.tap()
+        let anyway = app.buttons["Join anyway"]
+        XCTAssertTrue(anyway.waitForExistence(timeout: 5))
+        // On large iPhones the dialog is a popover; tapping outside is its cancel.
+        let cancel = app.buttons["Cancel"]
+        if cancel.exists { cancel.tap() }
+        else { app.otherElements["PopoverDismissRegion"].coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.95)).tap() }
+        XCTAssertTrue(anyway.waitForNonExistence(timeout: 5))
+    }
+
+    func testJoinNextMeetingMenuItemAndDayBlockButton() throws {
+        app.buttons["menuButton"].tap()
+        XCTAssertTrue(anyEl("joinNextButton").waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.6)).tap()   // dismiss the menu
+        selectTab("Day")
+        var found = false
+        for _ in 0..<7 {
+            if app.buttons["joinButton"].waitForExistence(timeout: 1) { found = true; break }
+            app.buttons["nextButton"].tap()
+        }
+        XCTAssertTrue(found, "no video meeting block with a Join button")
+    }
 }
