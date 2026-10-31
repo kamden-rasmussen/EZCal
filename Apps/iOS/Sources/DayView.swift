@@ -191,7 +191,7 @@ struct DayView: View {
         } else { store.step(n) }
     }
 
-    // MARK: - Single day (touch drag/resize)
+    // MARK: - Day / multi-day headers (all-day rows)
 
     @ViewBuilder
     private func singleDay(_ day: Date) -> some View {
@@ -209,30 +209,76 @@ struct DayView: View {
             }.padding(8)
             Divider()
         }
-        ScrollViewReader { proxy in
+        timeGrid([day])
+    }
+
+    @ViewBuilder
+    private func multiDay(_ days: [Date]) -> some View {
+        columnHeaders(days)
+        Divider()
+        let allDay = days.map { store.events(on: $0).allDay }
+        if allDay.contains(where: { !$0.isEmpty }) {
+            HStack(spacing: 0) {
+                Color.clear.frame(width: gutter, height: 1)
+                ForEach(Array(days.enumerated()), id: \.offset) { i, d in
+                    VStack(alignment: .leading, spacing: 2) {
+                        let shown = allDay[i].count > 2 ? 1 : allDay[i].count
+                        ForEach(allDay[i].prefix(shown)) { ev in
+                            Button { store.sheet = .detail(ev) } label: {
+                                Text(ev.title).font(.system(size: 10)).lineLimit(1).minimumScaleFactor(0.8)
+                                    .padding(.horizontal, 3).padding(.vertical, 1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 3))
+                            }.buttonStyle(.plain)
+                            .accessibilityIdentifier("weekAllDayEvent")
+                        }
+                        if allDay[i].count > 2 {
+                            Text("+\(allDay[i].count - 1)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                                .padding(.horizontal, 3)
+                                .accessibilityLabel("\(allDay[i].count - 1) more all-day events")
+                                .accessibilityIdentifier("allDayMore")
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 2)
+                }
+            }.padding(.vertical, 4)
+            Divider()
+        }
+        timeGrid(days)
+    }
+
+    // MARK: - The time grid (one or more columns; touch drag/resize in all of them)
+
+    private func timeGrid(_ days: [Date]) -> some View {
+        let single = days.count == 1
+        let timedByDay = days.map { store.events(on: $0).timed }
+        return ScrollViewReader { proxy in
             ScrollView {
                 GeometryReader { geo in
-                    let width = geo.size.width - gutter - 8
+                    let colWidth = (geo.size.width - gutter - (single ? 8 : 0)) / CGFloat(days.count)
                     ZStack(alignment: .topLeading) {
-                        // Long-press an empty spot to create an event there (events sit above and win).
-                        Color.clear.contentShape(Rectangle())
-                            .accessibilityIdentifier("dayGridBackground")
-                            .onTapGesture { selectedID = nil }
-                            .gesture(LongPressGesture(minimumDuration: 0.5)
-                                .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
-                                .onEnded { v in
-                                    if case .second(true, let drag?) = v { createEvent(at: drag.location.y, day: day) }
-                                })
                         hourLabels()
-                        ForEach(layout(r.timed)) { item in
-                            block(item, day: day, width: width, gridWidth: geo.size.width)
-                        }
-                        if store.cal.isDateInToday(day) {
-                            NowIndicator(day: day, hourHeight: hourHeight, width: width, cal: store.cal)
-                                .offset(x: gutter).zIndex(3)
+                        ForEach(Array(days.enumerated()), id: \.offset) { i, d in
+                            // Long-press an empty spot to create an event there (events sit above and win).
+                            Color.clear.contentShape(Rectangle())
+                                .accessibilityIdentifier(single ? "dayGridBackground" : "weekDayGridBackground")
+                                .frame(width: colWidth, height: hourHeight * 24)
+                                .offset(x: gutter + colWidth * CGFloat(i))
+                                .onTapGesture { selectedID = nil }
+                                .gesture(LongPressGesture(minimumDuration: 0.5)
+                                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+                                    .onEnded { v in
+                                        if case .second(true, let drag?) = v { createEvent(at: drag.location.y, day: d) }
+                                    })
+                            ForEach(layout(timedByDay[i])) { item in
+                                block(item, days: days, col: i, colWidth: colWidth, gridWidth: geo.size.width)
+                            }
+                            if store.cal.isDateInToday(d) {
+                                NowIndicator(day: d, hourHeight: hourHeight, width: colWidth, cal: store.cal)
+                                    .offset(x: gutter + colWidth * CGFloat(i)).zIndex(3)
+                            }
                         }
                         if let d = drag, !d.committing {
-                            timeLabel(d, day: day)
+                            timeLabel(d, days: days, colWidth: colWidth, gridWidth: geo.size.width)
                         }
                     }
                 }
@@ -241,7 +287,7 @@ struct DayView: View {
                     Color.clear.preference(key: GridMinYKey.self, value: g.frame(in: .named("scroll")).minY)
                 })
                 .frame(height: hourHeight * 24 + 12)
-                .background(alignment: .top) { scrollAnchors(r.timed) }
+                .background(alignment: .top) { scrollAnchors(timedByDay.flatMap { $0 }.sorted { $0.start < $1.start }) }
                 .padding(.top, 8)
             }
             .coordinateSpace(name: "scroll")
@@ -264,7 +310,7 @@ struct DayView: View {
                 Button("Cancel", role: .cancel) { drag = nil }
             } message: { Text("This event repeats. Which events should the change affect?") }
             // Fixed-height grid: cap type size so hour labels and short events don't clip.
-            .dynamicTypeSize(...DynamicTypeSize.xLarge)
+            .dynamicTypeSize(...(single ? DynamicTypeSize.xLarge : DynamicTypeSize.large))
             .onAppear { proxy.scrollTo("scroll", anchor: .top) }
             .onChange(of: store.anchor) { _, _ in proxy.scrollTo("scroll", anchor: .top) }
         }
@@ -298,78 +344,6 @@ struct DayView: View {
         }
     }
 
-    // MARK: - Multi-day (Work Week / Week): read-only columns side by side
-
-    @ViewBuilder
-    private func multiDay(_ days: [Date]) -> some View {
-        columnHeaders(days)
-        Divider()
-        let allDay = days.map { store.events(on: $0).allDay }
-        if allDay.contains(where: { !$0.isEmpty }) {
-            HStack(spacing: 0) {
-                Color.clear.frame(width: gutter, height: 1)
-                ForEach(Array(days.enumerated()), id: \.offset) { i, d in
-                    VStack(alignment: .leading, spacing: 2) {
-                        let shown = allDay[i].count > 2 ? 1 : allDay[i].count
-                        ForEach(allDay[i].prefix(shown)) { ev in
-                            Button { store.sheet = .detail(ev) } label: {
-                                Text(ev.title).font(.system(size: 10)).lineLimit(1).minimumScaleFactor(0.8)
-                                    .padding(.horizontal, 3).padding(.vertical, 1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 3))
-                            }.buttonStyle(.plain)
-                            .accessibilityIdentifier("weekAllDayEvent")
-                        }
-                        if allDay[i].count > 2 {
-                            Text("+\(allDay[i].count - 1)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                                .padding(.horizontal, 3)
-                                .accessibilityLabel("\(allDay[i].count - 1) more all-day events")
-                                .accessibilityIdentifier("allDayMore")
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 2)
-                }
-            }.padding(.vertical, 4)
-            Divider()
-        }
-        let timedByDay = days.map { store.events(on: $0).timed }
-        ScrollViewReader { proxy in
-            ScrollView {
-                GeometryReader { geo in
-                    let colWidth = (geo.size.width - gutter) / CGFloat(days.count)
-                    ZStack(alignment: .topLeading) {
-                        hourLabels()
-                        ForEach(Array(days.enumerated()), id: \.offset) { i, d in
-                            Color.clear.contentShape(Rectangle())
-                                .accessibilityIdentifier("weekDayGridBackground")
-                                .frame(width: colWidth, height: hourHeight * 24)
-                                .offset(x: gutter + colWidth * CGFloat(i))
-                                .gesture(LongPressGesture(minimumDuration: 0.5)
-                                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
-                                    .onEnded { v in
-                                        if case .second(true, let drag?) = v { createEvent(at: drag.location.y, day: d) }
-                                    })
-                            ForEach(layout(timedByDay[i])) { item in
-                                weekBlock(item, day: d, colIndex: i, colWidth: colWidth)
-                            }
-                            if store.cal.isDateInToday(d) {
-                                NowIndicator(day: d, hourHeight: hourHeight, width: colWidth, cal: store.cal)
-                                    .offset(x: gutter + colWidth * CGFloat(i)).zIndex(3)
-                            }
-                        }
-                    }
-                }
-                .frame(height: hourHeight * 24 + 12)
-                .background(alignment: .top) { scrollAnchors(timedByDay.flatMap { $0 }.sorted { $0.start < $1.start }) }
-                .padding(.top, 8)
-            }
-            .refreshable { await store.refreshAll() }
-            .gesture(pinchToZoomGesture)
-            .dynamicTypeSize(...DynamicTypeSize.large)
-            .onAppear { proxy.scrollTo("scroll", anchor: .top) }
-            .onChange(of: store.anchor) { _, _ in proxy.scrollTo("scroll", anchor: .top) }
-        }
-    }
-
     private func columnHeaders(_ days: [Date]) -> some View {
         HStack(spacing: 0) {
             Color.clear.frame(width: gutter, height: 1)
@@ -384,34 +358,7 @@ struct DayView: View {
         }.padding(.vertical, 4)
     }
 
-    @ViewBuilder
-    private func weekBlock(_ item: Placed, day: Date, colIndex: Int, colWidth: CGFloat) -> some View {
-        let e = item.event
-        let top = CGFloat(e.start.timeIntervalSince(day) / 3600) * hourHeight
-        let h = max(CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hourHeight, 20)
-        let w = colWidth / CGFloat(item.columns)
-        VStack(alignment: .leading, spacing: 0) {
-            (e.isPrivate && !e.isBusyOnly ? Text(Image(systemName: "lock.fill")) + Text(" ") + Text(e.title) : Text(e.title))
-                .font(.system(size: w < 60 ? 10 : 11, weight: .bold))
-                .lineLimit(max(Int((h - 6) / 12), 1)).minimumScaleFactor(0.85)
-            if h > 34 && w >= 60 {
-                Text(e.start.formatted(date: .omitted, time: .shortened)).font(.system(size: 9)).lineLimit(1).minimumScaleFactor(0.7)
-            }
-        }
-        .padding(w < 60 ? 2 : 3)
-        .frame(width: w - 2, height: h, alignment: .topLeading)
-        .background(e.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
-        .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: 2) }
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(e.title)
-        .accessibilityIdentifier("weekDayEvent")
-        .onTapGesture { store.sheet = .detail(e) }
-        .offset(x: gutter + colWidth * CGFloat(colIndex) + w * CGFloat(item.column), y: max(top, 0))
-    }
-
-    // MARK: - Event blocks and touch drag (single-day only)
+    // MARK: - Event blocks and touch drag
 
     private func canDrag(_ e: CalEvent) -> Bool { e.canEdit && !e.isOverlay && !e.isBusyOnly && !e.isICS && !e.isAllDay }
 
@@ -420,26 +367,36 @@ struct DayView: View {
     }
 
     @ViewBuilder
-    private func block(_ item: Placed, day: Date, width: CGFloat, gridWidth: CGFloat) -> some View {
+    private func block(_ item: Placed, days: [Date], col: Int, colWidth: CGFloat, gridWidth: CGFloat) -> some View {
         let e = item.event
+        let single = days.count == 1
         let live = drag?.id == e.id ? drag : nil
+        // While moving across days the block is drawn in the column under the finger.
+        let shownCol = min(max(col + (live?.kind == .move ? live?.dayDelta ?? 0 : 0), 0), days.count - 1)
+        let day = days[col], shownDay = days[shownCol]
         let s = live?.start ?? e.start, en = live?.end ?? e.end
-        let top = CGFloat(s.timeIntervalSince(day) / 3600) * hourHeight
-        let h = max(CGFloat(en.timeIntervalSince(s) / 3600) * hourHeight, 22)
-        let w = width / CGFloat(item.columns)
+        let top = CGFloat(s.timeIntervalSince(shownDay) / 3600) * hourHeight
+        let h = max(CGFloat(en.timeIntervalSince(s) / 3600) * hourHeight, single ? 22 : 20)
+        let w = colWidth / CGFloat(item.columns)
+        let narrow = w < 60
         let editable = canDrag(e)
         let selected = editable && selectedID == e.id
+        let radius: CGFloat = single ? 6 : 4
         let body = VStack(alignment: .leading, spacing: 0) {
             (e.isPrivate && !e.isBusyOnly ? Text(Image(systemName: "lock.fill")) + Text(" ") + Text(e.title) : Text(e.title))
-                .font(.caption.bold()).lineLimit(2)
-            if h > 40 { Text(s.formatted(date: .omitted, time: .shortened)).font(.caption2) }
+                .font(single ? .caption.bold() : .system(size: narrow ? 10 : 11, weight: .bold))
+                .lineLimit(max(Int((h - 6) / (single ? 14 : 12)), 1)).minimumScaleFactor(single ? 1 : 0.85)
+            if h > (single ? 40 : 34) && !narrow {
+                Text(s.formatted(date: .omitted, time: .shortened))
+                    .font(single ? .caption2 : .system(size: 9)).lineLimit(1).minimumScaleFactor(0.7)
+            }
         }
-        .padding(4)
+        .padding(narrow ? 2 : (single ? 4 : 3))
         .frame(width: w - 2, height: h, alignment: .topLeading)
-        .background(e.color.opacity(live == nil ? 0.25 : 0.4), in: RoundedRectangle(cornerRadius: 6))
-        .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: 3) }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay { if selected { RoundedRectangle(cornerRadius: 6).stroke(e.color, lineWidth: 2) } }
+        .background(e.color.opacity(live == nil ? 0.25 : 0.4), in: RoundedRectangle(cornerRadius: radius))
+        .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: single ? 3 : 2) }
+        .clipShape(RoundedRectangle(cornerRadius: radius))
+        .overlay { if selected { RoundedRectangle(cornerRadius: radius).stroke(e.color, lineWidth: 2) } }
         .opacity(live?.valid == false ? 0.5 : 1)
         .shadow(color: .black.opacity(live == nil ? 0 : 0.3), radius: live == nil ? 0 : 8, y: 3)
         .contentShape(Rectangle())
@@ -447,7 +404,7 @@ struct DayView: View {
         .accessibilityLabel(e.title)
         .accessibilityValue(timeText(s, en))
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("dayEvent")
+        .accessibilityIdentifier(single ? "dayEvent" : "weekDayEvent")
         .onTapGesture { selectedID = nil; store.sheet = .detail(e) }
 
         Group {
@@ -460,16 +417,16 @@ struct DayView: View {
                             lifting = true
                             if selectedID != e.id { selectedID = e.id; Haptics.impact() }
                             if let d {
-                                if drag == nil { begin(e, .move, y: d.startLocation.y) }
-                                move(to: d.location, gridWidth: gridWidth, day: day)
+                                if drag == nil { begin(e, .move, y: d.startLocation.y, day: day, col: col) }
+                                move(to: d.location, days: days, colWidth: colWidth, gridWidth: gridWidth)
                             }
                         }
                         .onEnded { _ in lifting = false; finish() })
                     .overlay(alignment: .topTrailing) {
-                        if selected { handle(e, .resizeTop, day: day, gridWidth: gridWidth).offset(x: 8, y: -12) }
+                        if selected { handle(e, .resizeTop, days: days, day: day, col: col, colWidth: colWidth, gridWidth: gridWidth).offset(x: 8, y: -12) }
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if selected { handle(e, .resizeBottom, day: day, gridWidth: gridWidth).offset(x: 8, y: 12) }
+                        if selected { handle(e, .resizeBottom, days: days, day: day, col: col, colWidth: colWidth, gridWidth: gridWidth).offset(x: 8, y: 12) }
                     }
             } else {
                 body
@@ -477,52 +434,57 @@ struct DayView: View {
         }
         .zIndex(live != nil ? 10 : (selected ? 5 : 0))
         .scaleEffect(live != nil && live?.kind == .move ? 1.03 : 1)
-        .offset(x: gutter + w * CGFloat(item.column), y: max(top, 0))
+        .offset(x: gutter + colWidth * CGFloat(shownCol) + w * CGFloat(item.column), y: max(top, 0))
     }
 
-    private func handle(_ e: CalEvent, _ kind: DayDragState.Kind, day: Date, gridWidth: CGFloat) -> some View {
+    private func handle(_ e: CalEvent, _ kind: DayDragState.Kind, days: [Date], day: Date, col: Int,
+                        colWidth: CGFloat, gridWidth: CGFloat) -> some View {
         ResizeHandle(color: e.color, id: kind == .resizeTop ? "resizeTop" : "resizeBottom")
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("grid"))
                 .onChanged { v in
                     guard drag == nil || drag?.id == e.id else { return }
                     lifting = true
-                    if drag == nil { begin(e, kind, y: v.startLocation.y); Haptics.impact() }
-                    move(to: v.location, gridWidth: gridWidth, day: day)
+                    if drag == nil { begin(e, kind, y: v.startLocation.y, day: day, col: col); Haptics.impact() }
+                    move(to: v.location, days: days, colWidth: colWidth, gridWidth: gridWidth)
                 }
                 .onEnded { _ in lifting = false; finish() })
     }
 
-    private func timeLabel(_ d: DayDragState, day: Date) -> some View {
-        let top = CGFloat(d.start.timeIntervalSince(day) / 3600) * hourHeight
+    private func timeLabel(_ d: DayDragState, days: [Date], colWidth: CGFloat, gridWidth: CGFloat) -> some View {
+        let col = min(max(d.col0 + (d.kind == .move ? d.dayDelta : 0), 0), days.count - 1)
+        let top = CGFloat(d.start.timeIntervalSince(days[col]) / 3600) * hourHeight
         return Text(d.valid ? timeText(d.start, d.end) : "Release to cancel")
             .font(.caption.weight(.semibold).monospacedDigit())
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(.thinMaterial, in: Capsule())
             .overlay(Capsule().stroke(.secondary.opacity(0.4)))
-            .offset(x: gutter, y: max(top - 28, 0))
+            .offset(x: max(min(gutter + colWidth * CGFloat(col), gridWidth - 170), gutter), y: max(top - 28, 0))
             .zIndex(20)
             .allowsHitTesting(false)
             .accessibilityIdentifier("dragTimeLabel")
     }
 
-    private var dayStart: Date { store.cal.startOfDay(for: store.anchor) }
-
-    private func begin(_ e: CalEvent, _ kind: DayDragState.Kind, y: CGFloat) {
+    private func begin(_ e: CalEvent, _ kind: DayDragState.Kind, y: CGFloat, day: Date, col: Int) {
         drag = DayDragState(id: e.id, kind: kind, origStart: e.start, origEnd: e.end, startY: y, fingerY: y,
-                            start: e.start, end: e.end)
+                            start: e.start, end: e.end, day: day, col0: col)
     }
 
-    private func move(to p: CGPoint, gridWidth: CGFloat, day: Date) {
+    private func move(to p: CGPoint, days: [Date], colWidth: CGFloat, gridWidth: CGFloat) {
         guard var d = drag, !d.committing, !d.awaitingScope else { return }
         d.fingerY = p.y
         d.valid = p.y >= 0 && p.y <= hourHeight * 24 && p.x >= -8 && p.x <= gridWidth + 8
-        recompute(&d, day: day)
+        if d.kind == .move, colWidth > 0 {
+            let c = min(max(Int(((p.x - gutter) / colWidth).rounded(.down)), 0), days.count - 1)
+            d.dayDelta = c - d.col0
+        }
+        recompute(&d)
         drag = d
     }
 
-    private func recompute(_ d: inout DayDragState, day: Date) {
+    private func recompute(_ d: inout DayDragState) {
         let r = DayDragMath.compute(kind: d.kind, origStart: d.origStart, origEnd: d.origEnd,
-                                    deltaY: d.fingerY - d.startY, hourHeight: hourHeight, day: day, cal: store.cal)
+                                    deltaY: d.fingerY - d.startY, hourHeight: hourHeight, day: d.day, cal: store.cal,
+                                    dayDelta: d.dayDelta)
         if r.start != d.start || r.end != d.end { Haptics.tick() }
         d.start = r.start; d.end = r.end
     }
@@ -571,7 +533,7 @@ struct DayView: View {
             // Content moved under a stationary finger: keep the finger's viewport position.
             if var cur = drag, gridMinY != before {
                 cur.fingerY = fingerViewport - gridMinY
-                recompute(&cur, day: dayStart)
+                recompute(&cur)
                 drag = cur
             }
         }

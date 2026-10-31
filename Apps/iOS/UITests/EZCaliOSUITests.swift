@@ -412,4 +412,55 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
         XCTAssertTrue(anyEl("weekDayGridBackground").exists)
     }
+
+    // MARK: - Drag / resize in multi-day grids (#116)
+
+    /// A week-grid event block that is on screen after scrolling the grid to the top.
+    private func visibleWeekEvent() -> XCUIElement? {
+        selectTab("Day")
+        pickGrid("Week")
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        for _ in 0..<3 { grid.swipeDown(velocity: .fast) }
+        // Demo events are week-relative; step through weeks until one is comfortably on screen.
+        for _ in 0..<3 {
+            let all = app.descendants(matching: .any).matching(identifier: "weekDayEvent").allElementsBoundByIndex
+            if let ev = all.first(where: { $0.isHittable && $0.frame.minY > 330 && $0.frame.maxY < 700 && $0.frame.height > 25 }) { return ev }
+            app.buttons["nextButton"].tap()
+        }
+        return nil
+    }
+
+    func testWeekLongPressDragMovesEventAcrossDays() throws {
+        let found = visibleWeekEvent()
+        let ev = try XCTUnwrap(found, "no week event on screen")
+        let label = ev.label
+        let before = ev.frame
+        let left = before.midX > 250
+        let from = ev.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        from.press(forDuration: 0.8, thenDragTo: from.withOffset(CGVector(dx: left ? -52 : 52, dy: 56)))
+        chooseScopeIfAsked()
+        let moved = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertTrue(moved.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(abs(moved.frame.midX - before.midX), 25, "event should land in the neighbouring day column")
+        XCTAssertGreaterThan(moved.frame.minY, before.minY + 20, "and an hour later")
+        XCTAssertFalse(app.staticTexts["detailTitle"].exists)
+    }
+
+    func testWeekResizeBottomHandle() throws {
+        let found = visibleWeekEvent()
+        let ev = try XCTUnwrap(found, "no week event on screen")
+        let label = ev.label
+        let beforeH = ev.frame.height
+        ev.press(forDuration: 0.8)
+        let bottom = anyEl("resizeBottom")
+        XCTAssertTrue(bottom.waitForExistence(timeout: 5))
+        let c = bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        c.press(forDuration: 0.1, thenDragTo: c.withOffset(CGVector(dx: 0, dy: 56)))
+        chooseScopeIfAsked()
+        let after = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertGreaterThan(after.frame.height, beforeH + 20)
+    }
 }
