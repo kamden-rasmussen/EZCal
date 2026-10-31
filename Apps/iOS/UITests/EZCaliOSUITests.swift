@@ -390,4 +390,26 @@ final class EZCaliOSUITests: XCTestCase {
         app.scrollViews.firstMatch.swipeLeft()
         XCTAssertNotEqual(dayTitle.label, before)
     }
+
+    // MARK: - Polish (#137)
+
+    func testAgendaLastCardScrollsAboveFloatingBar() throws {
+        let list = app.collectionViews["agendaList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        for _ in 0..<10 { list.swipeUp(velocity: .fast) }
+        let rows = app.buttons.matching(identifier: "agendaRow")
+        let last = rows.element(boundBy: rows.count - 1)
+        XCTAssertLessThanOrEqual(last.frame.maxY, app.buttons["todayButton"].frame.minY + 1, "last agenda row hidden behind bar")
+    }
+
+    func testWeekGridPullToRefreshAndAllDayOverflow() throws {
+        selectTab("Day")
+        pickGrid("Week")
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            .press(forDuration: 0.1, thenDragTo: grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(anyEl("weekDayGridBackground").exists)
+    }
 }

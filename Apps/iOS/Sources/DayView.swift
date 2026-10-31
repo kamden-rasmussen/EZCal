@@ -245,6 +245,7 @@ struct DayView: View {
                 .padding(.top, 8)
             }
             .coordinateSpace(name: "scroll")
+            .refreshable { await store.refreshAll() }
             .gesture(pinchToZoomGesture)
             .background(GeometryReader { g in Color.clear.preference(key: ViewportHeightKey.self, value: g.size.height) })
             .onPreferenceChange(GridMinYKey.self) { gridMinY = $0 }
@@ -309,13 +310,21 @@ struct DayView: View {
                 Color.clear.frame(width: gutter, height: 1)
                 ForEach(Array(days.enumerated()), id: \.offset) { i, d in
                     VStack(alignment: .leading, spacing: 2) {
-                        ForEach(allDay[i].prefix(2)) { ev in
+                        let shown = allDay[i].count > 2 ? 1 : allDay[i].count
+                        ForEach(allDay[i].prefix(shown)) { ev in
                             Button { store.sheet = .detail(ev) } label: {
-                                Text(ev.title).font(.caption2).lineLimit(1)
+                                Text(ev.title).font(.system(size: 10)).lineLimit(1).minimumScaleFactor(0.8)
                                     .padding(.horizontal, 3).padding(.vertical, 1)
-                                    .background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 3))
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 3))
                             }.buttonStyle(.plain)
+                            .accessibilityIdentifier("weekAllDayEvent")
+                        }
+                        if allDay[i].count > 2 {
+                            Text("+\(allDay[i].count - 1)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                                .padding(.horizontal, 3)
+                                .accessibilityLabel("\(allDay[i].count - 1) more all-day events")
+                                .accessibilityIdentifier("allDayMore")
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 2)
                 }
@@ -353,6 +362,7 @@ struct DayView: View {
                 .background(alignment: .top) { scrollAnchors(timedByDay.flatMap { $0 }.sorted { $0.start < $1.start }) }
                 .padding(.top, 8)
             }
+            .refreshable { await store.refreshAll() }
             .gesture(pinchToZoomGesture)
             .dynamicTypeSize(...DynamicTypeSize.large)
             .onAppear { proxy.scrollTo("scroll", anchor: .top) }
@@ -382,10 +392,13 @@ struct DayView: View {
         let w = colWidth / CGFloat(item.columns)
         VStack(alignment: .leading, spacing: 0) {
             (e.isPrivate && !e.isBusyOnly ? Text(Image(systemName: "lock.fill")) + Text(" ") + Text(e.title) : Text(e.title))
-                .font(.caption2.bold()).lineLimit(2)
-            if h > 34 { Text(e.start.formatted(date: .omitted, time: .shortened)).font(.system(size: 9)) }
+                .font(.system(size: w < 60 ? 10 : 11, weight: .bold))
+                .lineLimit(max(Int((h - 6) / 12), 1)).minimumScaleFactor(0.85)
+            if h > 34 && w >= 60 {
+                Text(e.start.formatted(date: .omitted, time: .shortened)).font(.system(size: 9)).lineLimit(1).minimumScaleFactor(0.7)
+            }
         }
-        .padding(3)
+        .padding(w < 60 ? 2 : 3)
         .frame(width: w - 2, height: h, alignment: .topLeading)
         .background(e.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 4))
         .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: 2) }

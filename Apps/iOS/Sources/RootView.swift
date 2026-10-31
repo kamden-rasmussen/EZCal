@@ -39,6 +39,8 @@ struct RootView: View {
                             .accessibilityHidden(tab != .day)
                     }
                     .animation(.easeInOut(duration: 0.2), value: tab)
+                    // Keep the last row/card scrollable above the floating Prev/Today/Next bar (#137).
+                    .contentMargins(.bottom, 72, for: .scrollContent)
                 }
             }
             .navigationTitle(store.anchor.formatted(.dateTime.month(.abbreviated).day().year()))
