@@ -5,6 +5,11 @@ struct EventDetailSheet: View {
     @Environment(CalendarStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var askScope = false
+    @State private var confirmDelete = false
+
+    private var duplicateTargets: [Source] { store.calendars.filter(\.canWrite) }
+    private var canDelete: Bool { event.canEdit && !event.isBusyOnly && !event.isICS && !event.isOverlay }
+    private var canDuplicate: Bool { !event.isBusyOnly && !event.isOverlay && !duplicateTargets.isEmpty }
 
     var body: some View {
         NavigationStack {
@@ -37,6 +42,26 @@ struct EventDetailSheet: View {
                 if !event.notes.isEmpty {
                     Section("Notes") { Text(event.notes) }
                 }
+                if canDuplicate || canDelete {
+                    Section {
+                        if canDuplicate {
+                            Menu {
+                                ForEach(duplicateTargets) { s in
+                                    Button { store.duplicateDraft(event, to: s) } label: {
+                                        Text(s.name + (store.calendars.filter { $0.name == s.name }.count > 1 ? " (\(s.groupTitle))" : ""))
+                                    }
+                                }
+                            } label: { Label("Duplicate to calendar", systemImage: "plus.square.on.square") }
+                                .accessibilityIdentifier("duplicateButton")
+                        }
+                        if canDelete {
+                            Button(role: .destructive) { confirmDelete = true } label: {
+                                Label("Delete Event", systemImage: "trash")
+                            }
+                            .accessibilityIdentifier("detailDelete")
+                        }
+                    }
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -48,12 +73,29 @@ struct EventDetailSheet: View {
                     }
                 }
             }
+            .confirmationDialog(event.isRecurring ? "Delete recurring event" : "Delete this event?",
+                                isPresented: $confirmDelete, titleVisibility: .visible) {
+                if event.isRecurring {
+                    ForEach(RecurrenceScope.allCases) { scope in
+                        Button("Delete \(scope.title.lowercased())", role: .destructive) { delete(scope) }
+                    }
+                } else {
+                    Button("Delete", role: .destructive) { delete(.thisEvent) }
+                }
+            } message: {
+                Text(event.isRecurring ? "“\(event.title)” repeats. Which events should be deleted?" : "This can’t be undone.")
+            }
             .confirmationDialog("Edit recurring event", isPresented: $askScope, titleVisibility: .visible) {
                 ForEach(RecurrenceScope.allCases) { scope in
                     Button(scope.title) { store.chooseRecurrenceScope(scope, for: event, action: .edit) }
                 }
             } message: { Text("“\(event.title)” repeats. Which events should the edit affect?") }
         }
+    }
+
+    /// The store closes the sheet itself on success.
+    private func delete(_ scope: RecurrenceScope) {
+        Task { await store.delete(event, scope: scope) }
     }
 
     private var whenText: String {

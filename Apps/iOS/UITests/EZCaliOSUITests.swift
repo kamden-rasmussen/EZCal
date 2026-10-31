@@ -336,4 +336,41 @@ final class EZCaliOSUITests: XCTestCase {
         }
         XCTAssertTrue(found, "no video meeting block with a Join button")
     }
+
+    private func revealInDetail(_ id: String) -> XCUIElement {
+        let el = anyEl(id)
+        XCTAssertTrue(el.waitForExistence(timeout: 5), id)
+        for _ in 0..<4 where !el.isHittable { app.staticTexts["detailTitle"].swipeUp() }
+        return el
+    }
+
+    func testDetailDuplicateAndDelete() throws {
+        createEvent(titled: "UITest Detail")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // Duplicate opens the editor prefilled with the same title.
+        revealInDetail("duplicateButton").tap()
+        let target = app.buttons["Team"]
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        target.tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "UITest Detail")
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).count, 2)
+
+        // Delete both copies from the detail sheet.
+        for _ in 0..<2 {
+            app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).firstMatch.tap()
+            revealInDetail("detailDelete").tap()
+            let confirm = app.buttons["Delete"]
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+            confirm.tap()
+            XCTAssertTrue(app.staticTexts["detailTitle"].waitForNonExistence(timeout: 5))
+        }
+        XCTAssertTrue(app.staticTexts["UITest Detail"].waitForNonExistence(timeout: 5), "events should be gone")
+    }
 }
