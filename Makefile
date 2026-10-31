@@ -45,7 +45,9 @@ ios-test: ## Run iOS XCUITests on the simulator
 	cd Apps/iOS && xcodegen generate
 	xcodebuild test -project Apps/iOS/EZCaliOS.xcodeproj -scheme EZCaliOS \
 		-destination 'platform=iOS Simulator,id=$(IOS_UDID)' \
-		-derivedDataPath build/ios-dd CODE_SIGNING_ALLOWED=NO $(ARGS)
+		-derivedDataPath build/ios-dd CODE_SIGNING_ALLOWED=NO \
+		-test-timeouts-enabled YES -default-test-execution-time-allowance 90 \
+		-maximum-test-execution-time-allowance 180 $(ARGS)
 
 # Real iPhone: needs your Apple Team ID (TEAM=ABCDE12345 or Apps/iOS/Config/Local.xcconfig). See Apps/iOS/README.md.
 ios-device: ## Build & install on a connected iPhone (TEAM=<team id> DEVICE=<udid>)
