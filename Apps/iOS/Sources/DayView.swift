@@ -323,7 +323,7 @@ struct DayView: View {
         Group {
             if editable {
                 body
-                    .gesture(LongPressGesture(minimumDuration: 0.4)
+                    .highPriorityGesture(LongPressGesture(minimumDuration: 0.4)
                         .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("grid")))
                         .onChanged { v in
                             guard case .second(true, let d) = v, drag == nil || drag?.id == e.id else { return }
