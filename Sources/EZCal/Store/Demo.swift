@@ -4,7 +4,11 @@ import SwiftUI
 /// Fake data for screenshots and UI development: `EZCAL_DEMO=1 build/EZCal.app/Contents/MacOS/EZCal`.
 extension CalendarStore {
     func loadDemo() {
-        if demoSeeded { rebuildDisplay(); return }
+        if demoSeeded {
+            // Subscriptions added after seeding (in-memory only) show up as calendars too.
+            for sub in icsSubscriptions where !calendars.contains(where: { $0.id == sub.source.id }) { calendars.append(sub.source) }
+            rebuildDisplay(); return
+        }
         demoSeeded = true
         let me = Source(id: "cal|me@example.com|me", accountId: "me@example.com", calendarId: "me", name: "Me", colorHex: "#3E63DD", kind: .calendar, accessRole: "owner")
         let team = Source(id: "cal|me@example.com|team", accountId: "me@example.com", calendarId: "team", name: "Team", colorHex: "#8E4EC6", kind: .calendar, accessRole: "owner")

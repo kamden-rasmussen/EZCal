@@ -4,6 +4,7 @@ import SwiftUI
 struct EZCaliOSApp: App {
     @State private var store = CalendarStore()
     @Environment(\.scenePhase) private var phase
+    @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system.rawValue
 
     init() { _ = OpenEventRouter.shared }   // start observing notification taps before any view exists
 
@@ -11,6 +12,8 @@ struct EZCaliOSApp: App {
         WindowGroup {
             RootView()
                 .environment(store)
+                .handlesWebcalLinks()
+                .preferredColorScheme(AppearanceSetting(rawValue: appearance)?.scheme)
                 .task {
                     if !store.eventKitEnabled && EventKitService.shared.isAuthorized { await store.enableEventKit() }
                     await store.bootstrap()

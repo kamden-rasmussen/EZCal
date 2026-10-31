@@ -7,6 +7,11 @@ struct SettingsSheet: View {
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("notificationLeadMinutes") private var notificationLeadMinutes = 5
     @AppStorage("notificationVideoOnly") private var notificationVideoOnly = false
+    @AppStorage("showWeekends") private var showWeekends = true
+    @AppStorage("firstWeekday") private var firstWeekday = 0
+    @AppStorage("defaultVideo") private var defaultVideo = "none"
+    @AppStorage("hourHeight") private var hourHeight = 56.0
+    @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system.rawValue
     @State private var permissionDeniedAlert = false
 
     var body: some View {
@@ -18,10 +23,37 @@ struct SettingsSheet: View {
                     LabeledContent("Google Calendar", value: "Not set up on iOS yet")
                     LabeledContent("Zoom", value: "Not set up on iOS yet")
                 }
+                Section("Calendar view") {
+                    Toggle("Show weekends", isOn: $showWeekends)
+                        .accessibilityIdentifier("showWeekendsToggle")
+                        .onChange(of: showWeekends) { _, _ in store.scheduleReload() }
+                    Picker("Week starts on", selection: $firstWeekday) {
+                        Text("System default").tag(0)
+                        Text("Sunday").tag(1)
+                        Text("Monday").tag(2)
+                        Text("Saturday").tag(7)
+                    }
+                    .accessibilityIdentifier("weekStartPicker")
+                    .onChange(of: firstWeekday) { _, _ in store.scheduleReload() }
+                    LabeledContent("Hour height") {
+                        Slider(value: $hourHeight, in: AppSettings.hourHeightRange).frame(width: 160)
+                            .accessibilityIdentifier("hourHeightSlider")
+                    }
+                    Picker("Appearance", selection: $appearance) {
+                        ForEach(AppearanceSetting.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .accessibilityIdentifier("appearancePicker")
+                }
                 Section("New events") {
                     Picker("Default length", selection: $duration) {
                         ForEach([15, 30, 45, 60, 90, 120], id: \.self) { Text("\($0) min").tag($0) }
                     }
+                    Picker("Add video to new events", selection: $defaultVideo) {
+                        Text("Never").tag("none")
+                        Text("Zoom").tag("zoom")
+                        Text("Google Meet").tag("meet")
+                    }
+                    .accessibilityIdentifier("defaultVideoPicker")
                 }
                 Section("Default calendar for new events") { DefaultCalendarSettingsRows() }
                 Section("Meeting reminders") {
