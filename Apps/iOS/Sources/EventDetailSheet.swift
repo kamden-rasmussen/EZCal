@@ -6,6 +6,11 @@ struct EventDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var askScope = false
     @State private var confirmDelete = false
+    // Glass at half height, fading to an opaque sheet at the tall detent. A full-height (.large) sheet makes iOS
+    // swap to opaque in one frame, so the tall detent stays just short of full and the fade is ours.
+    private static let tall = PresentationDetent.fraction(0.94)
+    @State private var detent: PresentationDetent = .medium
+    private var opaque: Double { detent == Self.tall ? 1 : 0 }
 
     private var duplicateTargets: [Source] { store.calendars.filter(\.canWrite) }
     private var canDelete: Bool { event.canEdit && !event.isBusyOnly && !event.isICS && !event.isOverlay }
@@ -78,6 +83,8 @@ struct EventDetailSheet: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .scrollContentBackground(.hidden)
+            .listRowBackground(Color(.secondarySystemGroupedBackground).opacity(0.35 + 0.65 * opaque))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("doneButton") }
                 if event.canEdit && !event.isBusyOnly && !event.isICS {
@@ -105,6 +112,9 @@ struct EventDetailSheet: View {
                 }
             } message: { Text("“\(event.title)” repeats. Which events should the edit affect?") }
         }
+        .background { Color(.systemGroupedBackground).opacity(opaque).ignoresSafeArea() }
+        .animation(.easeInOut(duration: 0.35), value: detent)
+        .presentationDetents([.medium, Self.tall], selection: $detent)
     }
 
     private var guests: [Attendee] { event.attendees.filter { !$0.isResource } }
