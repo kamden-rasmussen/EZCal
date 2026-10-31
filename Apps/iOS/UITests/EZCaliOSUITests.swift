@@ -298,4 +298,33 @@ final class EZCaliOSUITests: XCTestCase {
         ev.tap()
         XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
     }
+
+    // MARK: - Swipe paging (#106)
+
+    func testSwipeChangesDayAndVerticalSwipeDoesNot() throws {
+        selectTab("Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let today = dayTitle.label
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.swipeUp()
+        XCTAssertEqual(dayTitle.label, today, "vertical scroll must not change the day")
+        grid.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, today, "swipe left goes to the next day")
+        grid.swipeRight()
+        XCTAssertEqual(dayTitle.label, today, "swipe right goes back")
+        grid.swipeRight()
+        XCTAssertNotEqual(dayTitle.label, today)
+    }
+
+    func testSwipeChangesWeek() throws {
+        selectTab("Day")
+        app.segmentedControls["gridModePicker"].buttons["Week"].tap()
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let before = dayTitle.label
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.scrollViews.firstMatch.swipeRight()
+        XCTAssertEqual(dayTitle.label, before)
+    }
 }

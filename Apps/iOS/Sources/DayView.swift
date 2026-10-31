@@ -19,6 +19,13 @@ struct DayView: View {
     @State private var gridMinY: CGFloat = 0
     @State private var viewportH: CGFloat = 0
     @State private var saveError: String?
+    // Swipe paging (#106).
+    @State private var swipeX: CGFloat = 0
+    @State private var swipeAxis: Axis?
+    @State private var containerW: CGFloat = 390
+    /// True from the moment a long press lifts an event (or a resize handle is grabbed) until it is dropped,
+    /// so the page-swipe never fights an event drag.
+    @State private var lifting = false
 
     /// Pinch to zoom the grid's vertical density — touch pinch on iOS, same as trackpad pinch on macOS.
     private var pinchToZoomGesture: some Gesture {
@@ -74,12 +81,67 @@ struct DayView: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             Divider()
-            if days.count == 1 {
-                singleDay(days[0])
-            } else {
-                multiDay(days)
+            VStack(spacing: 0) {
+                if days.count == 1 {
+                    singleDay(days[0])
+                } else {
+                    multiDay(days)
+                }
             }
+            .background(GeometryReader { g in
+                Color.clear.onAppear { containerW = g.size.width }.onChange(of: g.size.width) { _, w in containerW = w }
+            })
+            .offset(x: swipeX)
+            .opacity(1 - min(abs(swipeX) / max(containerW, 1), 1) * 0.5)
+            .clipped()
+            .simultaneousGesture(swipeGesture)
         }
+    }
+
+    // MARK: - Swipe paging (#106)
+
+    /// Horizontal swipe changes the day (Day) or the week (Work Week/Week). Only a clearly horizontal drag
+    /// counts, and never while an event is lifted or the grid is being pinched, so scrolling, long-press
+    /// drag and pinch-zoom keep working.
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20, coordinateSpace: .global)
+            .onChanged { v in
+                guard !lifting, drag == nil, hourHeightAtPinchStart == nil else { swipeX = 0; return }
+                if swipeAxis == nil {
+                    swipeAxis = abs(v.translation.width) > abs(v.translation.height) * 1.5 ? .horizontal : .vertical
+                }
+                if swipeAxis == .horizontal { swipeX = v.translation.width }
+            }
+            .onEnded { v in
+                defer { swipeAxis = nil }
+                guard swipeAxis == .horizontal, !lifting, drag == nil else { settleSwipe(); return }
+                let dx = v.translation.width, predicted = v.predictedEndTranslation.width
+                if abs(dx) > containerW * 0.25 || abs(predicted) > containerW * 0.6 {
+                    commitSwipe(dir: dx < 0 ? 1 : -1)
+                } else {
+                    settleSwipe()
+                }
+            }
+    }
+
+    private func settleSwipe() { withAnimation(.easeOut(duration: 0.18)) { swipeX = 0 } }
+
+    private func commitSwipe(dir: Int) {
+        let w = containerW
+        withAnimation(.easeIn(duration: 0.14)) { swipeX = -CGFloat(dir) * w }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 140_000_000)
+            navigate(dir)
+            var t = Transaction(); t.animation = nil
+            withTransaction(t) { swipeX = CGFloat(dir) * w * 0.5 }
+            withAnimation(.easeOut(duration: 0.2)) { swipeX = 0 }
+        }
+    }
+
+    /// One page forward/back for the current mode.
+    private func navigate(_ n: Int) {
+        if gridMode == .day { store.goTo(store.cal.date(byAdding: .day, value: n, to: store.anchor) ?? store.anchor) }
+        else { store.step(n) }
     }
 
     // MARK: - Single day (touch drag/resize)
@@ -327,13 +389,14 @@ struct DayView: View {
                         .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("grid")))
                         .onChanged { v in
                             guard case .second(true, let d) = v, drag == nil || drag?.id == e.id else { return }
+                            lifting = true
                             if selectedID != e.id { selectedID = e.id; Haptics.impact() }
                             if let d {
                                 if drag == nil { begin(e, .move, y: d.startLocation.y) }
                                 move(to: d.location, gridWidth: gridWidth, day: day)
                             }
                         }
-                        .onEnded { _ in finish() })
+                        .onEnded { _ in lifting = false; finish() })
                     .overlay(alignment: .topTrailing) {
                         if selected { handle(e, .resizeTop, day: day, gridWidth: gridWidth).offset(x: 8, y: -12) }
                     }
@@ -354,10 +417,11 @@ struct DayView: View {
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("grid"))
                 .onChanged { v in
                     guard drag == nil || drag?.id == e.id else { return }
+                    lifting = true
                     if drag == nil { begin(e, kind, y: v.startLocation.y); Haptics.impact() }
                     move(to: v.location, gridWidth: gridWidth, day: day)
                 }
-                .onEnded { _ in finish() })
+                .onEnded { _ in lifting = false; finish() })
     }
 
     private func timeLabel(_ d: DayDragState, day: Date) -> some View {
