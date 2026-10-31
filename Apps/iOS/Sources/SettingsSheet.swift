@@ -11,6 +11,7 @@ struct SettingsSheet: View {
     @AppStorage("firstWeekday") private var firstWeekday = 0
     @AppStorage("defaultVideo") private var defaultVideo = "none"
     @AppStorage("hourHeight") private var hourHeight = 56.0
+    @AppStorage("overlapLayoutMode") private var overlapLayoutMode = OverlapLayoutMode.sideBySide.rawValue
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system.rawValue
     @State private var permissionDeniedAlert = false
 
@@ -39,6 +40,12 @@ struct SettingsSheet: View {
                         Slider(value: $hourHeight, in: AppSettings.hourHeightRange).frame(width: 160)
                             .accessibilityIdentifier("hourHeightSlider")
                     }
+                    Picker("Overlapping events", selection: $overlapLayoutMode) {
+                        Text("Side by side").tag(OverlapLayoutMode.sideBySide.rawValue)
+                        Text("Overlap (cascade)").tag(OverlapLayoutMode.cascade.rawValue)
+                        Text("Auto").tag(OverlapLayoutMode.auto.rawValue)
+                    }
+                    .accessibilityIdentifier("overlapLayoutPicker")
                     Picker("Appearance", selection: $appearance) {
                         ForEach(AppearanceSetting.allCases) { Text($0.title).tag($0.rawValue) }
                     }

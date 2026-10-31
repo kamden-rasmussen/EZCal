@@ -67,6 +67,12 @@ extension CalendarStore {
             add(fun, week: w, day: 4, 16, 1.5, "Team social")
             add(home, week: w, day: 5, 10, 2, "Farmers market")
             add(league, week: w, day: 5, 14, 2, "Home vs. Rivals")
+            // Sunday: one meeting on three calendars (folds into a single stacked card) plus a genuinely
+            // different event overlapping it (splits side by side / cascades) — see `EventGrouping`.
+            add(me, week: w, day: 6, 10, 1, "Team planning")
+            add(team, week: w, day: 6, 10, 1, "Team planning")
+            add(home, week: w, day: 6, 10, 1, "Team planning")
+            add(me, week: w, day: 6, 10.5, 1, "Vendor call")
         }
         // Guests on one event so the iOS/macOS detail views have an attendee list to show.
         for (k, evs) in out {
