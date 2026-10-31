@@ -44,6 +44,8 @@ clean: quit ## Remove build artifacts
 IOS_SIM ?= iPhone 17
 IOS_DEST = $(if $(IOS_UDID),platform=iOS Simulator$(comma)id=$(IOS_UDID),platform=iOS Simulator$(comma)name=$(IOS_SIM))
 IOS_WORKERS ?= 4
+# A hung gesture test fails after this instead of stalling the run (slowest tests take ~110s under parallel load).
+IOS_TIMEOUTS = -test-timeouts-enabled YES -default-test-execution-time-allowance 180 -maximum-test-execution-time-allowance 300
 comma := ,
 
 # Fast tier for day-to-day work: one test per area. The full suite gates ios-testflight.
@@ -62,13 +64,13 @@ ios-test-smoke: ## Run the fast iOS UI smoke tier (serial, ~2 min)
 	cd Apps/iOS && xcodegen generate
 	xcodebuild test -project Apps/iOS/EZCaliOS.xcodeproj -scheme EZCaliOS \
 		-destination '$(IOS_DEST)' -derivedDataPath build/ios-dd CODE_SIGNING_ALLOWED=NO \
-		-parallel-testing-enabled NO $(IOS_SMOKE_ARGS) $(ARGS)
+		-parallel-testing-enabled NO $(IOS_TIMEOUTS) $(IOS_SMOKE_ARGS) $(ARGS)
 
 ios-test: ## Run the full iOS XCUITests in parallel on simulator clones (IOS_WORKERS=4)
 	cd Apps/iOS && xcodegen generate
 	xcodebuild test -project Apps/iOS/EZCaliOS.xcodeproj -scheme EZCaliOS \
 		-destination '$(IOS_DEST)' -derivedDataPath build/ios-dd CODE_SIGNING_ALLOWED=NO \
-		-parallel-testing-enabled YES -parallel-testing-worker-count $(IOS_WORKERS) $(ARGS)
+		-parallel-testing-enabled YES -parallel-testing-worker-count $(IOS_WORKERS) $(IOS_TIMEOUTS) $(ARGS)
 
 # Real iPhone: needs your Apple Team ID (TEAM=ABCDE12345 or Apps/iOS/Config/Local.xcconfig). See Apps/iOS/README.md.
 ios-device: ## Build & install on a connected iPhone (TEAM=<team id> DEVICE=<udid>)
