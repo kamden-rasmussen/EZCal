@@ -29,6 +29,12 @@ struct DayView: View {
     /// True from the moment a long press lifts an event (or a resize handle is grabbed) until it is dropped,
     /// so the page-swipe never fights an event drag.
     @State private var lifting = false
+    /// Overlap layout (shared with macOS: same key/values — Side by side / Overlap (cascade) / Auto).
+    @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.sideBySide.rawValue
+    private var overlapMode: OverlapLayoutMode { OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .sideBySide }
+    /// Stacked (same meeting on several calendars) card that was tapped, and the calendar picked from its list.
+    @State private var stackSelection: StackSelection?
+    @State private var pendingOpen: CalEvent?
 
     /// Pinch to zoom the grid's vertical density — touch pinch on iOS, same as trackpad pinch on macOS.
     private var pinchToZoomGesture: some Gesture {
@@ -115,6 +121,12 @@ struct DayView: View {
             .simultaneousGesture(swipeGesture)
         }
         .sheet(isPresented: $showGoTo) { GoToDateSheet() }
+        .sheet(item: $stackSelection, onDismiss: {
+            // Open the picked copy only after the list has finished dismissing (one sheet at a time).
+            if let e = pendingOpen { pendingOpen = nil; store.sheet = .detail(e) }
+        }) { sel in
+            StackCalendarSheet(selection: sel) { pendingOpen = $0 }
+        }
     }
 
     // MARK: - Grid choice (Day / 3 Day / Work Week / Week)
@@ -275,7 +287,7 @@ struct DayView: View {
                                     .onEnded { v in
                                         if case .second(true, let drag?) = v { createEvent(at: drag.location.y, day: d) }
                                     })
-                            ForEach(layout(timedByDay[i])) { item in
+                            ForEach(EventLayout.place(timedByDay[i], day: d, cal: store.cal)) { item in
                                 block(item, days: days, col: i, colWidth: colWidth, gridWidth: geo.size.width)
                             }
                             if store.cal.isDateInToday(d) {
@@ -372,46 +384,58 @@ struct DayView: View {
         "\(s.formatted(date: .omitted, time: .shortened)) – \(e.formatted(date: .omitted, time: .shortened))"
     }
 
+    /// Where a placed event sits inside its column, per the overlap layout mode (same rules as macOS's
+    /// `OverlapCluster`): real side-by-side slices, or a cascade of full-width cards each offset a little.
+    private func geometry(_ p: PlacedEvent, colWidth: CGFloat) -> (w: CGFloat, x: CGFloat, y: CGFloat, cascaded: Bool) {
+        if EventLayout.useSideBySide(sideSlots: p.sideSlots, availableWidth: colWidth, mode: overlapMode) {
+            let slot = colWidth / CGFloat(p.sideSlots)
+            return (slot, slot * CGFloat(p.sideSlot), 0, false)
+        }
+        let off = p.columns > 1 ? EventLayout.waterfallOffset(index: p.column, count: p.columns, dayWidth: colWidth) : 0
+        let ny = p.columns > 1 ? EventLayout.waterfallYNudge(index: p.column) : 0
+        return (max(colWidth - off, 24), off, ny, p.columns > 1)
+    }
+
     @ViewBuilder
-    private func block(_ item: Placed, days: [Date], col: Int, colWidth: CGFloat, gridWidth: CGFloat) -> some View {
-        let e = item.event
+    private func block(_ item: PlacedEvent, days: [Date], col: Int, colWidth: CGFloat, gridWidth: CGFloat) -> some View {
+        let stack: [CalEvent]? = { if case .stack(let es) = item.item { return es } else { return nil } }()
+        let e: CalEvent = { switch item.item { case .single(let e): return e; case .stack(let es): return es[0] } }()
         let single = days.count == 1
         let live = drag?.id == e.id ? drag : nil
         // While moving across days the block is drawn in the column under the finger.
         let shownCol = min(max(col + (live?.kind == .move ? live?.dayDelta ?? 0 : 0), 0), days.count - 1)
         let day = days[col], shownDay = days[shownCol]
-        let s = live?.start ?? e.start, en = live?.end ?? e.end
+        let s = live?.start ?? item.item.start, en = live?.end ?? item.item.end
         let top = CGFloat(s.timeIntervalSince(shownDay) / 3600) * hourHeight
         let h = max(CGFloat(en.timeIntervalSince(s) / 3600) * hourHeight, single ? 22 : 20)
-        let w = colWidth / CGFloat(item.columns)
+        let geo = geometry(item, colWidth: colWidth)
+        let w = geo.w
         let narrow = w < 60
         let editable = canDrag(e)
         let selected = editable && selectedID == e.id
         let radius: CGFloat = single ? 6 : 4
-        let body = VStack(alignment: .leading, spacing: 0) {
-            (e.isPrivate && !e.isBusyOnly ? Text(Image(systemName: "lock.fill")) + Text(" ") + Text(e.title) : Text(e.title))
-                .font(single ? .caption.bold() : .system(size: narrow ? 10 : 11, weight: .bold))
-                .lineLimit(max(Int((h - 6) / (single ? 14 : 12)), 1)).minimumScaleFactor(single ? 1 : 0.85)
-            if h > (single ? 40 : 34) && !narrow {
-                Text(s.formatted(date: .omitted, time: .shortened))
-                    .font(single ? .caption2 : .system(size: 9)).lineLimit(1).minimumScaleFactor(0.7)
+        let label = stack.map { "\(e.title), on \($0.count) calendars" } ?? e.title
+        let visual = Group {
+            if let stack {
+                StackedEventCard(events: stack, height: h, compact: narrow, single: single, live: live != nil, selected: selected)
+                    .frame(width: w - 2, height: h, alignment: .topLeading)
+            } else {
+                singleVisual(e, s: s, h: h, w: w, narrow: narrow, single: single, radius: radius, live: live != nil, selected: selected)
             }
         }
-        .padding(narrow ? 2 : (single ? 4 : 3))
-        .frame(width: w - 2, height: h, alignment: .topLeading)
-        .background(e.color.opacity(live == nil ? 0.25 : 0.4), in: RoundedRectangle(cornerRadius: radius))
-        .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: single ? 3 : 2) }
-        .clipShape(RoundedRectangle(cornerRadius: radius))
-        .overlay { if selected { RoundedRectangle(cornerRadius: radius).stroke(e.color, lineWidth: 2) } }
+        let body = visual
         .opacity(live?.valid == false ? 0.5 : 1)
         .shadow(color: .black.opacity(live == nil ? 0 : 0.3), radius: live == nil ? 0 : 8, y: 3)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(e.title)
+        .accessibilityLabel(label)
         .accessibilityValue(timeText(s, en))
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier(single ? "dayEvent" : "weekDayEvent")
-        .onTapGesture { selectedID = nil; store.sheet = .detail(e) }
+        .accessibilityIdentifier(stack != nil ? (single ? "dayStackedEvent" : "weekStackedEvent") : (single ? "dayEvent" : "weekDayEvent"))
+        .onTapGesture {
+            selectedID = nil
+            if let stack { stackSelection = StackSelection(events: stack) } else { store.sheet = .detail(e) }
+        }
         .overlay(alignment: .topTrailing) {
             if h >= 30 { JoinIconButton(event: e, compact: true).padding(3) }
         }
@@ -441,9 +465,29 @@ struct DayView: View {
                 body
             }
         }
-        .zIndex(live != nil ? 10 : (selected ? 5 : 0))
+        .zIndex(live != nil ? 10 : (selected ? 5 : Double(item.column) * 0.1))
         .scaleEffect(live != nil && live?.kind == .move ? 1.03 : 1)
-        .offset(x: gutter + colWidth * CGFloat(shownCol) + w * CGFloat(item.column), y: max(top, 0))
+        .offset(x: gutter + colWidth * CGFloat(shownCol) + geo.x, y: max(top, 0) + (geo.cascaded ? geo.y : 0))
+    }
+
+    private func singleVisual(_ e: CalEvent, s: Date, h: CGFloat, w: CGFloat, narrow: Bool, single: Bool,
+                              radius: CGFloat, live: Bool, selected: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            (e.isPrivate && !e.isBusyOnly ? Text(Image(systemName: "lock.fill")) + Text(" ") + Text(e.title) : Text(e.title))
+                .font(single ? .caption.bold() : .system(size: narrow ? 10 : 11, weight: .bold))
+                .lineLimit(max(Int((h - 6) / (single ? 14 : 12)), 1)).minimumScaleFactor(single ? 1 : 0.85)
+            if h > (single ? 40 : 34) && !narrow {
+                Text(s.formatted(date: .omitted, time: .shortened))
+                    .font(single ? .caption2 : .system(size: 9)).lineLimit(1).minimumScaleFactor(0.7)
+            }
+        }
+        .padding(narrow ? 2 : (single ? 4 : 3))
+        .frame(width: w - 2, height: h, alignment: .topLeading)
+        .background(e.color.opacity(live ? 0.4 : 0.25), in: RoundedRectangle(cornerRadius: radius))
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: radius))
+        .overlay(alignment: .leading) { Rectangle().fill(e.color).frame(width: single ? 3 : 2) }
+        .clipShape(RoundedRectangle(cornerRadius: radius))
+        .overlay { if selected { RoundedRectangle(cornerRadius: radius).stroke(e.color, lineWidth: 2) } }
     }
 
     private func handle(_ e: CalEvent, _ kind: DayDragState.Kind, days: [Date], day: Date, col: Int,
@@ -568,29 +612,5 @@ struct DayView: View {
     private func hourLabel(_ h: Int) -> String {
         h == 0 ? "" : (Calendar.current.date(bySettingHour: h, minute: 0, second: 0, of: Date())!
             .formatted(.dateTime.hour()))
-    }
-
-    struct Placed: Identifiable { let event: CalEvent; let column: Int; let columns: Int; var id: String { event.id } }
-
-    /// Greedy column packing for overlapping events.
-    private func layout(_ events: [CalEvent]) -> [Placed] {
-        var out: [Placed] = []
-        var cluster: [(CalEvent, Int)] = []
-        var colEnds: [Date] = []
-        func flush() {
-            let n = max(colEnds.count, 1)
-            out += cluster.map { Placed(event: $0.0, column: $0.1, columns: n) }
-            cluster = []; colEnds = []
-        }
-        for e in events {
-            if let maxEnd = colEnds.max(), e.start >= maxEnd { flush() }
-            if let i = colEnds.firstIndex(where: { $0 <= e.start }) {
-                colEnds[i] = e.end; cluster.append((e, i))
-            } else {
-                colEnds.append(e.end); cluster.append((e, colEnds.count - 1))
-            }
-        }
-        flush()
-        return out
     }
 }
