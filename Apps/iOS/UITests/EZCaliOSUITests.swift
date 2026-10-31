@@ -298,4 +298,15 @@ final class EZCaliOSUITests: XCTestCase {
         ev.tap()
         XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
     }
+
+    /// Stands in for tapping a meeting notification: the app posts the same `.ezcalOpenEvent` the
+    /// notification delegate does (a real notification tap can't be driven from XCUITest).
+    func testOpenEventNotificationShowsDetail() throws {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Roadmap planning"
+        app.launch()
+        let title = app.staticTexts["detailTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.label, "Roadmap planning")
+    }
 }
