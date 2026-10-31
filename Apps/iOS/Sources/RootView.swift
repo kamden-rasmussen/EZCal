@@ -13,6 +13,7 @@ struct RootView: View {
     @State private var showCalendars = false
     @State private var showSettings = false
     @State private var showGoTo = false
+    @AppStorage("gridThreeDay") private var threeDay = false
     @State private var authStatus = EKEventStore.authorizationStatus(for: .event)
 
     private var needsConnect: Bool { !store.isDemo && !store.eventKitEnabled }
@@ -110,7 +111,8 @@ struct RootView: View {
         if tab == .day, gridMode != .day {
             store.step(n)
         } else {
-            let d = store.cal.date(byAdding: .day, value: n, to: store.anchor) ?? store.anchor
+            let span = tab == .day && threeDay ? 3 : 1
+            let d = store.cal.date(byAdding: .day, value: n * span, to: store.anchor) ?? store.anchor
             store.goTo(d)
         }
     }

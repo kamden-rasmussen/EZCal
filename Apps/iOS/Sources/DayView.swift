@@ -20,6 +20,8 @@ struct DayView: View {
     @State private var viewportH: CGFloat = 0
     @State private var saveError: String?
     @State private var showGoTo = false
+    /// 3-day view is `gridMode == .day` plus this flag, so the shared `ViewMode` stays untouched.
+    @AppStorage("gridThreeDay") private var threeDay = false
     // Swipe paging (#106).
     @State private var swipeX: CGFloat = 0
     @State private var swipeAxis: Axis?
@@ -43,16 +45,20 @@ struct DayView: View {
     /// Days shown. Day mode ignores `store.mode` entirely (unaffected by whatever range was last
     /// fetched); Work Week/Week reuse the shared `visibleDays`, which `store.setMode` keeps in sync with.
     private var visibleDays: [Date] {
-        gridMode == .day ? [store.cal.startOfDay(for: store.anchor)] : store.visibleDays
+        if gridMode == .day {
+            let d0 = store.cal.startOfDay(for: store.anchor)
+            return threeDay ? (0..<3).compactMap { store.cal.date(byAdding: .day, value: $0, to: d0) } : [d0]
+        }
+        return store.visibleDays
     }
 
     /// Always a 3-letter month — screen space here is tighter than on macOS, which sometimes spells
     /// the month out in full (`store.title`).
     private var titleText: String {
-        if gridMode == .day {
+        if gridMode == .day && !threeDay {
             return store.anchor.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
         }
-        let days = store.visibleDays
+        let days = visibleDays
         guard let f = days.first, let l = days.last else { return "" }
         let sameMonth = store.cal.isDate(f, equalTo: l, toGranularity: .month)
         let sameYear = store.cal.isDate(f, equalTo: l, toGranularity: .year)
@@ -75,15 +81,17 @@ struct DayView: View {
                 .accessibilityIdentifier("dayTitle")
                 .accessibilityHint("Opens a date picker")
                 Spacer()
-                Picker("", selection: $gridMode) {
-                    Text("Day").tag(ViewMode.day)
-                    Text("Work Week").tag(ViewMode.workWeek)
-                    Text("Week").tag(ViewMode.week)
+                Picker("View", selection: gridChoice) {
+                    Text("Day").tag(GridChoice.day)
+                    Text("3 Day").tag(GridChoice.threeDay)
+                    Text("Work Week").tag(GridChoice.workWeek)
+                    Text("Week").tag(GridChoice.week)
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .pickerStyle(.menu)
                 .accessibilityIdentifier("gridModePicker")
-                .onChange(of: gridMode) { _, m in if m != .day { store.setMode(m) } }
+                .onChange(of: gridMode) { _, _ in syncStore() }
+                .onChange(of: threeDay) { _, _ in syncStore() }
+                .onAppear { syncStore() }
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             Divider()
@@ -103,6 +111,36 @@ struct DayView: View {
             .simultaneousGesture(swipeGesture)
         }
         .sheet(isPresented: $showGoTo) { GoToDateSheet() }
+    }
+
+    // MARK: - Grid choice (Day / 3 Day / Work Week / Week)
+
+    enum GridChoice: Hashable { case day, threeDay, workWeek, week }
+
+    private var gridChoice: Binding<GridChoice> {
+        Binding(
+            get: {
+                switch gridMode {
+                case .day: return threeDay ? .threeDay : .day
+                case .workWeek: return .workWeek
+                default: return .week
+                }
+            },
+            set: { c in
+                switch c {
+                case .day: threeDay = false; gridMode = .day
+                case .threeDay: threeDay = true; gridMode = .day
+                case .workWeek: threeDay = false; gridMode = .workWeek
+                case .week: threeDay = false; gridMode = .week
+                }
+            })
+    }
+
+    /// Keeps the shared store's fetch window in step with what the grid shows.
+    private func syncStore() {
+        store.fetchPadDays = 7
+        store.extraFetchDays = gridMode == .day && threeDay ? 2 : 0
+        if gridMode == .day { if threeDay { store.setMode(.day) } } else { store.setMode(gridMode) }
     }
 
     // MARK: - Swipe paging (#106)
@@ -147,8 +185,10 @@ struct DayView: View {
 
     /// One page forward/back for the current mode.
     private func navigate(_ n: Int) {
-        if gridMode == .day { store.goTo(store.cal.date(byAdding: .day, value: n, to: store.anchor) ?? store.anchor) }
-        else { store.step(n) }
+        if gridMode == .day {
+            let step = threeDay ? 3 : 1
+            store.goTo(store.cal.date(byAdding: .day, value: n * step, to: store.anchor) ?? store.anchor)
+        } else { store.step(n) }
     }
 
     // MARK: - Single day (touch drag/resize)

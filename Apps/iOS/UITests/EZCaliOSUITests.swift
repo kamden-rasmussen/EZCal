@@ -16,6 +16,12 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(b.waitForExistence(timeout: 10))
         b.tap()
     }
+    private func pickGrid(_ name: String) {
+        let p = anyEl("gridModePicker")
+        XCTAssertTrue(p.waitForExistence(timeout: 5))
+        p.tap()
+        app.buttons[name].firstMatch.tap()
+    }
     private func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     private var dayTitle: XCUIElement { app.buttons["dayTitle"] }
 
@@ -319,7 +325,7 @@ final class EZCaliOSUITests: XCTestCase {
 
     func testSwipeChangesWeek() throws {
         selectTab("Day")
-        app.segmentedControls["gridModePicker"].buttons["Week"].tap()
+        pickGrid("Week")
         XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
         let before = dayTitle.label
         app.scrollViews.firstMatch.swipeLeft()
@@ -336,7 +342,7 @@ final class EZCaliOSUITests: XCTestCase {
         app.buttons["nextButton"].tap()
         XCTAssertTrue(anyEl("nowLine").waitForNonExistence(timeout: 5), "other days must not")
         app.buttons["todayButton"].tap()
-        app.segmentedControls["gridModePicker"].buttons["Week"].tap()
+        pickGrid("Week")
         XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "week containing today shows it too")
     }
 
@@ -366,5 +372,22 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
         app.buttons["goToTodayButton"].tap()
         XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
+    }
+
+    // MARK: - 3-day view (#133)
+
+    func testThreeDayViewShowsThreeColumnsAndPagesByThree() throws {
+        selectTab("Day")
+        pickGrid("3 Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(anyEl("weekDayGridBackground").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "weekDayGridBackground").count, 3)
+        let before = dayTitle.label
+        app.buttons["nextButton"].tap()
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.buttons["prevButton"].tap()
+        XCTAssertEqual(dayTitle.label, before)
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, before)
     }
 }

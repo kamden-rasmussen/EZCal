@@ -223,8 +223,21 @@ final class CalendarStore {
         }
     }
 
+    /// iOS grid extras: more days than the mode implies (3-day view) and neighbouring pages to preload for
+    /// swiping. Both default to 0, so macOS is unaffected.
+    @ObservationIgnored var extraFetchDays = 0
+    @ObservationIgnored var fetchPadDays = 0
+
     /// Range we ask Google for. Always includes every visible day (weekends included).
     var fetchRange: Range<Date> {
+        let r = baseFetchRange
+        guard extraFetchDays > 0 || fetchPadDays > 0 else { return r }
+        let c = cal
+        return c.date(byAdding: .day, value: -fetchPadDays, to: r.lowerBound)!
+            ..< c.date(byAdding: .day, value: extraFetchDays + fetchPadDays, to: r.upperBound)!
+    }
+
+    private var baseFetchRange: Range<Date> {
         let c = cal
         switch mode {
         case .day: return c.startOfDay(for: anchor)..<c.endOfDay(anchor)
