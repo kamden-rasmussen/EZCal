@@ -373,4 +373,20 @@ final class EZCaliOSUITests: XCTestCase {
         }
         XCTAssertTrue(app.staticTexts["UITest Detail"].waitForNonExistence(timeout: 5), "events should be gone")
     }
+
+    func testDetailLocationRowIsMapsButton() throws {
+        app.buttons["addButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText("UITest Place")
+        let loc = anyEl("editorLocation")
+        loc.tap(); loc.typeText("1 Infinite Loop")
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Place'")).firstMatch.tap()
+        let row = app.buttons["locationButton"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("1 Infinite Loop"))
+        // Tapping would leave the app for Maps; the URL builder is what we can check without that.
+    }
 }

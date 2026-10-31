@@ -28,7 +28,20 @@ struct EventDetailSheet: View {
                         Circle().fill(event.color).frame(width: 10, height: 10)
                         Text(event.sourceName).foregroundStyle(.secondary)
                     }
-                    if !event.location.isEmpty { LabeledContent("Location", value: event.location) }
+                    if !event.location.isEmpty {
+                        Button {
+                            if let url = Self.mapsURL(event.location) { Platform.open(url) }
+                        } label: {
+                            HStack {
+                                Text("Location").foregroundStyle(.primary)
+                                Spacer()
+                                Text(event.location).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                                Image(systemName: "map").foregroundStyle(.tint)
+                            }
+                        }
+                        .accessibilityIdentifier("locationButton")
+                        .accessibilityHint("Opens in Maps")
+                    }
                 }
                 if let url = event.meetingURL {
                     Section {
@@ -91,6 +104,16 @@ struct EventDetailSheet: View {
                 }
             } message: { Text("“\(event.title)” repeats. Which events should the edit affect?") }
         }
+    }
+
+    /// Apple Maps search for the location text (also resolves street addresses). A location that is
+    /// itself a web link (e.g. a meeting URL) opens as-is.
+    static func mapsURL(_ location: String) -> URL? {
+        let t = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let u = URL(string: t), let scheme = u.scheme?.lowercased(), scheme == "http" || scheme == "https" { return u }
+        var c = URLComponents(string: "https://maps.apple.com/")
+        c?.queryItems = [URLQueryItem(name: "q", value: t)]
+        return c?.url
     }
 
     /// The store closes the sheet itself on success.
