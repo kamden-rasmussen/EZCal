@@ -401,4 +401,30 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Dana Cole, declined'")).firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sam Ortiz, no response'")).firstMatch.exists)
     }
+
+    func testSearchFindsEventsAndOpensDetail() throws {
+        let field = app.textFields["agendaSearch"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap(); field.typeText("roadmap")
+        let result = app.buttons.matching(identifier: "searchResult").firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+        XCTAssertTrue(result.label.contains("Roadmap planning"))
+        // Guest names are searched too.
+        field.clearAndType("Marcus Lee")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Design review'")).firstMatch.waitForExistence(timeout: 5))
+        field.clearAndType("zzzznomatch")
+        XCTAssertTrue(app.staticTexts["No Results for “zzzznomatch”"].waitForExistence(timeout: 5))
+        field.clearAndType("roadmap")
+        app.buttons.matching(identifier: "searchResult").firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["detailTitle"].label, "Roadmap planning")
+    }
+}
+
+private extension XCUIElement {
+    func clearAndType(_ text: String) {
+        tap()
+        if let v = value as? String, !v.isEmpty { typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: v.count)) }
+        typeText(text)
+    }
 }
