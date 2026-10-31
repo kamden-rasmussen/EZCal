@@ -9,9 +9,7 @@ struct NowIndicator: View {
 
     var body: some View {
         TimelineView(.everyMinute) { ctx in
-            let c = cal.dateComponents([.hour, .minute], from: ctx.date)
-            let minutes = (c.hour ?? 0) * 60 + (c.minute ?? 0)
-            let y = CGFloat(minutes) / 60 * hourHeight
+            let y = CGFloat(GridTime.y(of: ctx.date, on: day, hourHeight: Double(hourHeight), cal: cal))
             ZStack(alignment: .leading) {
                 Rectangle().fill(Color.red).frame(height: 1.5)
                 Circle().fill(Color.red).frame(width: 9, height: 9).offset(x: -4)

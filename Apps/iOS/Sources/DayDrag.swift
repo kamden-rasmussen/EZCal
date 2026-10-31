@@ -33,8 +33,8 @@ enum DayDragMath {
         case .move:
             var d = delta
             if origStart >= day, origEnd <= dayEnd {   // keep events that fit in the day inside it
-                let lo = -Int(origStart.timeIntervalSince(day) / 60)
-                let hi = Int(dayEnd.timeIntervalSince(origEnd) / 60)
+                let lo = -Int(GridTime.minutes(of: origStart, on: day, cal: cal))
+                let hi = 1440 - Int(GridTime.minutes(of: origEnd, on: day, cal: cal).rounded(.up))
                 d = min(max(d, lo), hi)
             }
             return EventDragMath.moved(start: origStart, end: origEnd, minutesDelta: d, dayDelta: dayDelta, cal: cal)
@@ -44,8 +44,8 @@ enum DayDragMath {
             if r.end > dayEnd { r.end = max(dayEnd, origStart.addingTimeInterval(Double(minimumMinutes) * 60)) }
             return r
         case .resizeTop:
-            let latest = cal.date(byAdding: .minute, value: -minimumMinutes, to: origEnd) ?? origEnd
-            var s = cal.date(byAdding: .minute, value: delta, to: origStart) ?? origStart
+            let latest = GridTime.shifted(origEnd, byWallMinutes: -minimumMinutes, cal: cal)
+            var s = GridTime.shifted(origStart, byWallMinutes: delta, cal: cal)
             s = min(s, latest)
             if origStart >= day { s = max(s, day) }
             return (s, origEnd)

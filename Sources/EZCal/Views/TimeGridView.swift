@@ -136,7 +136,7 @@ struct TimeGridView: View {
         let dayStart = Calendar.current.startOfDay(for: refDay)
         return VStack(spacing: 0) {
             ForEach(0..<24, id: \.self) { h in
-                let instant = Calendar.current.date(byAdding: .hour, value: h, to: dayStart) ?? refDay
+                let instant = GridTime.date(minutes: h * 60, on: dayStart, cal: Calendar.current)
                 Text(h == 0 ? "" : ZoneMath.hourLabel(instant, in: zone))
                     .font(.system(size: 10).monospacedDigit()).foregroundStyle(Theme.text3.opacity(0.85))
                     .padding(.top, 1)
@@ -218,12 +218,12 @@ struct DayColumn: View {
                 }
 
                 ForEach(EventLayout.clusters(of: placed), id: \.[0].clusterID) { cluster in
-                    OverlapCluster(cluster: cluster, dayStart: dayStart, hourHeight: hourHeight,
+                    OverlapCluster(cluster: cluster, dayStart: dayStart, cal: store.cal, hourHeight: hourHeight,
                                    dayWidth: geo.size.width, mode: overlapMode)
                 }
 
                 ForEach(dueTasks) { t in
-                    let top = (t.dueDate ?? dayStart).timeIntervalSince(dayStart) / 3600 * hourHeight
+                    let top = GridTime.y(of: t.dueDate ?? dayStart, on: day, hourHeight: hourHeight, cal: store.cal)
                     TimedTaskMarker(task: t).offset(x: 2, y: top)
                 }
 
@@ -242,8 +242,8 @@ struct DayColumn: View {
 
                 // Ghost preview while an event is being dragged (moved or resized) into this day.
                 if let dp = store.dragPreview, store.cal.isDate(dp.day, inSameDayAs: day) {
-                    let top = dp.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
-                    let h = max(dp.end.timeIntervalSince(dp.start) / 3600 * hourHeight - 2, 18)
+                    let top = GridTime.y(of: dp.start, on: day, hourHeight: hourHeight, cal: store.cal) + 1
+                    let h = max(GridTime.height(from: dp.start, to: dp.end, hourHeight: hourHeight, cal: store.cal) - 2, 18)
                     DragGhost(event: dp.event, start: dp.start, end: dp.end)
                         .frame(width: geo.size.width - 4, height: h)
                         .offset(x: 2, y: top)
@@ -252,7 +252,7 @@ struct DayColumn: View {
 
                 if isToday {
                     TimelineView(.everyMinute) { ctx in
-                        let y = ctx.date.timeIntervalSince(dayStart) / 3600 * hourHeight
+                        let y = GridTime.y(of: ctx.date, on: day, hourHeight: hourHeight, cal: store.cal)
                         ZStack(alignment: .leading) {
                             Rectangle().fill(Theme.now).frame(height: 2)
                             Circle().fill(Theme.now).frame(width: 10, height: 10).offset(x: -5)
@@ -276,8 +276,7 @@ struct DayColumn: View {
     }
 
     private func date(atY y: Double) -> Date {
-        let minutes = Int((y / hourHeight * 60).rounded())
-        return store.cal.date(byAdding: .minute, value: minutes, to: store.cal.startOfDay(for: day))!
+        GridTime.date(atY: y, on: day, hourHeight: hourHeight, cal: store.cal)
     }
 
     private func timeLabel(_ top: Double, _ h: Double) -> String {
@@ -326,6 +325,7 @@ struct DayColumn: View {
 struct OverlapCluster: View {
     let cluster: [PlacedEvent]   // sorted ascending by `column` (arrival order); all share one `clusterID`
     let dayStart: Date
+    let cal: Calendar
     let hourHeight: Double
     let dayWidth: CGFloat
     let mode: OverlapLayoutMode
@@ -339,8 +339,8 @@ struct OverlapCluster: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(Array(cluster.enumerated()), id: \.element.id) { i, p in
-                let top = p.start.timeIntervalSince(dayStart) / 3600 * hourHeight + 1
-                let h = max(p.end.timeIntervalSince(p.start) / 3600 * hourHeight - 2, 18)
+                let top = GridTime.y(of: p.start, on: dayStart, hourHeight: hourHeight, cal: cal) + 1
+                let h = max(GridTime.height(from: p.start, to: p.end, hourHeight: hourHeight, cal: cal) - 2, 18)
 
                 if sideBySide {
                     let slotW = max((dayWidth - 4) / CGFloat(p.sideSlots), 24)

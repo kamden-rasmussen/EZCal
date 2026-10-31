@@ -406,8 +406,8 @@ struct DayView: View {
         let shownCol = min(max(col + (live?.kind == .move ? live?.dayDelta ?? 0 : 0), 0), days.count - 1)
         let day = days[col], shownDay = days[shownCol]
         let s = live?.start ?? item.item.start, en = live?.end ?? item.item.end
-        let top = CGFloat(s.timeIntervalSince(shownDay) / 3600) * hourHeight
-        let h = max(CGFloat(en.timeIntervalSince(s) / 3600) * hourHeight, single ? 22 : 20)
+        let top = CGFloat(GridTime.y(of: s, on: shownDay, hourHeight: Double(hourHeight), cal: store.cal))
+        let h = max(CGFloat(GridTime.height(from: s, to: en, hourHeight: Double(hourHeight), cal: store.cal)), single ? 22 : 20)
         let geo = geometry(item, colWidth: colWidth)
         let w = geo.w
         let narrow = w < 60
@@ -505,7 +505,7 @@ struct DayView: View {
 
     private func timeLabel(_ d: DayDragState, days: [Date], colWidth: CGFloat, gridWidth: CGFloat) -> some View {
         let col = min(max(d.col0 + (d.kind == .move ? d.dayDelta : 0), 0), days.count - 1)
-        let top = CGFloat(d.start.timeIntervalSince(days[col]) / 3600) * hourHeight
+        let top = CGFloat(GridTime.y(of: d.start, on: days[col], hourHeight: Double(hourHeight), cal: store.cal))
         return Text(d.valid ? timeText(d.start, d.end) : "Release to cancel")
             .font(.caption.weight(.semibold).monospacedDigit())
             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -596,8 +596,7 @@ struct DayView: View {
     private func createEvent(at y: CGFloat, day: Date) {
         let minutes = Int((y / hourHeight * 60 / 15).rounded()) * 15
         let m = min(max(minutes, 0), 23 * 60 + 45)
-        guard let start = store.cal.date(byAdding: .minute, value: m, to: day) else { return }
-        store.newDraft(start: start)
+        store.newDraft(start: GridTime.date(minutes: m, on: day, cal: store.cal))
     }
 
     /// Hour the grid scrolls to when it opens or the date changes: a little before "now" when today is
