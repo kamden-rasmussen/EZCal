@@ -10,6 +10,7 @@ struct EZCaliOSApp: App {
         WindowGroup {
             RootView()
                 .environment(store)
+                .handlesWebcalLinks()
                 .preferredColorScheme(AppearanceSetting(rawValue: appearance)?.scheme)
                 .task {
                     if !store.eventKitEnabled && EventKitService.shared.isAuthorized { await store.enableEventKit() }
