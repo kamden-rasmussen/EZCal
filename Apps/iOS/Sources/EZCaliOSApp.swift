@@ -5,6 +5,8 @@ struct EZCaliOSApp: App {
     @State private var store = CalendarStore()
     @Environment(\.scenePhase) private var phase
 
+    init() { _ = OpenEventRouter.shared }   // start observing notification taps before any view exists
+
     var body: some Scene {
         WindowGroup {
             RootView()

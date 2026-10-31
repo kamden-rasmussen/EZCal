@@ -363,4 +363,133 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(anyEl("monthEmpty").waitForExistence(timeout: 5))
         app.buttons["todayButton"].tap()
     }
+
+    /// Stands in for tapping a meeting notification: the app posts the same `.ezcalOpenEvent` the
+    /// notification delegate does (a real notification tap can't be driven from XCUITest).
+    func testOpenEventNotificationShowsDetail() throws {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Roadmap planning"
+        app.launch()
+        let title = app.staticTexts["detailTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.label, "Roadmap planning")
+    }
+
+    /// A meeting that isn't within 10 minutes of starting asks before joining (macOS parity, #30).
+    func testAgendaJoinButtonConfirmsWhenNotYetJoinable() throws {
+        XCTAssertTrue(app.buttons.matching(identifier: "joinButton").firstMatch.waitForExistence(timeout: 10))
+        let join = app.buttons.matching(identifier: "joinButton").allElementsBoundByIndex.last!
+        join.tap()
+        let anyway = app.buttons["Join anyway"]
+        XCTAssertTrue(anyway.waitForExistence(timeout: 5))
+        // On large iPhones the dialog is a popover; tapping outside is its cancel.
+        let cancel = app.buttons["Cancel"]
+        if cancel.exists { cancel.tap() }
+        else { app.otherElements["PopoverDismissRegion"].coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.95)).tap() }
+        XCTAssertTrue(anyway.waitForNonExistence(timeout: 5))
+    }
+
+    func testJoinNextMeetingMenuItemAndDayBlockButton() throws {
+        app.buttons["menuButton"].tap()
+        XCTAssertTrue(anyEl("joinNextButton").waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.6)).tap()   // dismiss the menu
+        selectTab("Day")
+        var found = false
+        for _ in 0..<7 {
+            if app.buttons["joinButton"].waitForExistence(timeout: 1) { found = true; break }
+            app.buttons["nextButton"].tap()
+        }
+        XCTAssertTrue(found, "no video meeting block with a Join button")
+    }
+
+    private func revealInDetail(_ id: String) -> XCUIElement {
+        let el = anyEl(id)
+        XCTAssertTrue(el.waitForExistence(timeout: 5), id)
+        for _ in 0..<4 where !el.isHittable { app.staticTexts["detailTitle"].swipeUp() }
+        return el
+    }
+
+    func testDetailDuplicateAndDelete() throws {
+        createEvent(titled: "UITest Detail")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // Duplicate opens the editor prefilled with the same title.
+        revealInDetail("duplicateButton").tap()
+        let target = app.buttons["Team"]
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        target.tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "UITest Detail")
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).count, 2)
+
+        // Delete both copies from the detail sheet.
+        for _ in 0..<2 {
+            app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).firstMatch.tap()
+            revealInDetail("detailDelete").tap()
+            let confirm = app.buttons["Delete"]
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+            confirm.tap()
+            XCTAssertTrue(app.staticTexts["detailTitle"].waitForNonExistence(timeout: 5))
+        }
+        XCTAssertTrue(app.staticTexts["UITest Detail"].waitForNonExistence(timeout: 5), "events should be gone")
+    }
+
+    func testDetailLocationRowIsMapsButton() throws {
+        app.buttons["addButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText("UITest Place")
+        let loc = anyEl("editorLocation")
+        loc.tap(); loc.typeText("1 Infinite Loop")
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Place'")).firstMatch.tap()
+        let row = app.buttons["locationButton"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("1 Infinite Loop"))
+        // Tapping would leave the app for Maps; the URL builder is what we can check without that.
+    }
+
+    func testDetailShowsAttendeesWithRSVPState() throws {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Design review"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 10))
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Marcus Lee, maybe'")).firstMatch
+        for _ in 0..<4 where !row.exists { app.staticTexts["detailTitle"].swipeUp() }
+        XCTAssertTrue(row.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Dana Cole, declined'")).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sam Ortiz, no response'")).firstMatch.exists)
+    }
+
+    func testSearchFindsEventsAndOpensDetail() throws {
+        let field = app.textFields["agendaSearch"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap(); field.typeText("roadmap")
+        let result = app.buttons.matching(identifier: "searchResult").firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+        XCTAssertTrue(result.label.contains("Roadmap planning"))
+        // Guest names are searched too.
+        field.clearAndType("Marcus Lee")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Design review'")).firstMatch.waitForExistence(timeout: 5))
+        field.clearAndType("zzzznomatch")
+        XCTAssertTrue(app.staticTexts["No Results for “zzzznomatch”"].waitForExistence(timeout: 5))
+        field.clearAndType("roadmap")
+        app.buttons.matching(identifier: "searchResult").firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["detailTitle"].label, "Roadmap planning")
+    }
+}
+
+private extension XCUIElement {
+    func clearAndType(_ text: String) {
+        tap()
+        if let v = value as? String, !v.isEmpty { typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: v.count)) }
+        typeText(text)
+    }
 }

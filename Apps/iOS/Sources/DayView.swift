@@ -323,6 +323,9 @@ struct DayView: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("dayEvent")
         .onTapGesture { selectedID = nil; store.sheet = .detail(e) }
+        .overlay(alignment: .topTrailing) {
+            if h >= 30 { JoinIconButton(event: e, compact: true).padding(3) }
+        }
 
         Group {
             if editable {

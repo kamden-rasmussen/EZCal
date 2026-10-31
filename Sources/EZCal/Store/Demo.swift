@@ -64,6 +64,20 @@ extension CalendarStore {
             add(home, week: w, day: 5, 10, 2, "Farmers market")
             add(league, week: w, day: 5, 14, 2, "Home vs. Rivals")
         }
+        // Guests on one event so the iOS/macOS detail views have an attendee list to show.
+        for (k, evs) in out {
+            out[k] = evs.map { e in
+                guard e.title == "Design review" else { return e }
+                var e = e
+                e.attendees = [
+                    Attendee(email: "me@example.com", name: "Me", response: "accepted", isSelf: true),
+                    Attendee(email: "priya@example.com", name: "Priya Shah", response: "accepted", isOrganizer: true),
+                    Attendee(email: "marcus@example.com", name: "Marcus Lee", response: "tentative"),
+                    Attendee(email: "dana@example.com", name: "Dana Cole", response: "declined"),
+                    Attendee(email: "sam@example.com", name: "Sam Ortiz", response: "needsAction")]
+                return e
+            }
+        }
         eventsBySource = out
         rebuildDisplay()
         upcoming = displayEvents.filter { !$0.isOverlay && !$0.isAllDay && $0.end > Date() }.sorted { $0.start < $1.start }

@@ -46,6 +46,9 @@ struct RootView: View {
                     Menu {
                         Button { showCalendars = true } label: { Label("Calendars", systemImage: "calendar") }
                             .accessibilityIdentifier("calendarsButton")
+                        Button { store.joinNextMeeting() } label: { Label("Join next meeting", systemImage: "video") }
+                            .disabled(!store.hasNextMeeting)
+                            .accessibilityIdentifier("joinNextButton")
                         Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                             .accessibilityIdentifier("settingsButton")
                     } label: { Image(systemName: "line.3.horizontal") }
@@ -74,6 +77,7 @@ struct RootView: View {
                 }
             }
         }
+        .joinConfirmation()
         .sheet(isPresented: $showCalendars) { CalendarListSheet() }
         .sheet(isPresented: $showSettings) { SettingsSheet() }
         .onChange(of: store.eventKitEnabled) { _, _ in authStatus = EKEventStore.authorizationStatus(for: .event) }
