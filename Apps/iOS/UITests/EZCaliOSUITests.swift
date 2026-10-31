@@ -17,7 +17,7 @@ final class EZCaliOSUITests: XCTestCase {
         b.tap()
     }
     private func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
-    private var dayTitle: XCUIElement { app.staticTexts["dayTitle"] }
+    private var dayTitle: XCUIElement { app.buttons["dayTitle"] }
 
     /// Saturday events in demo data are day 5 of the week; we just need a day with events, so use Today.
     func testAgendaShowsEventsAndDetailSheet() throws {
@@ -338,5 +338,33 @@ final class EZCaliOSUITests: XCTestCase {
         app.buttons["todayButton"].tap()
         app.segmentedControls["gridModePicker"].buttons["Week"].tap()
         XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "week containing today shows it too")
+    }
+
+    // MARK: - Jump to date (#109)
+
+    func testTapTitleOpensDatePickerAndJumps() throws {
+        selectTab("Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let before = dayTitle.label
+        dayTitle.tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
+        // Pick tomorrow in the month grid (its accessibility label is the full date).
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
+        let label = tomorrow.formatted(.dateTime.weekday(.wide).month(.wide).day())
+        let target = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "no day button '\(label)'")
+        target.tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.buttons["todayButton"].tap()
+        XCTAssertEqual(dayTitle.label, before)
+    }
+
+    func testMenuGoToDateFromAgenda() throws {
+        app.buttons["menuButton"].tap()
+        app.buttons["goToDateMenuButton"].tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
+        app.buttons["goToTodayButton"].tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
     }
 }

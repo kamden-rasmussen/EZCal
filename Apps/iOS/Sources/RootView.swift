@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var gridMode: ViewMode = .day
     @State private var showCalendars = false
     @State private var showSettings = false
+    @State private var showGoTo = false
     @State private var authStatus = EKEventStore.authorizationStatus(for: .event)
 
     private var needsConnect: Bool { !store.isDemo && !store.eventKitEnabled }
@@ -46,6 +47,8 @@ struct RootView: View {
                     Menu {
                         Button { showCalendars = true } label: { Label("Calendars", systemImage: "calendar") }
                             .accessibilityIdentifier("calendarsButton")
+                        Button { showGoTo = true } label: { Label("Go to date", systemImage: "calendar.badge.clock") }
+                            .accessibilityIdentifier("goToDateMenuButton")
                         Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                             .accessibilityIdentifier("settingsButton")
                     } label: { Image(systemName: "line.3.horizontal") }
@@ -76,6 +79,7 @@ struct RootView: View {
         }
         .sheet(isPresented: $showCalendars) { CalendarListSheet() }
         .sheet(isPresented: $showSettings) { SettingsSheet() }
+        .sheet(isPresented: $showGoTo) { GoToDateSheet() }
         .onChange(of: store.eventKitEnabled) { _, _ in authStatus = EKEventStore.authorizationStatus(for: .event) }
         .onChange(of: store.errorMessage) { _, _ in authStatus = EKEventStore.authorizationStatus(for: .event) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in

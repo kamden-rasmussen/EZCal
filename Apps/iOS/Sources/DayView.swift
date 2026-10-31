@@ -19,6 +19,7 @@ struct DayView: View {
     @State private var gridMinY: CGFloat = 0
     @State private var viewportH: CGFloat = 0
     @State private var saveError: String?
+    @State private var showGoTo = false
     // Swipe paging (#106).
     @State private var swipeX: CGFloat = 0
     @State private var swipeAxis: Axis?
@@ -67,7 +68,12 @@ struct DayView: View {
         let days = visibleDays
         VStack(spacing: 0) {
             HStack {
-                Text(titleText).font(.subheadline.weight(.semibold)).accessibilityIdentifier("dayTitle")
+                Button { showGoTo = true } label: {
+                    Text(titleText).font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("dayTitle")
+                .accessibilityHint("Opens a date picker")
                 Spacer()
                 Picker("", selection: $gridMode) {
                     Text("Day").tag(ViewMode.day)
@@ -96,6 +102,7 @@ struct DayView: View {
             .clipped()
             .simultaneousGesture(swipeGesture)
         }
+        .sheet(isPresented: $showGoTo) { GoToDateSheet() }
     }
 
     // MARK: - Swipe paging (#106)
