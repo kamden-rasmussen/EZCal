@@ -65,12 +65,12 @@ struct RootView: View {
                 }
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button { shift(-1) } label: { Image(systemName: "chevron.left") }
-                        .accessibilityLabel("Previous day").accessibilityIdentifier("prevButton")
+                        .accessibilityLabel(tab == .day && gridMode == .month ? "Previous month" : "Previous day").accessibilityIdentifier("prevButton")
                     Spacer()
                     Button("Today") { store.goToday() }.accessibilityIdentifier("todayButton")
                     Spacer()
                     Button { shift(1) } label: { Image(systemName: "chevron.right") }
-                        .accessibilityLabel("Next day").accessibilityIdentifier("nextButton")
+                        .accessibilityLabel(tab == .day && gridMode == .month ? "Next month" : "Next day").accessibilityIdentifier("nextButton")
                 }
             }
         }

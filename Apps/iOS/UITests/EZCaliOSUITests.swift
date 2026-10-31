@@ -298,4 +298,69 @@ final class EZCaliOSUITests: XCTestCase {
         ev.tap()
         XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
     }
+
+    // MARK: - Month
+
+    private func openMonth() {
+        selectTab("Day")
+        let b = app.segmentedControls["gridModePicker"].buttons["Month"]
+        XCTAssertTrue(b.waitForExistence(timeout: 5))
+        b.tap()
+        XCTAssertTrue(anyEl("monthGrid").waitForExistence(timeout: 5))
+    }
+
+    private func cellID(_ d: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        return "monthCell-" + f.string(from: d)
+    }
+
+    func testMonthShowsTodaySelectedAndEvents() throws {
+        openMonth()
+        XCTAssertTrue(anyEl(cellID(Date())).exists, "today cell missing")
+        XCTAssertTrue(anyEl("monthSelectedHeader").exists)
+        // Demo data is week-relative, so some day this month near today has events; tap through the week.
+        var found = false
+        for off in 0..<7 {
+            let d = Calendar.current.date(byAdding: .day, value: off, to: Date())!
+            guard Calendar.current.isDate(d, equalTo: Date(), toGranularity: .month) else { continue }
+            anyEl(cellID(d)).tap()
+            if app.buttons["monthRow"].firstMatch.waitForExistence(timeout: 1) { found = true; break }
+        }
+        XCTAssertTrue(found, "no day with events in month list")
+        app.buttons["monthRow"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+        app.buttons["doneButton"].tap()
+    }
+
+    func testMonthStepAndOpenDay() throws {
+        openMonth()
+        let title = dayTitle.label
+        app.buttons["nextButton"].tap()
+        XCTAssertNotEqual(dayTitle.label, title)
+        app.buttons["prevButton"].tap()
+        XCTAssertEqual(dayTitle.label, title)
+        app.buttons["nextButton"].tap()
+        app.buttons["todayButton"].tap()
+        XCTAssertEqual(dayTitle.label, title)
+        // Select a day then open it in Day view; anchor must carry over.
+        let d = Calendar.current.date(byAdding: .day, value: Calendar.current.component(.day, from: Date()) == 1 ? 1 : -1, to: Date())!
+        if Calendar.current.isDate(d, equalTo: Date(), toGranularity: .month) { anyEl(cellID(d)).tap() }
+        let header = anyEl("monthSelectedHeader").label
+        app.buttons["openDayButton"].tap()
+        XCTAssertTrue(anyEl("dayGridBackground").waitForExistence(timeout: 5))
+        XCTAssertFalse(anyEl("monthGrid").exists)
+        XCTAssertFalse(header.isEmpty)
+        // Back to Month and to Agenda keeps working.
+        app.segmentedControls["gridModePicker"].buttons["Month"].tap()
+        XCTAssertTrue(anyEl("monthGrid").waitForExistence(timeout: 5))
+        selectTab("Agenda")
+        XCTAssertTrue(app.collectionViews["agendaList"].waitForExistence(timeout: 5))
+    }
+
+    func testMonthEmptyDay() throws {
+        openMonth()
+        for _ in 0..<2 { app.buttons["nextButton"].tap() }
+        XCTAssertTrue(anyEl("monthEmpty").waitForExistence(timeout: 5))
+        app.buttons["todayButton"].tap()
+    }
 }

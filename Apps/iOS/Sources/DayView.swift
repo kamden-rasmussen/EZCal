@@ -41,6 +41,7 @@ struct DayView: View {
     /// Always a 3-letter month — screen space here is tighter than on macOS, which sometimes spells
     /// the month out in full (`store.title`).
     private var titleText: String {
+        if gridMode == .month { return store.anchor.formatted(.dateTime.month(.wide).year()) }
         if gridMode == .day {
             return store.anchor.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
         }
@@ -66,15 +67,18 @@ struct DayView: View {
                     Text("Day").tag(ViewMode.day)
                     Text("Work Week").tag(ViewMode.workWeek)
                     Text("Week").tag(ViewMode.week)
+                    Text("Month").tag(ViewMode.month)
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .frame(maxWidth: 320)
                 .accessibilityIdentifier("gridModePicker")
                 .onChange(of: gridMode) { _, m in if m != .day { store.setMode(m) } }
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             Divider()
-            if days.count == 1 {
+            if gridMode == .month {
+                MonthView(gridMode: $gridMode)
+            } else if days.count == 1 {
                 singleDay(days[0])
             } else {
                 multiDay(days)
