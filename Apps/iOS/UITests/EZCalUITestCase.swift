@@ -150,6 +150,16 @@ class EZCalUITestCase: XCTestCase {
         return waitUntil(timeout: timeout, changed)
     }
 
+    /// Taps an agenda row and opens the detail sheet. A meeting stacked across calendars (the demo's Sunday "Team
+    /// planning", which is the first row on Sundays) opens a calendar list first; pick its first copy.
+    func openAgendaRow(_ row: XCUIElement) {
+        row.tap()
+        if anyEl("stackCalendarsHeader").waitForExistence(timeout: 1.5) {
+            app.buttons.matching(NSPredicate(format: "label CONTAINS 'open event'")).firstMatch.tap()
+        }
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5), "detail sheet should open")
+    }
+
     func chooseScopeIfAsked() {
         let b = app.buttons["This event"]
         if b.waitForExistence(timeout: 1.5) { b.tap() }
@@ -177,17 +187,22 @@ class EZCalUITestCase: XCTestCase {
 
     // MARK: - Drag / resize in multi-day grids (#116)
 
-    /// A week-grid event block that is on screen after scrolling the grid to the top.
+    /// A week-grid event block that is on screen. Which events a week shows and where the grid is scrolled depend on
+    /// the weekday and the time of day (the demo week is Monday-based but the grid week starts on Sunday, and the
+    /// grid opens at "now" minus two hours), so pick a roomy block from whichever week has one and scroll it into
+    /// view instead of assuming a fixed position.
     func visibleWeekEvent() -> XCUIElement? {
         selectTab("Day")
         pickGrid("Week")
-        let grid = app.scrollViews.firstMatch
-        XCTAssertTrue(grid.waitForExistence(timeout: 5))
-        for _ in 0..<3 { grid.swipeDown(velocity: .fast) }
-        // Demo events are week-relative; step through weeks until one is comfortably on screen.
+        XCTAssertTrue(app.scrollViews.firstMatch.waitForExistence(timeout: 5))
         for _ in 0..<3 {
-            let all = app.descendants(matching: .any).matching(identifier: "weekDayEvent").allElementsBoundByIndex
-            if let ev = all.first(where: { $0.isHittable && $0.frame.minY > 330 && $0.frame.maxY < 700 && $0.frame.height > 25 }) { return ev }
+            let blocks = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
+            _ = blocks.firstMatch.waitForExistence(timeout: 3)
+            // Wide enough for the drag to land in a neighbouring column, tall enough to carry resize handles.
+            if let ev = blocks.allElementsBoundByIndex.first(where: { $0.frame.height > 40 && $0.frame.width > 40 }) {
+                let shown = scrolledIntoView(ev)
+                if shown.isHittable { return shown }
+            }
             app.buttons["nextButton"].tap()
         }
         return nil

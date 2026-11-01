@@ -6,9 +6,8 @@ final class AgendaNavigationUITests: EZCalUITestCase {
     func testAgendaShowsEventsAndDetailSheet() throws {
         let row = app.buttons.matching(identifier: "agendaRow").firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.tap()
+        openAgendaRow(row)
         let title = app.staticTexts["detailTitle"]
-        XCTAssertTrue(title.waitForExistence(timeout: 5))
         app.buttons["doneButton"].tap()
         XCTAssertTrue(title.waitForNonExistence(timeout: 5))
         XCTAssertTrue(row.exists)
