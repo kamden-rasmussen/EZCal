@@ -16,6 +16,8 @@ struct MonthView: View {
     @State private var visibleKey: Int = 0
     @State private var lastPushedKey: Int = 0
     @State private var programmatic = false
+    /// The anchor this view just wrote itself, so the anchor observer can tell it from an external jump.
+    @State private var pushedAnchor: Date?
     @State private var pushTask: Task<Void, Never>?
     @State private var settleTask: Task<Void, Never>?
     @State private var todayStart = Calendar.current.startOfDay(for: Date())
@@ -66,7 +68,13 @@ struct MonthView: View {
                     }
                     .onChange(of: store.anchor) { _, anchor in
                         let key = grid.monthKey(of: anchor)
-                        if key == visibleKey || key == lastPushedKey { return }   // our own echo
+                        if let echo = pushedAnchor, store.cal.isDate(echo, inSameDayAs: anchor) { pushedAnchor = nil; return }   // our own echo
+                        if key == visibleKey {
+                            // Jump-to-date inside the month already showing (e.g. the mini calendar): bring that week to the top.
+                            scroll(proxy, toWeek: grid.jumpWeek(to: anchor), animated: true)
+                            return
+                        }
+                        if key == lastPushedKey { return }
                         visibleKey = key; lastPushedKey = key
                         scroll(proxy, toWeek: grid.firstWeek(ofMonth: key), animated: true)
                     }
@@ -119,7 +127,9 @@ struct MonthView: View {
             let g = MonthGrid(cal: store.cal)
             guard g.monthKey(of: store.anchor) != visibleKey else { return }
             lastPushedKey = visibleKey
-            store.anchor = g.anchor(store.anchor, movedToMonth: visibleKey)
+            let pushed = g.anchor(store.anchor, movedToMonth: visibleKey)
+            pushedAnchor = pushed
+            store.anchor = pushed
             store.scheduleReload()
         }
     }

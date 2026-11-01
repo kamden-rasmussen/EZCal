@@ -39,6 +39,14 @@ struct MonthGrid: Equatable {
         monthKey(of: day(week: index, column: 3))
     }
 
+    /// The week to scroll to when jumping to `date` inside the month already showing: the date's own week, unless
+    /// that week belongs to a neighbouring month (then the month's first week, so the label can't flip).
+    func jumpWeek(to date: Date) -> Int {
+        let key = monthKey(of: date)
+        let w = weekIndex(of: date)
+        return monthKey(forWeek: w) == key ? w : firstWeek(ofMonth: key)
+    }
+
     func monthStart(_ key: Int) -> Date {
         cal.date(from: DateComponents(year: key / 12, month: key % 12 + 1, day: 1))!
     }
