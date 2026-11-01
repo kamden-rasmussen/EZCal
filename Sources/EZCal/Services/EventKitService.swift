@@ -85,7 +85,8 @@ final class EventKitService: @unchecked Sendable {
             isBusyOnly: false, isRecurring: e.hasRecurrenceRules,
             zoomMeetingID: ZoomNotes.meetingID(in: rawNotes),
             isTentative: e.availability == .tentative || me?.response == "tentative",
-            isDeclined: me?.response == "declined"
+            isDeclined: me?.response == "declined",
+            alertMinutes: EventAlert.minutes(from: e.alarms)
         )
     }
 
@@ -106,7 +107,8 @@ final class EventKitService: @unchecked Sendable {
     /// when creating a new event.
     func save(existing: CalEvent?, calendarId: String, title: String, start: Date, end: Date,
               allDay: Bool, location: String, notes: String?,
-              span: EKSpan = .thisEvent, recurrenceRule: EKRecurrenceRule? = nil) throws {
+              span: EKSpan = .thisEvent, recurrenceRule: EKRecurrenceRule? = nil,
+              alertMinutes: [Int]? = nil) throws {
         let ev: EKEvent
         if let existing {
             guard let found = find(existing) else { throw APIError.invalid("That event no longer exists in Calendar.") }
@@ -127,6 +129,11 @@ final class EventKitService: @unchecked Sendable {
         ev.endDate = end
         ev.location = location.isEmpty ? nil : location
         if let notes { ev.notes = notes.isEmpty ? nil : notes }
+        if let alertMinutes {
+            // Replace relative alarms only; keep any absolute/location alarms the event already has.
+            let keep = (ev.alarms ?? []).filter { $0.absoluteDate != nil || $0.structuredLocation != nil }
+            ev.alarms = keep + EventAlert.ekAlarms(alertMinutes)
+        }
         try store.save(ev, span: span, commit: true)
     }
 

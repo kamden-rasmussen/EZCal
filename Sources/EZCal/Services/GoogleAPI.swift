@@ -41,6 +41,12 @@ struct GEvent: Decodable {
     var guestsCanInviteOthers: Bool?
     var conferenceData: GConference?
     var extendedProperties: GExtProps?
+    var reminders: GReminders?
+}
+struct GReminders: Decodable {
+    struct Override: Decodable { var method: String?; var minutes: Int? }
+    var useDefault: Bool?
+    var overrides: [Override]?
 }
 struct GTime: Decodable {
     var date: String?
@@ -328,7 +334,9 @@ enum EventMapper {
             guestsCanInviteOthers: g.guestsCanInviteOthers ?? true,
             zoomMeetingID: g.extendedProperties?.private?["zoomMeetingId"],
             isTentative: me?.response == "tentative",
-            isDeclined: me?.response == "declined"
+            isDeclined: me?.response == "declined",
+            alertMinutes: EventAlert.minutes(fromGoogle: g.reminders?.useDefault ?? (g.reminders == nil ? true : nil),
+                                             overrides: g.reminders?.overrides?.map { ($0.method, $0.minutes) })
         )
     }
 

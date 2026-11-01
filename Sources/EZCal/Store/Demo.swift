@@ -4,7 +4,11 @@ import SwiftUI
 /// Fake data for screenshots and UI development: `EZCAL_DEMO=1 build/EZCal.app/Contents/MacOS/EZCal`.
 extension CalendarStore {
     func loadDemo() {
-        if demoSeeded { rebuildDisplay(); return }
+        if demoSeeded {
+            // Subscriptions added after seeding (in-memory only) show up as calendars too.
+            for sub in icsSubscriptions where !calendars.contains(where: { $0.id == sub.source.id }) { calendars.append(sub.source) }
+            rebuildDisplay(); return
+        }
         demoSeeded = true
         let me = Source(id: "cal|me@example.com|me", accountId: "me@example.com", calendarId: "me", name: "Me", colorHex: "#3E63DD", kind: .calendar, accessRole: "owner")
         let team = Source(id: "cal|me@example.com|team", accountId: "me@example.com", calendarId: "team", name: "Team", colorHex: "#8E4EC6", kind: .calendar, accessRole: "owner")
@@ -63,6 +67,26 @@ extension CalendarStore {
             add(fun, week: w, day: 4, 16, 1.5, "Team social")
             add(home, week: w, day: 5, 10, 2, "Farmers market")
             add(league, week: w, day: 5, 14, 2, "Home vs. Rivals")
+            // Sunday: one meeting on three calendars (folds into a single stacked card) plus a genuinely
+            // different event overlapping it (splits side by side / cascades) — see `EventGrouping`.
+            add(me, week: w, day: 6, 10, 1, "Team planning")
+            add(team, week: w, day: 6, 10, 1, "Team planning")
+            add(home, week: w, day: 6, 10, 1, "Team planning")
+            add(me, week: w, day: 6, 10.5, 1, "Vendor call")
+        }
+        // Guests on one event so the iOS/macOS detail views have an attendee list to show.
+        for (k, evs) in out {
+            out[k] = evs.map { e in
+                guard e.title == "Design review" else { return e }
+                var e = e
+                e.attendees = [
+                    Attendee(email: "me@example.com", name: "Me", response: "accepted", isSelf: true),
+                    Attendee(email: "priya@example.com", name: "Priya Shah", response: "accepted", isOrganizer: true),
+                    Attendee(email: "marcus@example.com", name: "Marcus Lee", response: "tentative"),
+                    Attendee(email: "dana@example.com", name: "Dana Cole", response: "declined"),
+                    Attendee(email: "sam@example.com", name: "Sam Ortiz", response: "needsAction")]
+                return e
+            }
         }
         eventsBySource = out
         rebuildDisplay()
@@ -116,6 +140,7 @@ extension CalendarStore {
                 guard ids.contains(ev.id) else { return ev }
                 var n = ev
                 n.title = title; n.location = d.location; n.notes = d.notes; n.isAllDay = d.isAllDay; n.visibility = d.visibility
+                if let a = d.alerts { n.alertMinutes = EventAlert.normalized(a) }
                 n.start = ev.start.addingTimeInterval(dStart); n.end = ev.end.addingTimeInterval(dEnd)
                 return n
             }
@@ -135,7 +160,8 @@ extension CalendarStore {
                     title: title, start: s, end: en, isAllDay: d.isAllDay, location: d.location, notes: d.notes,
                     attendees: [], htmlLink: nil, meetingURL: nil, colorHex: src.colorHex, sourceName: src.name,
                     ownerName: nil, isOverlay: false, canEdit: true, isBusyOnly: false, isRecurring: series != nil,
-                    recurringEventId: series, visibility: d.visibility, zoomMeetingID: nil, isTentative: false, isDeclined: false))
+                    recurringEventId: series, visibility: d.visibility, zoomMeetingID: nil, isTentative: false, isDeclined: false,
+                    alertMinutes: d.alerts.map(EventAlert.normalized)))
             }
             eventsBySource[src.id, default: []] += made
         }
