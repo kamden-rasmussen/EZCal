@@ -73,6 +73,24 @@ class EZCalUITestCase: XCTestCase {
         return anyEl("dayEvent")
     }
 
+    /// The time grid opens scrolled to the first event, so the now line (an accessibility element inside the
+    /// scroll view) is only exposed while its hour is on screen; which hour that is depends on the time of day
+    /// the test runs (#141). Scroll the grid in both directions until it shows up.
+    func revealNowLine(timeout: TimeInterval = 3) -> Bool {
+        let line = anyEl("nowLine")
+        if line.waitForExistence(timeout: timeout) { return true }
+        let grid = app.scrollViews.firstMatch
+        for _ in 0..<5 {   // down the day first (evening is the common case), then back past the start
+            grid.swipeUp(velocity: .fast)
+            if line.waitForExistence(timeout: 1) { return true }
+        }
+        for _ in 0..<10 {
+            grid.swipeDown(velocity: .fast)
+            if line.waitForExistence(timeout: 1) { return true }
+        }
+        return false
+    }
+
     func chooseScopeIfAsked() {
         let b = app.buttons["This event"]
         if b.waitForExistence(timeout: 1.5) { b.tap() }
