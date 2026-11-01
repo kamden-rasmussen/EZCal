@@ -203,11 +203,11 @@ final class AgendaNavigationUITests: EZCalUITestCase {
 
     func testNowLineOnTodayOnly() throws {
         selectTab("Day")
-        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "today should show the now line")
+        XCTAssertTrue(revealNowLine(), "today should show the now line")
         app.buttons["nextButton"].tap()
         XCTAssertTrue(anyEl("nowLine").waitForNonExistence(timeout: 5), "other days must not")
         app.buttons["todayButton"].tap()
         pickGrid("Week")
-        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 10), "week containing today shows it too")
+        XCTAssertTrue(revealNowLine(), "week containing today shows it too")
     }
 }
