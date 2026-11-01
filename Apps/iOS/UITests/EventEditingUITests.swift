@@ -102,9 +102,10 @@ final class EventEditingUITests: EZCalUITestCase {
         app.buttons["editorSave"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
         // The copy has the same title and time on another calendar, so the Agenda stacks both into one row (#140).
-        let stack = anyEl("agendaStackCalendars")
-        XCTAssertTrue(stack.waitForExistence(timeout: 5), "duplicate should stack with the original")
-        XCTAssertTrue(stack.label.contains("On 2 calendars"), stack.label)
+        // Check this event's own row: on Sundays the demo's three-calendar "Team planning" is stacked as well.
+        let stackedRow = app.buttons.matching(identifier: "agendaRow")
+            .matching(NSPredicate(format: "label CONTAINS 'UITest Detail' AND label CONTAINS 'On 2 calendars'")).firstMatch
+        XCTAssertTrue(stackedRow.waitForExistence(timeout: 5), "duplicate should stack with the original")
 
         // Delete both copies from the detail sheet.
         for _ in 0..<2 {
