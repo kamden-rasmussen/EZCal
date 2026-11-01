@@ -44,4 +44,21 @@ final class EventGroupingTests: XCTestCase {
         XCTAssertEqual(placed.count, 1)
         XCTAssertEqual(placed[0].sideSlots, 1)
     }
+
+    func testTimeGridItemExposesEventsAndFront() {
+        let a = event("a", title: "Sync", source: "s1"), b = event("b", title: "Sync", source: "s2")
+        let items = EventGrouping.group([a, b, event("c", title: "Solo", source: "s1", offset: 7200)])
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items[0].events.map(\.id), ["a", "b"])
+        XCTAssertEqual(items[0].front.id, "a")
+        XCTAssertEqual(items[1].events.map(\.id), ["c"])
+    }
+
+    func testGroupingKeepsChronologicalOrderForAgendaLists() {
+        let items = EventGrouping.group([event("a", title: "Early", source: "s1"),
+                                         event("b", title: "Sync", source: "s1", offset: 3600),
+                                         event("c", title: "Sync", source: "s2", offset: 3600)])
+        XCTAssertEqual(items.map(\.start), items.map(\.start).sorted())
+        XCTAssertEqual(items.map { $0.events.count }, [1, 2])
+    }
 }
