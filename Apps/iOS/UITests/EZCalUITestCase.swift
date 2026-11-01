@@ -66,7 +66,7 @@ class EZCalUITestCase: XCTestCase {
     func firstDayEvent() -> XCUIElement {
         selectTab("Day")
         for _ in 0..<7 {
-            if anyEl("dayEvent").waitForExistence(timeout: 1) { return anyEl("dayEvent") }
+            if anyEl("dayEvent").waitForExistence(timeout: 1) { return scrolledIntoView(anyEl("dayEvent")) }
             app.buttons["nextButton"].tap()
         }
         XCTFail("no timed events in the next week")
@@ -89,6 +89,23 @@ class EZCalUITestCase: XCTestCase {
             if line.waitForExistence(timeout: 1) { return true }
         }
         return false
+    }
+
+    /// The day grid opens scrolled to "now" when today is showing (18:00 at 8 pm), so an event from earlier in the
+    /// day exists in the accessibility tree but sits off screen, and raw coordinates relative to it land on the
+    /// nav bar (#68). Scroll the grid until the element is comfortably inside the visible grid area.
+    func scrolledIntoView(_ el: XCUIElement) -> XCUIElement {
+        let grid = app.scrollViews.firstMatch
+        let screen = app.frame
+        func inView() -> Bool { el.isHittable && el.frame.minY > screen.height * 0.3 && el.frame.maxY < screen.height * 0.75 }
+        for _ in 0..<10 where !inView() {
+            // Content above the visible area: drag down to reveal it; below: drag up.
+            let up = el.frame.midY > screen.midY
+            let a = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: up ? 0.7 : 0.3))
+            let b = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: up ? 0.4 : 0.6))
+            a.press(forDuration: 0.05, thenDragTo: b)
+        }
+        return el
     }
 
     func chooseScopeIfAsked() {

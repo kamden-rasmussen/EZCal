@@ -14,7 +14,7 @@ Everything is reachable without a mouse. Press **?** in the app for the cheat sh
 |---|---|
 | **N** or **⌘N** | New event |
 | **↓ ↑** | Next / previous event (focus ring shows selection) |
-| **→ ←** | Same time on the next / previous day |
+| **→ ←** | Next / previous day (week or month in those views, like `]` `[`). With an event focused: same time on the next / previous day |
 | **↩** | Open event |
 | **J** | Join the focused event's video call (or your next meeting) |
 

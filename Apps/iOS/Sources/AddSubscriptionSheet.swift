@@ -41,6 +41,7 @@ struct AddSubscriptionSheet: View {
                     Section { Text(errorText).foregroundStyle(.red).accessibilityIdentifier("subscriptionError") }
                 }
             }
+            .sheetSurfaceBackground()
             .navigationTitle("Add calendar by URL")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -4,25 +4,36 @@ struct AgendaView: View {
     @Environment(CalendarStore.self) private var store
 
     /// Days from the anchor forward within the fetched window that have events.
-    private var days: [(day: Date, events: [CalEvent])] {
+    private var days: [(day: Date, events: [TimeGridItem])] {
         let start = store.cal.startOfDay(for: store.anchor)
-        return (0..<14).compactMap { i -> (Date, [CalEvent])? in
+        return (0..<14).compactMap { i -> (Date, [TimeGridItem])? in
             guard let d = store.cal.date(byAdding: .day, value: i, to: start) else { return nil }
             let r = store.events(on: d)
-            let all = r.allDay + r.timed
+            // Same meeting on several calendars folds into one stacked item (shared with the grids).
+            let all = EventGrouping.group(r.allDay + r.timed)
             return all.isEmpty ? nil : (d, all)
         }
     }
 
     @State private var query = ""
+    @State private var stackSelection: StackSelection?
+    @State private var pendingOpen: CalEvent?
+
+    /// Tap behaviour matches the grid: a single opens its detail, a stack asks which calendar's copy.
+    private func open(_ item: TimeGridItem) {
+        switch item {
+        case .single(let e): store.sheet = .detail(e)
+        case .stack(let es): stackSelection = StackSelection(events: es)
+        }
+    }
 
     /// Loaded + upcoming events matching `query` in title, location, notes or guest names/emails.
     /// Searches what the store has loaded (the visible window plus the next 36h), not the whole calendar.
-    private var results: [CalEvent] {
+    private var results: [TimeGridItem] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return [] }
         var seen = Set<String>()
-        return (store.displayEvents + store.upcoming)
+        let hits = (store.displayEvents + store.upcoming)
             .filter { !$0.isOverlay && !$0.isBusyOnly && seen.insert($0.id).inserted }
             .filter { e in
                 e.title.lowercased().contains(q) || e.location.lowercased().contains(q)
@@ -30,6 +41,7 @@ struct AgendaView: View {
                     || e.attendees.contains { $0.display.lowercased().contains(q) || $0.email.lowercased().contains(q) }
             }
             .sorted { $0.start < $1.start }
+        return EventGrouping.group(hits)
     }
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -52,17 +64,23 @@ struct AgendaView: View {
             .padding(.horizontal, 16).padding(.vertical, 6)
             if searching { searchResults } else { agenda }
         }
+        .sheet(item: $stackSelection, onDismiss: {
+            // Open the picked copy only after the list has finished dismissing (one sheet at a time).
+            if let e = pendingOpen { pendingOpen = nil; store.sheet = .detail(e) }
+        }) { sel in
+            StackCalendarSheet(selection: sel) { pendingOpen = $0 }
+        }
     }
 
     private var searchResults: some View {
         List {
-            ForEach(results) { ev in
+            ForEach(results) { item in
                 HStack(spacing: 8) {
-                    Button { store.sheet = .detail(ev) } label: {
+                    Button { open(item) } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(ev.start.formatted(.dateTime.weekday(.abbreviated).month().day().year()))
+                            Text(item.start.formatted(.dateTime.weekday(.abbreviated).month().day().year()))
                                 .font(.caption).foregroundStyle(.secondary)
-                            AgendaRow(event: ev)
+                            AgendaRow(event: item.front, calendars: item.events)
                         }
                     }
                     .buttonStyle(.plain)
@@ -71,6 +89,7 @@ struct AgendaView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .groupedSurfaceBackground()
         .accessibilityIdentifier("searchResults")
         .overlay {
             if results.isEmpty { ContentUnavailableView.search(text: query) }
@@ -81,18 +100,19 @@ struct AgendaView: View {
         List {
             ForEach(days, id: \.day) { group in
                 Section(group.day.formatted(.dateTime.weekday(.wide).month().day())) {
-                    ForEach(group.events) { ev in
+                    ForEach(group.events) { item in
                         HStack(spacing: 8) {
-                            Button { store.sheet = .detail(ev) } label: { AgendaRow(event: ev) }
+                            Button { open(item) } label: { AgendaRow(event: item.front, calendars: item.events) }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("agendaRow")
-                            JoinIconButton(event: ev)
+                            JoinIconButton(event: item.events.first { $0.meetingURL != nil } ?? item.front)
                         }
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .groupedSurfaceBackground()
         .accessibilityIdentifier("agendaList")
         .refreshable { await store.refreshAll() }
         .overlay {
@@ -107,10 +127,19 @@ struct AgendaView: View {
 
 struct AgendaRow: View {
     let event: CalEvent
+    /// All copies when the meeting is stacked across calendars (2+); empty/one for an ordinary event.
+    var calendars: [CalEvent] = []
+    private var stacked: Bool { calendars.count > 1 }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Circle().fill(event.color).frame(width: 10, height: 10).padding(.top, 5)
+            if stacked {
+                VStack(spacing: 3) {
+                    ForEach(calendars.prefix(4)) { Circle().fill($0.color).frame(width: 10, height: 10) }
+                }.padding(.top, 5)
+            } else {
+                Circle().fill(event.color).frame(width: 10, height: 10).padding(.top, 5)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(event.title.isEmpty ? "(No title)" : event.title).font(.body)
@@ -120,6 +149,11 @@ struct AgendaRow: View {
                     }
                 }
                 Text(timeText(event)).font(.subheadline).foregroundStyle(.secondary)
+                if stacked {
+                    Text("On \(calendars.count) calendars: " + calendars.map(\.sourceName).joined(separator: ", "))
+                        .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                        .accessibilityIdentifier("agendaStackCalendars")
+                }
                 if !event.location.isEmpty {
                     Text(event.location).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
