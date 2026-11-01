@@ -18,7 +18,7 @@ struct ShortcutsView: View {
         Section(title: "Events", rows: [
             Row(label: "New event", keys: ["N"]),
             Row(label: "Next / previous event", keys: ["↓", "↑"]),
-            Row(label: "Same time, next / prev day", keys: ["→", "←"]),
+            Row(label: "Next / prev day (or same time on that day when an event is focused)", keys: ["→", "←"]),
             Row(label: "Open event", keys: ["↩"]),
             Row(label: "Join video call", keys: ["J"]),
         ]),
