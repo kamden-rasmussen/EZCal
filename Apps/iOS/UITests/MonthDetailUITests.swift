@@ -75,6 +75,45 @@ final class MonthDetailUITests: EZCalUITestCase {
         }
     }
 
+    /// The detail list is lazy: swipe until the element is realised and hittable.
+    private func scrollDetail(to el: XCUIElement) -> XCUIElement {
+        for _ in 0..<6 where !(el.exists && el.isHittable) { app.staticTexts["detailTitle"].swipeUp() }
+        XCTAssertTrue(el.isHittable)
+        return el
+    }
+
+    private func openDesignReview() {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Design review"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 10))
+    }
+
+    func testRSVPUpdatesOwnResponse() throws {
+        openDesignReview()
+        let maybe = scrollDetail(to: app.buttons["Maybe"])
+        maybe.tap()
+        let me = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Me, maybe'")).firstMatch
+        for _ in 0..<6 where !me.exists { maybe.swipeDown() }
+        if !me.waitForExistence(timeout: 5) {
+            let labels = app.descendants(matching: .any).matching(identifier: "attendeeRow").allElementsBoundByIndex.map(\.label)
+            XCTFail("own row should show the new response; rows: \(labels); done=\(app.buttons["doneButton"].exists)")
+        }
+        XCTAssertTrue(app.buttons["doneButton"].exists, "sheet stays open")
+    }
+
+    func testAddGuestFromDirectorySuggestion() throws {
+        openDesignReview()
+        let field = scrollDetail(to: anyEl("addGuestField"))
+        field.tap()
+        field.typeText("alex")
+        let suggestion = app.buttons["guestSuggestion"].firstMatch
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 5))
+        suggestion.tap()
+        let added = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Alex Rivera, no response'")).firstMatch
+        XCTAssertTrue(added.waitForExistence(timeout: 5))
+    }
+
     func testCalendarListTogglesFilterAgenda() throws {
         let rows = app.buttons.matching(identifier: "agendaRow")
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10))

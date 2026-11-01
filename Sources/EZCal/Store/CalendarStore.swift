@@ -1134,24 +1134,57 @@ final class CalendarStore {
         if case APIError.zoomReconnectNeeded = error { zoomConnected = false; zoomNeedsReconnect = true }
     }
 
-    func rsvp(_ e: CalEvent, _ response: String) async {
-        let list = e.attendees.map { a -> [String: Any] in
-            var x: [String: Any] = ["email": a.email, "responseStatus": a.isSelf ? response : a.response]
-            if a.isOptional { x["optional"] = true }
-            if a.isResource { x["resource"] = true }
-            return x
+    /// `attendees` with only your own response changed (Google PATCHes the whole list).
+    nonisolated static func attendeesSettingSelfResponse(_ attendees: [Attendee], to response: String) -> [Attendee] {
+        attendees.map { a in
+            guard a.isSelf else { return a }
+            var n = a; n.response = response; return n
         }
+    }
+
+    /// `keepSheetOpen` is for touch UIs, where the detail sheet stays up and shows the new response; the
+    /// desktop panel closes instead.
+    func rsvp(_ e: CalEvent, _ response: String, keepSheetOpen: Bool = false) async {
         do {
-            try await GoogleAPI(accountId: e.accountId).patchEvent(calendarId: e.calendarId, eventId: e.eventId, body: ["attendees": list])
-            sheet = nil
-            await reload()
+            if isDemo {
+                eventsBySource[e.sourceId] = (eventsBySource[e.sourceId] ?? []).map { ev in
+                    guard ev.id == e.id else { return ev }
+                    var n = ev; n.attendees = Self.attendeesSettingSelfResponse(ev.attendees, to: response); return n
+                }
+                rebuildDisplay()
+            } else {
+                let list = e.attendees.map { a -> [String: Any] in
+                    var x: [String: Any] = ["email": a.email, "responseStatus": a.isSelf ? response : a.response]
+                    if a.isOptional { x["optional"] = true }
+                    if a.isResource { x["resource"] = true }
+                    return x
+                }
+                try await GoogleAPI(accountId: e.accountId).patchEvent(calendarId: e.calendarId, eventId: e.eventId, body: ["attendees": list])
+                if !keepSheetOpen { sheet = nil }
+                await reload()
+            }
+            if keepSheetOpen, case .detail(let cur) = sheet, let updated = displayEvents.first(where: { $0.id == cur.id }) {
+                sheet = .detail(updated)
+            } else if isDemo && !keepSheetOpen {
+                sheet = nil
+            }
         } catch { errorMessage = error.localizedDescription }
     }
 
     // MARK: - Directory & availability
 
+    /// Offline directory for demo mode (and tests): case-insensitive match on name or email.
+    nonisolated static func demoDirectory(matching q: String) -> [DirectoryPerson] {
+        let q = q.trimmingCharacters(in: .whitespaces).lowercased()
+        guard q.count >= 2 else { return [] }
+        let all = [("Alex Rivera", "alex@example.com"), ("Jordan Kim", "jordan@example.com"),
+                   ("Taylor Brooks", "taylor@example.com"), ("Riley Chen", "riley@example.com")]
+        return all.filter { $0.0.lowercased().contains(q) || $0.1.contains(q) }.map { DirectoryPerson(name: $0.0, email: $0.1) }
+    }
+
     func searchDirectory(_ q: String) async -> [DirectoryPerson] {
         let q = q.trimmingCharacters(in: .whitespaces)
+        if isDemo { return Self.demoDirectory(matching: q) }
         guard q.count >= 2, let acct = accounts.first else { return [] }
         return (try? await GoogleAPI(accountId: acct.id).searchDirectory(q)) ?? []
     }
