@@ -58,4 +58,16 @@ final class EventAlertTests: XCTestCase {
         AppSettings.defaultAlerts = [60, 10]
         XCTAssertEqual(AppSettings.defaultAlerts, [10, 60])
     }
+
+    func testDefaultAlertChoiceRoundTrip() {
+        typealias C = DefaultAlertChoice
+        for alerts: [Int]? in [nil, [], [10], [10, 60], [0, 1440]] {
+            let c = C.choices(from: alerts)
+            XCTAssertEqual(C.alerts(first: c.first, second: c.second), alerts)
+        }
+        XCTAssertNil(C.alerts(first: C.unset, second: 30))
+        XCTAssertEqual(C.alerts(first: C.none, second: 30), [])
+        XCTAssertEqual(C.alerts(first: 60, second: 60), [60], "duplicates collapse")
+        XCTAssertEqual(C.alerts(first: 60, second: 10), [10, 60], "sorted")
+    }
 }

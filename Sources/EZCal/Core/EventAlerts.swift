@@ -57,6 +57,23 @@ enum EventAlert {
     }
 }
 
+/// How the two default-alert pickers (Settings, both platforms) map to `AppSettings.defaultAlerts`.
+/// Picker tags: `unset` = calendar default (nil), `none` = explicitly no alerts, otherwise minutes before.
+enum DefaultAlertChoice {
+    static let unset = -1, none = -2
+
+    static func choices(from alerts: [Int]?) -> (first: Int, second: Int) {
+        guard let alerts else { return (unset, none) }
+        return (alerts.first ?? none, alerts.count > 1 ? alerts[1] : none)
+    }
+
+    static func alerts(first: Int, second: Int) -> [Int]? {
+        if first == unset { return nil }
+        if first == none { return [] }
+        return EventAlert.normalized([first] + (second >= 0 ? [second] : []))
+    }
+}
+
 extension AppSettings {
     /// Alerts added to every new event. nil = never configured (Google falls back to the calendar's own default,
     /// EventKit events get none); an empty array = explicitly no alerts.
