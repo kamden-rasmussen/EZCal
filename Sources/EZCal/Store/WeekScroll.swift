@@ -28,7 +28,7 @@ extension CalendarStore {
             return WeekScrollMath.firstColumnDay(onOrAfter: mondayStart(d), rule: .monFri, cal: cal)
         case .week:
             return WeekScrollMath.firstColumnDay(onOrAfter: weekStart(d), rule: weekColumns.rule, cal: cal)
-        case .day, .month:
+        case .day, .threeDay, .month:
             return d
         }
     }
