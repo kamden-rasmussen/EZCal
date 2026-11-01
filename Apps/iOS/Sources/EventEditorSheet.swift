@@ -113,6 +113,7 @@ struct EventEditorSheet: View {
                 }
             }
             .scrollDismissesKeyboard(.immediately)
+            .sheetSurfaceBackground()
             .navigationTitle(isNew ? "New Event" : "Edit Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -71,6 +71,7 @@ struct AgendaView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .groupedSurfaceBackground()
         .accessibilityIdentifier("searchResults")
         .overlay {
             if results.isEmpty { ContentUnavailableView.search(text: query) }
@@ -93,6 +94,7 @@ struct AgendaView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .groupedSurfaceBackground()
         .accessibilityIdentifier("agendaList")
         .refreshable { await store.refreshAll() }
         .overlay {

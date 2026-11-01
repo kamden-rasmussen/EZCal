@@ -89,6 +89,7 @@ struct SettingsSheet: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            .sheetSurfaceBackground()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("settingsDoneButton") } }

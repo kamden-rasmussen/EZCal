@@ -55,6 +55,7 @@ struct CalendarListSheet: View {
                 }
             }
             .overlay { if store.calendars.isEmpty && store.icsSubscriptions.isEmpty { ContentUnavailableView("No calendars", systemImage: "calendar") } }
+            .sheetSurfaceBackground()
             .navigationTitle("Calendars")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -155,6 +156,7 @@ struct ColorPickerSheet: View {
                 Spacer(minLength: 0)
             }
             .padding()
+            .sheetSurfaceBackground()
             .navigationTitle(source.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("colorDoneButton") } }
