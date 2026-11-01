@@ -15,6 +15,10 @@ enum TimeGridItem: Identifiable {
         case .stack(let es): return es.map(\.id).sorted().joined(separator: "+")
         }
     }
+    /// Every underlying event (one for a single, 2+ for a stack).
+    var events: [CalEvent] { switch self { case .single(let e): return [e]; case .stack(let es): return es } }
+    /// The event shown on the front (title/colour/time/join link).
+    var front: CalEvent { events[0] }
     var start: Date { switch self { case .single(let e): return e.start; case .stack(let es): return es.map(\.start).min()! } }
     var end: Date { switch self { case .single(let e): return e.end; case .stack(let es): return es.map(\.end).max()! } }
 }

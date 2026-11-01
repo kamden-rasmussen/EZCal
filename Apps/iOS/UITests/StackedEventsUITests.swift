@@ -82,4 +82,41 @@ final class StackedEventsUITests: XCTestCase {
         let v2 = all("dayEvent").allElementsBoundByIndex.first { $0.label == "Vendor call" }!
         XCTAssertLessThanOrEqual(anyEl("dayStackedEvent").frame.maxX, v2.frame.minX + 4)
     }
+
+    /// #140: Agenda lists the stacked meeting once with its calendars; tapping opens the same picker as the grid.
+    func testAgendaShowsStackedMeetingOnceAndOpensPicker() throws {
+        let tab = app.segmentedControls["tabPicker"].buttons["Agenda"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10))
+        tab.tap()
+        let list = app.collectionViews["agendaList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 5))
+        let line = anyEl("agendaStackCalendars")
+        for _ in 0..<10 where !line.exists { list.swipeUp() }
+        XCTAssertTrue(line.exists, "stacked meeting missing from agenda")
+        XCTAssertTrue(line.label.contains("On 3 calendars"), line.label)
+        // Once per day it appears: no un-stacked "Team planning" rows on that same day section.
+        let rows = app.buttons.matching(identifier: "agendaRow").allElementsBoundByIndex.filter { $0.label.contains("Team planning") }
+        XCTAssertEqual(rows.filter { $0.label.contains("On 3 calendars") }.count, rows.count, "no per-calendar duplicates")
+        let row = rows.first { $0.isHittable } ?? rows[0]
+        row.tap()
+        XCTAssertTrue(anyEl("stackCalendarsHeader").waitForExistence(timeout: 5))
+        XCTAssertEqual(all("stackCalendarRow").count, 3)
+        app.buttons["Team, open event"].tap()
+        XCTAssertEqual(app.staticTexts["detailTitle"].label, "Team planning")
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+        app.buttons["doneButton"].tap()
+    }
+
+    func testSearchFindsStackedMeetingOnce() throws {
+        app.segmentedControls["tabPicker"].buttons["Agenda"].tap()
+        let field = app.textFields["agendaSearch"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText("Team planning")
+        let first = app.buttons.matching(identifier: "searchResult").firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(first.label.contains("On 3 calendars"), first.label)
+        first.tap()
+        XCTAssertTrue(anyEl("stackCalendarsHeader").waitForExistence(timeout: 5))
+        XCTAssertEqual(all("stackCalendarRow").count, 3)
+    }
 }
