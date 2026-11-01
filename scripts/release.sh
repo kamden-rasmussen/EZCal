@@ -16,6 +16,12 @@ if [ "$PUBLISH" = 1 ]; then
   git rev-parse "v$VERSION" >/dev/null 2>&1 && { echo "Tag v$VERSION already exists"; exit 1; }
   gh release view "$TAG" --repo "$TAP" >/dev/null 2>&1 && { echo "Release $TAG already exists on $TAP"; exit 1; }
 fi
+# Secrets.swift is gitignored and compiled in; a blank copy of Secrets.swift.example ships an app whose
+# Google sign-in button is permanently disabled (and Zoom unusable), so refuse before building.
+for key in googleClientID googleClientSecret zoomClientID zoomClientSecret; do
+  grep -Eq "static let $key = \"[^\"]+\"" Sources/EZCal/Core/Secrets.swift \
+    || { echo "Sources/EZCal/Core/Secrets.swift has an empty or missing $key; fill in the real credentials first"; exit 1; }
+done
 PROFILE="${NOTARY_PROFILE:-ezcal-notary}"
 IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ {print $2; exit}')}"
 [ -n "$IDENTITY" ] || { echo "No Developer ID Application identity found"; exit 1; }
