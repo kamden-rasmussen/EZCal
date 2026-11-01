@@ -43,7 +43,7 @@ struct RootView: View {
                     .contentMargins(.bottom, 72, for: .scrollContent)
                 }
             }
-            .navigationTitle(store.anchor.formatted(.dateTime.month(.abbreviated).day().year()))
+            .navigationTitle(tab == .day ? "" : store.anchor.formatted(.dateTime.month(.abbreviated).day().year())) // Day shows its own tappable date title (#137)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {

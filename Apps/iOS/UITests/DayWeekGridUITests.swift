@@ -121,6 +121,15 @@ final class DayWeekGridUITests: EZCalUITestCase {
         XCTAssertTrue(anyEl("weekDayGridBackground").exists)
     }
 
+    func testDayTabShowsDateOnlyOnce() throws {
+        selectTab("Day")
+        let title = anyEl("dayTitle")
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertFalse(title.label.isEmpty)
+        XCTAssertEqual(app.navigationBars.firstMatch.staticTexts.count, 0,
+                       "Day tab must not repeat the date as a nav-bar title")
+    }
+
     // MARK: - 3-day view (#133)
 
     func testThreeDayViewShowsThreeColumnsAndPagesByThree() throws {
