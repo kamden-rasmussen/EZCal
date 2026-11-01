@@ -7,7 +7,7 @@ Everything is reachable without a mouse. Press **?** in the app for the cheat sh
 | **T** | Today |
 | **[** / **]** | Previous / next period |
 | **G** | Go to date… |
-| **D** / **5** / **W** / **M** | Day / Work week (Mon–Fri) / Week / Month |
+| **D** / **3** / **5** / **W** / **M** | Day / 3 Day / Work week (Mon–Fri) / Week / Month |
 | **/** or **⌘K** | Command palette |
 
 | Events | |

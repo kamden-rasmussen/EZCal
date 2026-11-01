@@ -35,7 +35,7 @@ struct ContentView: View {
                             // focus survives a mode switch instead of being left on the view that was just removed.
                             ZStack {
                                 switch store.mode {
-                                case .day: TimeGridView(days: store.visibleDays)
+                                case .day, .threeDay: TimeGridView(days: store.visibleDays)
                                 case .workWeek, .week: WeekScrollView()
                                 case .month: MonthView()
                                 }
@@ -44,7 +44,7 @@ struct ContentView: View {
                             .focused($gridFocused)
                             .focusEffectDisabled()
                             .onKeyPress(phases: .down) { handle($0) }
-                            .background(HorizontalSwipeNavigator(isEnabled: store.mode == .day) { days in
+                            .background(HorizontalSwipeNavigator(isEnabled: store.mode.consecutiveDayCount != nil) { days in
                                 guard store.mode != .month, store.sheet == nil, store.deleteRequest == nil, !store.showAddPerson else { return }  // Month scrolls vertically; Week/Work Week pan natively
                                 store.stepDay(days)
                             })
@@ -184,6 +184,7 @@ struct ContentView: View {
         case "t": store.goToday()
         case "n", "c": store.newDraft()
         case "d": store.setMode(.day)
+        case "3": store.setMode(.threeDay)
         case "5": store.setMode(.workWeek)
         case "w": store.setMode(.week)
         case "m": store.setMode(.month)
@@ -251,6 +252,7 @@ struct ModePicker: View {
     private func help(_ m: ViewMode) -> String {
         switch m {
         case .day: return "Day (D)"
+        case .threeDay: return "3 Day (3)"
         case .workWeek: return "Work week, Mon–Fri (5)"
         case .week: return "Week (W)"
         case .month: return "Month (M)"

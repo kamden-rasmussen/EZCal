@@ -12,7 +12,7 @@ struct ShortcutsView: View {
             Row(label: "Today", keys: ["T"]),
             Row(label: "Previous / next period", keys: ["[", "]"]),
             Row(label: "Go to date…", keys: ["G"]),
-            Row(label: "Switch view", keys: ["D", "5", "W", "M"]),
+            Row(label: "Switch view", keys: ["D", "3", "5", "W", "M"]),
             Row(label: "Search anything", keys: ["/"]),
         ]),
         Section(title: "Events", rows: [
