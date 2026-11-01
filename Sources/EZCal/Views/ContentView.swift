@@ -167,8 +167,8 @@ struct ContentView: View {
         if !press.modifiers.isDisjoint(with: [.command, .control, .option]) { return .ignored }
 
         switch press.key {
-        case .leftArrow: store.moveFocusDay(-1); return .handled
-        case .rightArrow: store.moveFocusDay(1); return .handled
+        case .leftArrow: store.arrowNavigate(-1); return .handled
+        case .rightArrow: store.arrowNavigate(1); return .handled
         case .downArrow: store.moveFocus(1); return .handled
         case .upArrow: store.moveFocus(-1); return .handled
         case .return: store.openFocused(); return .handled

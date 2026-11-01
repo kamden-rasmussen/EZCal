@@ -46,9 +46,16 @@ extension CalendarStore {
         }
     }
 
-    /// Left/right: the event closest to the same time on the neighbouring day.
+    /// Left/right arrow: with an event focused, focus the event closest to the same time on the neighbouring
+    /// day (like up/down, this moves the focus and the date follows it). With nothing focused, move the
+    /// calendar itself one step back/forward, same as `[` / `]` (a day, or a week/month in those views).
+    func arrowNavigate(_ delta: Int) {
+        if focusedEvent != nil { moveFocusDay(delta) } else { step(delta) }
+    }
+
+    /// The event closest to the same time on the neighbouring day.
     func moveFocusDay(_ delta: Int) {
-        guard let cur = focusedEvent else { moveFocus(delta); return }
+        guard let cur = focusedEvent else { return }
         let c = cal
         let tod = cur.start.timeIntervalSince(c.startOfDay(for: cur.start))
         Task { @MainActor in

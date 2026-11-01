@@ -29,6 +29,35 @@ final class KeyboardTests: XCTestCase {
         XCTAssertNil(store.focusedEventID)
     }
 
+    func testArrowNavigatesDayWhenNothingFocused() {
+        let store = CalendarStore()
+        store.mode = .day
+        store.focusedEventID = nil
+        let start = store.anchor
+        store.arrowNavigate(1)
+        XCTAssertEqual(store.cal.dateComponents([.day], from: start, to: store.anchor).day, 1)
+        store.arrowNavigate(-1); store.arrowNavigate(-1)
+        XCTAssertEqual(store.cal.dateComponents([.day], from: start, to: store.anchor).day, -1)
+        XCTAssertNil(store.focusedEventID, "day navigation must not focus an event")
+    }
+
+    func testArrowStepsAWeekInWeekMode() {
+        let store = CalendarStore()
+        store.mode = .week
+        let start = store.anchor
+        store.arrowNavigate(1)
+        XCTAssertEqual(store.cal.dateComponents([.day], from: start, to: store.anchor).day, 7)
+    }
+
+    func testArrowStepsWhenFocusedEventIsNotDisplayed() {
+        let store = CalendarStore()
+        store.mode = .day
+        store.focusedEventID = "gone"   // stale focus (event no longer loaded) counts as nothing focused
+        let start = store.anchor
+        store.arrowNavigate(-1)
+        XCTAssertEqual(store.cal.dateComponents([.day], from: start, to: store.anchor).day, -1)
+    }
+
     func testDetailPanelDoesNotBlockGridShortcuts() {
         XCTAssertFalse(ActiveSheet.detail(sampleEvent()).blocksGridShortcuts)
         XCTAssertTrue(ActiveSheet.palette.blocksGridShortcuts)
