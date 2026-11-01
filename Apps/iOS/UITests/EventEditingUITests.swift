@@ -101,11 +101,18 @@ final class EventEditingUITests: EZCalUITestCase {
         XCTAssertEqual(field.value as? String, "UITest Detail")
         app.buttons["editorSave"].tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
-        XCTAssertGreaterThanOrEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).count, 2)
+        // The copy has the same title and time on another calendar, so the Agenda stacks both into one row (#140).
+        let stack = anyEl("agendaStackCalendars")
+        XCTAssertTrue(stack.waitForExistence(timeout: 5), "duplicate should stack with the original")
+        XCTAssertTrue(stack.label.contains("On 2 calendars"), stack.label)
 
         // Delete both copies from the detail sheet.
         for _ in 0..<2 {
             app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).firstMatch.tap()
+            // While both copies exist the row opens the calendar picker first; afterwards it opens the detail directly.
+            if anyEl("stackCalendarsHeader").waitForExistence(timeout: 2) {
+                app.buttons.matching(NSPredicate(format: "label CONTAINS 'open event'")).firstMatch.tap()
+            }
             revealInDetail("detailDelete").tap()
             let confirm = app.buttons["Delete"]
             XCTAssertTrue(confirm.waitForExistence(timeout: 5))
