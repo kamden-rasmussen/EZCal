@@ -27,6 +27,37 @@ class EZCalUITestCase: XCTestCase {
     func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     var dayTitle: XCUIElement { app.buttons["dayTitle"] }
 
+    /// Opens the toolbar menu, taps `item` and waits for `expecting` (an element the destination shows).
+    /// Under load the tap on the menu button or the item can be swallowed while the menu is still animating
+    /// (the item exists but the sheet never opens: #152), so wait for the item to be hittable and, if the
+    /// destination does not show up, close whatever is open and go again.
+    func openMenuItem(_ item: String, expecting id: String) {
+        for attempt in 0..<3 {
+            let button = app.buttons[item]
+            if !button.exists {
+                let menu = app.buttons["menuButton"]
+                XCTAssertTrue(menu.waitForExistence(timeout: 10), "menu button")
+                menu.tap()
+            }
+            guard button.waitForExistence(timeout: 5), waitUntil(timeout: 5, { button.isHittable }) else { continue }
+            button.tap()
+            if anyEl(id).waitForExistence(timeout: attempt == 2 ? 10 : 4) { return }
+            if app.buttons[item].exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.6)).tap() }   // dismiss a menu left open
+        }
+        XCTFail("\(item) did not open \(id)")
+    }
+
+    /// Polls `condition` every 0.1 s until it holds or the timeout passes (a deterministic wait that is not a sleep).
+    @discardableResult
+    func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(timeout)
+        while Date() < end {
+            if condition() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return condition()
+    }
+
     // MARK: - Create / edit / delete (demo data is in-memory, so these never touch a real account)
 
     func replaceText(_ field: XCUIElement, with text: String) {
@@ -106,6 +137,17 @@ class EZCalUITestCase: XCTestCase {
             a.press(forDuration: 0.05, thenDragTo: b)
         }
         return el
+    }
+
+    /// After a drag/resize: wait until either the edit took effect or the "This event / All events" scope prompt is
+    /// up, picking "This event" if so. Recurring events ask, and under load the prompt can arrive well after the
+    /// fixed 1.5 s `chooseScopeIfAsked` waits, which made the test read the old value (#152).
+    @discardableResult
+    func finishEdit(timeout: TimeInterval = 10, until changed: () -> Bool) -> Bool {
+        let b = app.buttons["This event"]
+        waitUntil(timeout: timeout) { changed() || b.exists }
+        if b.exists && b.isHittable { b.tap() }
+        return waitUntil(timeout: timeout, changed)
     }
 
     func chooseScopeIfAsked() {

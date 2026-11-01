@@ -3,17 +3,7 @@ import XCTest
 /// #122: the same meeting on several calendars is ONE stacked card; genuinely different overlapping events still
 /// split; the overlap layout setting changes how they're laid out. Demo data puts "Team planning" on three
 /// calendars (stacked) with an overlapping "Vendor call" on Sundays.
-final class StackedEventsUITests: XCTestCase {
-    var app: XCUIApplication!
-
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-        app = XCUIApplication()
-        app.launchEnvironment["EZCAL_DEMO"] = "1"
-        app.launch()
-    }
-
-    private func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+final class StackedEventsUITests: EZCalUITestCase {
     private func all(_ id: String) -> XCUIElementQuery { app.descendants(matching: .any).matching(identifier: id) }
 
     /// Day tab, stepping day by day until the Sunday that holds the stacked demo meeting.
@@ -29,8 +19,7 @@ final class StackedEventsUITests: XCTestCase {
     }
 
     private func setOverlapMode(_ name: String) {
-        app.buttons["menuButton"].tap()
-        app.buttons["settingsButton"].tap()
+        openMenuItem("settingsButton", expecting: "settingsDoneButton")
         let p = anyEl("overlapLayoutPicker")
         for _ in 0..<6 where !(p.exists && p.isHittable) { app.swipeUp() }
         XCTAssertTrue(p.exists, "overlap picker missing")

@@ -89,8 +89,7 @@ final class AgendaNavigationUITests: EZCalUITestCase {
     }
 
     func testMenuGoToDateFromAgenda() throws {
-        app.buttons["menuButton"].tap()
-        app.buttons["goToDateMenuButton"].tap()
+        openMenuItem("goToDateMenuButton", expecting: "goToDatePicker")
         XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
         app.buttons["goToTodayButton"].tap()
         XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
@@ -159,8 +158,7 @@ final class AgendaNavigationUITests: EZCalUITestCase {
     }
 
     func testSettingsSheetShowsAccountStatus() throws {
-        app.buttons["menuButton"].tap()
-        app.buttons["settingsButton"].tap()
+        openMenuItem("settingsButton", expecting: "settingsDoneButton")
         XCTAssertTrue(app.staticTexts["Google Calendar"].waitForExistence(timeout: 5))
         let n = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Not set up on iOS yet'")).count
         XCTAssertGreaterThanOrEqual(n, 2)
