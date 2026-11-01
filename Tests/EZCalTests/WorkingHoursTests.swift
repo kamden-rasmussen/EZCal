@@ -83,3 +83,28 @@ final class WorkingHoursTests: XCTestCase {
         XCTAssertEqual(WorkingHours(days: [2], startMinute: 7 * 60 + 30, endMinute: 16 * 60).startHour, 7)
     }
 }
+
+final class WorkingHoursScrollTests: XCTestCase {
+    private let wh = WorkingHours(days: [2, 3, 4, 5, 6], startMinute: 9 * 60, endMinute: 17 * 60)
+
+    func testTodayOpensTwoHoursBeforeNowButNotAboveWorkStart() {
+        XCTAssertEqual(wh.initialScrollHour(nowHour: 15, firstEventHour: nil), 13)
+        XCTAssertEqual(wh.initialScrollHour(nowHour: 6, firstEventHour: 7), 9)
+        XCTAssertEqual(wh.initialScrollHour(nowHour: 23, firstEventHour: nil), 21)
+    }
+
+    func testOtherDayOpensAtWorkStartUnlessEarlierEvent() {
+        XCTAssertEqual(wh.initialScrollHour(nowHour: nil, firstEventHour: nil), 9)
+        XCTAssertEqual(wh.initialScrollHour(nowHour: nil, firstEventHour: 14), 9)
+        XCTAssertEqual(wh.initialScrollHour(nowHour: nil, firstEventHour: 7), 6)
+        XCTAssertEqual(wh.initialScrollHour(nowHour: nil, firstEventHour: 0), 0)
+    }
+
+    func testReconciledPushesTheOtherEdge() {
+        XCTAssertEqual(WorkingHours.reconciled(start: 18 * 60, end: 17 * 60, editing: .start).end, 18 * 60 + 30)
+        XCTAssertEqual(WorkingHours.reconciled(start: 9 * 60, end: 9 * 60, editing: .end).start, 8 * 60 + 30)
+        let ok = WorkingHours.reconciled(start: 8 * 60, end: 17 * 60, editing: .start)
+        XCTAssertEqual(ok.start, 8 * 60); XCTAssertEqual(ok.end, 17 * 60)
+        XCTAssertEqual(WorkingHours.reconciled(start: 24 * 60, end: 24 * 60, editing: .start).end, 24 * 60)
+    }
+}
