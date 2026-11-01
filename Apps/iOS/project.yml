@@ -11,6 +11,8 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     GENERATE_INFOPLIST_FILE: NO
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
 targets:
   EZCaliOS:
     type: application
@@ -26,7 +28,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ezcal.app.ios
         INFOPLIST_FILE: Info.plist
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     entitlements:
@@ -51,7 +53,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ezcal.app.ios.widget
         INFOPLIST_FILE: Widget/Info.plist
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: YES
   EZCaliOSUITests:

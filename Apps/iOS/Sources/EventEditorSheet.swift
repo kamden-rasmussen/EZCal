@@ -87,6 +87,8 @@ struct EventEditorSheet: View {
                         .accessibilityIdentifier("editorNotes")
                 }
 
+                AlertsSection(alerts: $draft.alerts)
+
                 if let error {
                     Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("editorError") }
                 }
@@ -110,6 +112,7 @@ struct EventEditorSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.immediately)
             .navigationTitle(isNew ? "New Event" : "Edit Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

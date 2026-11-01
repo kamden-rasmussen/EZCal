@@ -116,6 +116,9 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     var zoomMeetingID: String?
     var isTentative: Bool
     var isDeclined: Bool
+    /// Alerts as minutes before the start (issue #131). nil = the calendar's default alerts (Google
+    /// `useDefault`), or unknown for sources that don't expose alerts.
+    var alertMinutes: [Int]? = nil
 
     /// May change the event's own fields (title, time, ...), as opposed to only its guest list.
     var canModify: Bool { canEdit && (isOrganizer || guestsCanModify) }
@@ -225,6 +228,8 @@ struct EventDraft: Identifiable {
     var recurrence: RecurrenceOption = .none
     /// Google's `visibility`. Not offered (and never written) for EventKit calendars.
     var visibility: EventVisibility = .default
+    /// Minutes before the start for each alert. nil = leave alone (new: calendar default; existing: unchanged).
+    var alerts: [Int]? = nil
 }
 
 enum ViewMode: String, CaseIterable, Identifiable {

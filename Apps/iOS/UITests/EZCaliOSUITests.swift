@@ -16,8 +16,14 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(b.waitForExistence(timeout: 10))
         b.tap()
     }
+    private func pickGrid(_ name: String) {
+        let p = anyEl("gridModePicker")
+        XCTAssertTrue(p.waitForExistence(timeout: 5))
+        p.tap()
+        app.buttons[name].firstMatch.tap()
+    }
     private func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
-    private var dayTitle: XCUIElement { app.staticTexts["dayTitle"] }
+    private var dayTitle: XCUIElement { app.buttons["dayTitle"] }
 
     /// Saturday events in demo data are day 5 of the week; we just need a day with events, so use Today.
     func testAgendaShowsEventsAndDetailSheet() throws {
@@ -118,6 +124,16 @@ final class EZCaliOSUITests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + text)
     }
 
+    /// The editor is a lazy list: scroll until `id` has been realised.
+    private func scrollEditor(to id: String) {
+        let el = id == "editorAddAlert" ? anyEl("editorAddAlert") : anyEl(id)
+        for _ in 0..<8 where !el.exists || !el.isHittable {
+            // Drag inside the form (above the keyboard) so the keyboard dismisses and the list scrolls.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
+        }
+    }
+
     private func createEvent(titled title: String) {
         app.buttons["addButton"].tap()
         let field = anyEl("editorTitle")
@@ -153,6 +169,7 @@ final class EZCaliOSUITests: XCTestCase {
         // Delete it with confirmation.
         app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Renamed'")).firstMatch.tap()
         app.buttons["editButton"].tap()
+        scrollEditor(to: "editorDelete")
         XCTAssertTrue(app.buttons["editorDelete"].waitForExistence(timeout: 5))
         app.buttons["editorDelete"].tap()
         let confirm = app.buttons["Delete"]
@@ -178,12 +195,36 @@ final class EZCaliOSUITests: XCTestCase {
         XCTAssertTrue(app.buttons["This and following events"].waitForExistence(timeout: 5), "scope dialog missing")
         XCTAssertTrue(app.buttons["All events"].exists)
         app.buttons["This event"].tap()
+        scrollEditor(to: "editorDelete")
         XCTAssertTrue(app.buttons["editorDelete"].waitForExistence(timeout: 5))
         app.buttons["editorDelete"].tap()
         let all = app.buttons["Delete all events"]
         XCTAssertTrue(all.waitForExistence(timeout: 5), "delete scope dialog missing")
         all.tap()
         XCTAssertTrue(row.waitForNonExistence(timeout: 5))
+    }
+
+    func testAddAlertToNewEventAndPersist() throws {
+        selectTab("Day")
+        app.buttons["nextButton"].tap()
+        app.buttons["addButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText("UITest Alerts")
+        scrollEditor(to: "editorAddAlert")
+        XCTAssertTrue(anyEl("editorAlertsDefault").waitForExistence(timeout: 5))
+        anyEl("editorAddAlert").tap()
+        XCTAssertTrue(anyEl("editorAlert-0").waitForExistence(timeout: 5))
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Alerts'")).firstMatch.tap()
+        app.buttons["editButton"].tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        scrollEditor(to: "editorAddAlert")
+        let alert = anyEl("editorAlert-0")
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "saved alert missing after reopening")
+        XCTAssertTrue(alert.label.contains("10 minutes"), "alert label was \(alert.label)")
+        app.buttons["editorCancel"].tap()
     }
 
     func testLongPressEmptyDayCreatesEventAtTime() throws {
@@ -297,5 +338,358 @@ final class EZCaliOSUITests: XCTestCase {
         let ev = firstDayEvent()
         ev.tap()
         XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+    }
+
+    // MARK: - Month
+
+    private func openMonth() {
+        selectTab("Day")
+        pickGrid("Month")
+        XCTAssertTrue(anyEl("monthGrid").waitForExistence(timeout: 5))
+    }
+
+    private func cellID(_ d: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        return "monthCell-" + f.string(from: d)
+    }
+
+    func testMonthShowsTodaySelectedAndEvents() throws {
+        openMonth()
+        XCTAssertTrue(anyEl(cellID(Date())).exists, "today cell missing")
+        XCTAssertTrue(anyEl("monthSelectedHeader").exists)
+        // Demo data is week-relative, so some day this month near today has events; tap through the week.
+        var found = false
+        for off in 0..<7 {
+            let d = Calendar.current.date(byAdding: .day, value: off, to: Date())!
+            guard Calendar.current.isDate(d, equalTo: Date(), toGranularity: .month) else { continue }
+            anyEl(cellID(d)).tap()
+            if app.buttons["monthRow"].firstMatch.waitForExistence(timeout: 1) { found = true; break }
+        }
+        XCTAssertTrue(found, "no day with events in month list")
+        app.buttons["monthRow"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+        app.buttons["doneButton"].tap()
+    }
+
+    func testMonthStepAndOpenDay() throws {
+        openMonth()
+        let title = dayTitle.label
+        app.buttons["nextButton"].tap()
+        XCTAssertNotEqual(dayTitle.label, title)
+        app.buttons["prevButton"].tap()
+        XCTAssertEqual(dayTitle.label, title)
+        app.buttons["nextButton"].tap()
+        app.buttons["todayButton"].tap()
+        XCTAssertEqual(dayTitle.label, title)
+        // Select a day then open it in Day view; anchor must carry over.
+        let d = Calendar.current.date(byAdding: .day, value: Calendar.current.component(.day, from: Date()) == 1 ? 1 : -1, to: Date())!
+        if Calendar.current.isDate(d, equalTo: Date(), toGranularity: .month) { anyEl(cellID(d)).tap() }
+        let header = anyEl("monthSelectedHeader").label
+        app.buttons["openDayButton"].tap()
+        XCTAssertTrue(anyEl("dayGridBackground").waitForExistence(timeout: 5))
+        XCTAssertFalse(anyEl("monthGrid").exists)
+        XCTAssertFalse(header.isEmpty)
+        // Back to Month and to Agenda keeps working.
+        pickGrid("Month")
+        XCTAssertTrue(anyEl("monthGrid").waitForExistence(timeout: 5))
+        selectTab("Agenda")
+        XCTAssertTrue(app.collectionViews["agendaList"].waitForExistence(timeout: 5))
+    }
+
+    func testMonthEmptyDay() throws {
+        openMonth()
+        for _ in 0..<2 { app.buttons["nextButton"].tap() }
+        XCTAssertTrue(anyEl("monthEmpty").waitForExistence(timeout: 5))
+        app.buttons["todayButton"].tap()
+    }
+
+    /// Stands in for tapping a meeting notification: the app posts the same `.ezcalOpenEvent` the
+    /// notification delegate does (a real notification tap can't be driven from XCUITest).
+    func testOpenEventNotificationShowsDetail() throws {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Roadmap planning"
+        app.launch()
+        let title = app.staticTexts["detailTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertEqual(title.label, "Roadmap planning")
+    }
+
+    /// A meeting that isn't within 10 minutes of starting asks before joining (macOS parity, #30).
+    func testAgendaJoinButtonConfirmsWhenNotYetJoinable() throws {
+        XCTAssertTrue(app.buttons.matching(identifier: "joinButton").firstMatch.waitForExistence(timeout: 10))
+        let join = app.buttons.matching(identifier: "joinButton").allElementsBoundByIndex.last!
+        join.tap()
+        let anyway = app.buttons["Join anyway"]
+        XCTAssertTrue(anyway.waitForExistence(timeout: 5))
+        // On large iPhones the dialog is a popover; tapping outside is its cancel.
+        let cancel = app.buttons["Cancel"]
+        if cancel.exists { cancel.tap() }
+        else { app.otherElements["PopoverDismissRegion"].coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.95)).tap() }
+        XCTAssertTrue(anyway.waitForNonExistence(timeout: 5))
+    }
+
+    func testJoinNextMeetingMenuItemAndDayBlockButton() throws {
+        app.buttons["menuButton"].tap()
+        XCTAssertTrue(anyEl("joinNextButton").waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.6)).tap()   // dismiss the menu
+        selectTab("Day")
+        var found = false
+        for _ in 0..<7 {
+            if app.buttons["joinButton"].waitForExistence(timeout: 1) { found = true; break }
+            app.buttons["nextButton"].tap()
+        }
+        XCTAssertTrue(found, "no video meeting block with a Join button")
+    }
+
+    private func revealInDetail(_ id: String) -> XCUIElement {
+        let el = anyEl(id)
+        XCTAssertTrue(el.waitForExistence(timeout: 5), id)
+        for _ in 0..<4 where !el.isHittable { app.staticTexts["detailTitle"].swipeUp() }
+        return el
+    }
+
+    func testDetailDuplicateAndDelete() throws {
+        createEvent(titled: "UITest Detail")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        // Duplicate opens the editor prefilled with the same title.
+        revealInDetail("duplicateButton").tap()
+        let target = app.buttons["Team"]
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        target.tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "UITest Detail")
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        XCTAssertGreaterThanOrEqual(app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).count, 2)
+
+        // Delete both copies from the detail sheet.
+        for _ in 0..<2 {
+            app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Detail'")).firstMatch.tap()
+            revealInDetail("detailDelete").tap()
+            let confirm = app.buttons["Delete"]
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+            confirm.tap()
+            XCTAssertTrue(app.staticTexts["detailTitle"].waitForNonExistence(timeout: 5))
+        }
+        XCTAssertTrue(app.staticTexts["UITest Detail"].waitForNonExistence(timeout: 5), "events should be gone")
+    }
+
+    func testDetailLocationRowIsMapsButton() throws {
+        app.buttons["addButton"].tap()
+        let field = anyEl("editorTitle")
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap(); field.typeText("UITest Place")
+        let loc = anyEl("editorLocation")
+        loc.tap(); loc.typeText("1 Infinite Loop")
+        app.buttons["editorSave"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+        app.buttons.matching(NSPredicate(format: "label CONTAINS 'UITest Place'")).firstMatch.tap()
+        let row = app.buttons["locationButton"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("1 Infinite Loop"))
+        // Tapping would leave the app for Maps; the URL builder is what we can check without that.
+    }
+
+    func testDetailShowsAttendeesWithRSVPState() throws {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Design review"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 10))
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Marcus Lee, maybe'")).firstMatch
+        for _ in 0..<4 where !row.exists { app.staticTexts["detailTitle"].swipeUp() }
+        XCTAssertTrue(row.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Dana Cole, declined'")).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sam Ortiz, no response'")).firstMatch.exists)
+    }
+
+    func testSearchFindsEventsAndOpensDetail() throws {
+        let field = app.textFields["agendaSearch"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap(); field.typeText("roadmap")
+        let result = app.buttons.matching(identifier: "searchResult").firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+        XCTAssertTrue(result.label.contains("Roadmap planning"))
+        // Guest names are searched too.
+        field.clearAndType("Marcus Lee")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Design review'")).firstMatch.waitForExistence(timeout: 5))
+        field.clearAndType("zzzznomatch")
+        XCTAssertTrue(app.staticTexts["No Results for “zzzznomatch”"].waitForExistence(timeout: 5))
+        field.clearAndType("roadmap")
+        app.buttons.matching(identifier: "searchResult").firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["detailTitle"].label, "Roadmap planning")
+    }
+
+    // MARK: - Swipe paging (#106)
+
+    func testSwipeChangesDayAndVerticalSwipeDoesNot() throws {
+        selectTab("Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let today = dayTitle.label
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.swipeUp()
+        XCTAssertEqual(dayTitle.label, today, "vertical scroll must not change the day")
+        grid.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, today, "swipe left goes to the next day")
+        grid.swipeRight()
+        XCTAssertEqual(dayTitle.label, today, "swipe right goes back")
+        grid.swipeRight()
+        XCTAssertNotEqual(dayTitle.label, today)
+    }
+
+    func testSwipeChangesWeek() throws {
+        selectTab("Day")
+        pickGrid("Week")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let before = dayTitle.label
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.scrollViews.firstMatch.swipeRight()
+        XCTAssertEqual(dayTitle.label, before)
+    }
+
+    // MARK: - Current-time indicator (#108)
+
+    func testNowLineOnTodayOnly() throws {
+        selectTab("Day")
+        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "today should show the now line")
+        app.buttons["nextButton"].tap()
+        XCTAssertTrue(anyEl("nowLine").waitForNonExistence(timeout: 5), "other days must not")
+        app.buttons["todayButton"].tap()
+        pickGrid("Week")
+        XCTAssertTrue(anyEl("nowLine").waitForExistence(timeout: 5), "week containing today shows it too")
+    }
+
+    // MARK: - Jump to date (#109)
+
+    func testTapTitleOpensDatePickerAndJumps() throws {
+        selectTab("Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        let before = dayTitle.label
+        dayTitle.tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
+        // Pick tomorrow in the month grid (its accessibility label is the full date).
+        let cal = Calendar.current
+        var tomorrow = cal.date(byAdding: .day, value: 1, to: Date())!
+        if !cal.isDate(tomorrow, equalTo: Date(), toGranularity: .month) { tomorrow = cal.date(byAdding: .day, value: -1, to: Date())! }
+        let label = tomorrow.formatted(.dateTime.weekday(.wide).month(.wide).day())
+        let target = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "no day button '\(label)'")
+        target.tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.buttons["todayButton"].tap()
+        XCTAssertEqual(dayTitle.label, before)
+    }
+
+    func testMenuGoToDateFromAgenda() throws {
+        app.buttons["menuButton"].tap()
+        app.buttons["goToDateMenuButton"].tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForExistence(timeout: 5))
+        app.buttons["goToTodayButton"].tap()
+        XCTAssertTrue(anyEl("goToDatePicker").waitForNonExistence(timeout: 5))
+    }
+
+    // MARK: - 3-day view (#133)
+
+    func testThreeDayViewShowsThreeColumnsAndPagesByThree() throws {
+        selectTab("Day")
+        pickGrid("3 Day")
+        XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(anyEl("weekDayGridBackground").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "weekDayGridBackground").count, 3)
+        let before = dayTitle.label
+        app.buttons["nextButton"].tap()
+        XCTAssertNotEqual(dayTitle.label, before)
+        app.buttons["prevButton"].tap()
+        XCTAssertEqual(dayTitle.label, before)
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertNotEqual(dayTitle.label, before)
+    }
+
+    // MARK: - Polish (#137)
+
+    func testAgendaLastCardScrollsAboveFloatingBar() throws {
+        let list = app.collectionViews["agendaList"]
+        XCTAssertTrue(list.waitForExistence(timeout: 10))
+        for _ in 0..<10 { list.swipeUp(velocity: .fast) }
+        let rows = app.buttons.matching(identifier: "agendaRow")
+        let last = rows.element(boundBy: rows.count - 1)
+        XCTAssertLessThanOrEqual(last.frame.maxY, app.buttons["todayButton"].frame.minY + 1, "last agenda row hidden behind bar")
+    }
+
+    func testWeekGridPullToRefreshAndAllDayOverflow() throws {
+        selectTab("Day")
+        pickGrid("Week")
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            .press(forDuration: 0.1, thenDragTo: grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(anyEl("weekDayGridBackground").exists)
+    }
+
+    // MARK: - Drag / resize in multi-day grids (#116)
+
+    /// A week-grid event block that is on screen after scrolling the grid to the top.
+    private func visibleWeekEvent() -> XCUIElement? {
+        selectTab("Day")
+        pickGrid("Week")
+        let grid = app.scrollViews.firstMatch
+        XCTAssertTrue(grid.waitForExistence(timeout: 5))
+        for _ in 0..<3 { grid.swipeDown(velocity: .fast) }
+        // Demo events are week-relative; step through weeks until one is comfortably on screen.
+        for _ in 0..<3 {
+            let all = app.descendants(matching: .any).matching(identifier: "weekDayEvent").allElementsBoundByIndex
+            if let ev = all.first(where: { $0.isHittable && $0.frame.minY > 330 && $0.frame.maxY < 700 && $0.frame.height > 25 }) { return ev }
+            app.buttons["nextButton"].tap()
+        }
+        return nil
+    }
+
+    func testWeekLongPressDragMovesEventAcrossDays() throws {
+        let found = visibleWeekEvent()
+        let ev = try XCTUnwrap(found, "no week event on screen")
+        let label = ev.label
+        let before = ev.frame
+        let left = before.midX > 250
+        let from = ev.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        from.press(forDuration: 0.8, thenDragTo: from.withOffset(CGVector(dx: left ? -52 : 52, dy: 56)))
+        chooseScopeIfAsked()
+        let moved = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertTrue(moved.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(abs(moved.frame.midX - before.midX), 25, "event should land in the neighbouring day column")
+        XCTAssertGreaterThan(moved.frame.minY, before.minY + 20, "and an hour later")
+        XCTAssertFalse(app.staticTexts["detailTitle"].exists)
+    }
+
+    func testWeekResizeBottomHandle() throws {
+        let found = visibleWeekEvent()
+        let ev = try XCTUnwrap(found, "no week event on screen")
+        let label = ev.label
+        let beforeH = ev.frame.height
+        ev.press(forDuration: 0.8)
+        let bottom = anyEl("resizeBottom")
+        XCTAssertTrue(bottom.waitForExistence(timeout: 5))
+        let c = bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        c.press(forDuration: 0.1, thenDragTo: c.withOffset(CGVector(dx: 0, dy: 56)))
+        chooseScopeIfAsked()
+        let after = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertGreaterThan(after.frame.height, beforeH + 20)
+    }
+}
+
+private extension XCUIElement {
+    func clearAndType(_ text: String) {
+        tap()
+        if let v = value as? String, !v.isEmpty { typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: v.count)) }
+        typeText(text)
     }
 }

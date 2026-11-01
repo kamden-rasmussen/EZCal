@@ -577,7 +577,7 @@ struct WeekSecondaryGutter: View {
         let dayStart = Calendar.current.startOfDay(for: refDay)
         VStack(spacing: 0) {
             ForEach(0..<24, id: \.self) { h in
-                let instant = Calendar.current.date(byAdding: .hour, value: h, to: dayStart) ?? refDay
+                let instant = GridTime.date(minutes: h * 60, on: dayStart, cal: Calendar.current)
                 Text(h == 0 ? "" : ZoneMath.hourLabel(instant, in: zone))
                     .font(.system(size: 10).monospacedDigit()).foregroundStyle(Theme.text3.opacity(0.85))
                     .padding(.top, 1)
