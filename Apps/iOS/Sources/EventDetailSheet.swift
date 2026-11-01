@@ -112,7 +112,7 @@ struct EventDetailSheet: View {
                 }
             } message: { Text("“\(event.title)” repeats. Which events should the edit affect?") }
         }
-        .background { Color(.systemGroupedBackground).opacity(opaque).ignoresSafeArea() }
+        .background { Color.sheetSurfaceBackground.opacity(opaque).ignoresSafeArea() }
         .animation(.easeInOut(duration: 0.35), value: detent)
         .presentationDetents([.medium, Self.tall], selection: $detent)
     }
