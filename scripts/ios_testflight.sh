@@ -1,7 +1,7 @@
 #!/bin/bash
 # Archives EZCaliOS and exports (or uploads) it for TestFlight. Usage: scripts/ios_testflight.sh
 # Env: TEAM (default MN3744WT73), BUILD (CURRENT_PROJECT_VERSION; default timestamp yymmddHHMM so it always increases),
-#      UPLOAD=1 uploads to App Store Connect; otherwise exports an .ipa to build/ios/export for inspection.
+#      UPLOAD=1 uploads to App Store Connect and, with an API key, adds the build to the external "Testing" group (NO_DISTRIBUTE=1 skips); otherwise exports an .ipa to build/ios/export for inspection.
 #      ASC_KEY_PATH, ASC_KEY_ID, ASC_ISSUER_ID: App Store Connect API key (.p8); use instead of an Apple ID signed into Xcode.
 # Needs: Apple ID signed into Xcode or an API key (automatic signing creates the distribution cert/profiles), the app record and
 # bundle IDs registered in App Store Connect, xcodegen, and Sources/EZCal/Core/Secrets.swift (compiled in).
@@ -50,4 +50,7 @@ PLIST
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist "$OUT/ExportOptions.plist" \
   -exportPath "$OUT/export" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"}
 
-if [ "$UPLOAD" = 1 ]; then echo "Uploaded build $BUILD to App Store Connect"; else echo "Exported $OUT/export (build $BUILD); rerun with UPLOAD=1 to upload"; fi
+if [ "$UPLOAD" = 1 ]; then
+  echo "Uploaded build $BUILD to App Store Connect"
+  if [ -n "${ASC_KEY_PATH:-}" ] && [ "${NO_DISTRIBUTE:-0}" != 1 ]; then scripts/ios_testflight_distribute.py "$BUILD"; fi
+else echo "Exported $OUT/export (build $BUILD); rerun with UPLOAD=1 to upload"; fi
