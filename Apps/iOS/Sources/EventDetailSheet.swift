@@ -6,6 +6,10 @@ struct EventDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var askScope = false
     @State private var confirmDelete = false
+    @State private var guestQuery = ""
+    @State private var suggestions: [DirectoryPerson] = []
+    @State private var addingGuest = false
+    @State private var addError: String?
     // Glass at half height, fading to an opaque sheet at the tall detent. A full-height (.large) sheet makes iOS
     // swap to opaque in one frame, so the tall detent stays just short of full and the fade is ours.
     private static let tall = PresentationDetent.fraction(0.94)
@@ -57,7 +61,7 @@ struct EventDetailSheet: View {
                         }
                     }
                 }
-                if !guests.isEmpty { attendeesSection }
+                if !guests.isEmpty || event.canAddGuests { attendeesSection }
                 if !event.notes.isEmpty {
                     Section("Notes") { Text(event.notes) }
                 }
@@ -144,13 +148,83 @@ struct EventDetailSheet: View {
                     Text("Going?")
                     Spacer()
                     ForEach([("Yes", "accepted"), ("Maybe", "tentative"), ("No", "declined")], id: \.1) { label, value in
-                        Button(label) { Task { await store.rsvp(event, value) } }
+                        Button(label) { Task { await store.rsvp(event, value, keepSheetOpen: true) } }
                             .buttonStyle(.bordered)
                             .tint(event.selfAttendee?.response == value ? .accentColor : .gray)
                     }
                 }
                 .accessibilityIdentifier("rsvpRow")
             }
+            if event.canAddGuests { addGuestRows }
+        }
+        .task(id: guestQuery) { await searchSuggestions() }
+    }
+
+    // MARK: Quick add guests (Google events; EventKit attendees are read-only)
+
+    @ViewBuilder private var addGuestRows: some View {
+        HStack {
+            Image(systemName: "person.badge.plus").foregroundStyle(.secondary)
+            TextField("Add people…", text: $guestQuery)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .keyboardType(.emailAddress)
+                .disabled(addingGuest)
+                .submitLabel(.done)
+                .onSubmit(addFromQuery)
+                .accessibilityIdentifier("addGuestField")
+            if addingGuest { ProgressView() }
+        }
+        ForEach(suggestions.prefix(5)) { p in
+            Button { addGuest(email: p.email, name: p.name) } label: {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(p.name).foregroundStyle(.primary)
+                    Text(p.email).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("guestSuggestion")
+        }
+        if Self.looksLikeEmail(guestQuery) && !suggestions.contains(where: { $0.email.lowercased() == guestQuery.lowercased() }) {
+            Button { addFromQuery() } label: { Label("Add \(guestQuery.trimmingCharacters(in: .whitespaces))", systemImage: "plus.circle") }
+                .accessibilityIdentifier("addTypedGuest")
+        }
+        if let addError { Text(addError).font(.footnote).foregroundStyle(.red) }
+        else if event.isRecurring {
+            Text("Adds to this occurrence only. Use Edit to change the whole series.").font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+
+    static func looksLikeEmail(_ q: String) -> Bool {
+        let t = q.trimmingCharacters(in: .whitespaces)
+        guard let at = t.firstIndex(of: "@"), at != t.startIndex else { return false }
+        return t[t.index(after: at)...].contains(".") && !t.contains(" ")
+    }
+
+    private func searchSuggestions() async {
+        addError = nil
+        guard guestQuery.count >= 2 else { suggestions = []; return }
+        try? await Task.sleep(nanoseconds: 250_000_000)   // debounce; cancelled when the query changes
+        guard !Task.isCancelled else { return }
+        let have = Set(event.attendees.map { $0.email.lowercased() })
+        let found = await store.searchDirectory(guestQuery).filter { !have.contains($0.email.lowercased()) }
+        if !Task.isCancelled { suggestions = found }
+    }
+
+    private func addFromQuery() {
+        let q = guestQuery.trimmingCharacters(in: .whitespaces)
+        if Self.looksLikeEmail(q) { addGuest(email: q, name: suggestions.first { $0.email.lowercased() == q.lowercased() }?.name) }
+        else if let first = suggestions.first { addGuest(email: first.email, name: first.name) }
+    }
+
+    private func addGuest(email: String, name: String?) {
+        let e = email.trimmingCharacters(in: .whitespaces).lowercased()
+        guard e.contains("@"), !addingGuest else { return }
+        addingGuest = true; addError = nil
+        Task {
+            do {
+                try await store.addGuests([Attendee(email: e, name: name)], to: event)
+                guestQuery = ""; suggestions = []
+            } catch { addError = error.localizedDescription }
+            addingGuest = false
         }
     }
 

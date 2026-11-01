@@ -67,10 +67,50 @@ final class MonthDetailUITests: EZCalUITestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 10))
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Marcus Lee, maybe'")).firstMatch
-        for _ in 0..<4 where !row.exists { app.staticTexts["detailTitle"].swipeUp() }
-        XCTAssertTrue(row.exists)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Dana Cole, declined'")).firstMatch.exists)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sam Ortiz, no response'")).firstMatch.exists)
+        // Lazy list in a sheet: the first swipe may only grow the detent, so wait after each one.
+        for _ in 0..<6 where !row.waitForExistence(timeout: 1) { app.staticTexts["detailTitle"].swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Dana Cole, declined'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sam Ortiz, no response'")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    /// The detail list is lazy: swipe until the element is realised and hittable.
+    private func scrollDetail(to el: XCUIElement) -> XCUIElement {
+        for _ in 0..<6 where !(el.exists && el.isHittable) { app.staticTexts["detailTitle"].swipeUp() }
+        XCTAssertTrue(el.isHittable)
+        return el
+    }
+
+    private func openDesignReview() {
+        app.terminate()
+        app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Design review"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 10))
+    }
+
+    func testRSVPUpdatesOwnResponse() throws {
+        openDesignReview()
+        let maybe = scrollDetail(to: app.buttons["Maybe"])
+        maybe.tap()
+        let me = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Me, maybe'")).firstMatch
+        for _ in 0..<6 where !me.exists { maybe.swipeDown() }
+        if !me.waitForExistence(timeout: 5) {
+            let labels = app.descendants(matching: .any).matching(identifier: "attendeeRow").allElementsBoundByIndex.map(\.label)
+            XCTFail("own row should show the new response; rows: \(labels); done=\(app.buttons["doneButton"].exists)")
+        }
+        XCTAssertTrue(app.buttons["doneButton"].exists, "sheet stays open")
+    }
+
+    func testAddGuestFromDirectorySuggestion() throws {
+        openDesignReview()
+        let field = scrollDetail(to: anyEl("addGuestField"))
+        field.tap()
+        field.typeText("alex")
+        let suggestion = app.buttons["guestSuggestion"].firstMatch
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 5))
+        suggestion.tap()
+        let added = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Alex Rivera, no response'")).firstMatch
+        XCTAssertTrue(added.waitForExistence(timeout: 5))
     }
 
     func testCalendarListTogglesFilterAgenda() throws {
