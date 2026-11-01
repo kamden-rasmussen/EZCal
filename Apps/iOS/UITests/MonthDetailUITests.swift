@@ -66,12 +66,13 @@ final class MonthDetailUITests: EZCalUITestCase {
         app.launchEnvironment["EZCAL_TEST_OPEN_EVENT"] = "Design review"
         app.launch()
         XCTAssertTrue(app.staticTexts["detailTitle"].waitForExistence(timeout: 10))
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Marcus Lee, maybe'")).firstMatch
-        // Lazy list in a sheet: the first swipe may only grow the detent, so wait after each one.
-        for _ in 0..<6 where !row.waitForExistence(timeout: 1) { app.staticTexts["detailTitle"].swipeUp() }
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Dana Cole, declined'")).firstMatch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sam Ortiz, no response'")).firstMatch.waitForExistence(timeout: 5))
+        // The guest list is a lazy list: after each swipe give the newly scrolled rows time to be realised before
+        // concluding they are missing (#152).
+        for guest in ["Marcus Lee, maybe", "Dana Cole, declined", "Sam Ortiz, no response"] {
+            let row = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", guest)).firstMatch
+            for _ in 0..<5 where !row.waitForExistence(timeout: 2) { app.staticTexts["detailTitle"].swipeUp() }
+            XCTAssertTrue(row.waitForExistence(timeout: 5), "missing guest row \(guest)")
+        }
     }
 
     /// The detail list is lazy: swipe until the element is realised and hittable.
@@ -118,8 +119,7 @@ final class MonthDetailUITests: EZCalUITestCase {
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10))
         let names = ["Me", "Team", "Home", "Family", "City League"]
         let before = rows.count
-        app.buttons["menuButton"].tap()
-        app.buttons["calendarsButton"].tap()
+        openMenuItem("calendarsButton", expecting: "calendarsDoneButton")
         for n in names {
             let t = app.switches["calendarToggle-\(n)"]
             XCTAssertTrue(t.waitForExistence(timeout: 5), "missing toggle \(n)")
@@ -127,8 +127,7 @@ final class MonthDetailUITests: EZCalUITestCase {
         }
         app.buttons["calendarsDoneButton"].tap()
         XCTAssertLessThan(rows.count, before, "hidden calendars should filter Agenda")
-        app.buttons["menuButton"].tap()
-        app.buttons["calendarsButton"].tap()
+        openMenuItem("calendarsButton", expecting: "calendarsDoneButton")
         for n in names { flip(app.switches["calendarToggle-\(n)"]) }
         app.buttons["calendarsDoneButton"].tap()
         XCTAssertEqual(rows.count, before)

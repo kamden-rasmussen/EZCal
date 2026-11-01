@@ -1,20 +1,9 @@
 import XCTest
 
 /// Settings / calendar list / subscriptions / tasks parity tests (demo mode, in-memory only).
-final class ParityDataUITests: XCTestCase {
-    var app: XCUIApplication!
-
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-        app = XCUIApplication()
-        app.launchEnvironment["EZCAL_DEMO"] = "1"
-        app.launch()
-    }
-
-    private func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
+final class ParityDataUITests: EZCalUITestCase {
     private func openSettings() {
-        app.buttons["menuButton"].tap()
-        app.buttons["settingsButton"].tap()
+        openMenuItem("settingsButton", expecting: "settingsDoneButton")
     }
     /// Settings is a lazy Form in a medium sheet; swipe until the element is on screen.
     @discardableResult private func reveal(_ el: XCUIElement) -> XCUIElement {
@@ -23,8 +12,7 @@ final class ParityDataUITests: XCTestCase {
         return el
     }
     private func openCalendars() {
-        app.buttons["menuButton"].tap()
-        app.buttons["calendarsButton"].tap()
+        openMenuItem("calendarsButton", expecting: "calendarsDoneButton")
     }
 
     func testSettingsHasParityControls() throws {
@@ -78,32 +66,44 @@ final class ParityDataUITests: XCTestCase {
         app.buttons["calendarsDoneButton"].tap()
     }
 
+    /// Drags `mover`'s reorder handle onto the top edge of `anchor`'s row and returns whether `mover` is now above it.
+    /// Entering edit mode animates every row (the handles slide in) and the handle's frame is not final until that
+    /// settles; resolving it early gives "Activation point invalid" (#152). So wait for the handle to be hittable
+    /// and for its frame to stop changing, then drag using frames read once.
+    private func dragRow(_ mover: String, above anchor: String) -> Bool {
+        let moverRow = app.cells.containing(.staticText, identifier: mover).firstMatch
+        let anchorRow = app.cells.containing(.staticText, identifier: anchor).firstMatch
+        let h = moverRow.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'")).firstMatch
+        XCTAssertTrue(h.waitForExistence(timeout: 10), "\(mover) row should show a reorder handle")
+        XCTAssertTrue(anchorRow.waitForExistence(timeout: 10))
+        var last = CGRect.null
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            let f = h.frame, stable = h.isHittable && f == last && !f.isEmpty
+            last = f
+            return stable
+        }, "reorder handle never settled")
+        let handle = h.frame, target = anchorRow.frame
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let from = origin.withOffset(CGVector(dx: handle.midX, dy: handle.midY))
+        let to = origin.withOffset(CGVector(dx: handle.midX, dy: target.minY + 4))
+        from.press(forDuration: 0.8, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 1)
+        let a = app.staticTexts[mover], b = app.staticTexts[anchor]
+        return waitUntil(timeout: 5) { a.exists && b.exists && a.frame.minY < b.frame.minY }
+    }
+
     func testReorderCalendarsInEditMode() throws {
         openCalendars()
         let me = app.switches["calendarToggle-Me"], team = app.switches["calendarToggle-Team"]
         XCTAssertTrue(team.waitForExistence(timeout: 5))
-        XCTAssertLessThan(me.frame.minY, team.frame.minY)
+        // The calendar order is persisted (also in demo mode, in the simulator's defaults), so a previous run on
+        // this simulator may have left Team above Me. Drag whichever is lower above the other.
+        let (top, bottom) = me.frame.minY < team.frame.minY ? ("Me", "Team") : ("Team", "Me")
         app.buttons["reorderCalendarsButton"].tap()
-        let handles = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'"))
-        XCTAssertTrue(handles.firstMatch.waitForExistence(timeout: 5), "edit mode should show reorder handles")
-        // XCUITest drag-reorder is unreliable in the simulator (and under parallel load the rows can still be
-        // animating into edit mode), so the drag itself is best effort: every element is waited for before use,
-        // nothing here can fail the test except the handles not appearing, and the order change is only logged.
-        let teamRow = app.cells.containing(.staticText, identifier: "Team").firstMatch
-        let meRow = app.cells.containing(.staticText, identifier: "Me").firstMatch
-        let h = teamRow.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'")).firstMatch
-        guard teamRow.waitForExistence(timeout: 5), meRow.waitForExistence(timeout: 5),
-              h.waitForExistence(timeout: 5), h.isHittable else {
-            NSLog("reorder rows not ready in this run; skipping the drag")
-            return
-        }
-        let from = h.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let to = meRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.6))
-        from.press(forDuration: 0.8, thenDragTo: to)
-        let me2 = app.staticTexts["Me"], team2 = app.staticTexts["Team"]
-        if me2.waitForExistence(timeout: 3), team2.exists, team2.frame.minY >= me2.frame.minY {
-            NSLog("reorder drag did not take effect in this run")
-        }
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'")).firstMatch
+            .waitForExistence(timeout: 10), "edit mode should show reorder handles")
+        XCTAssertTrue(dragRow(bottom, above: top), "\(bottom) should move above \(top)")
+        // Put the order back so later tests on this simulator see the default.
+        XCTAssertTrue(dragRow(top, above: bottom), "\(top) should move back above \(bottom)")
     }
 
     // MARK: - ICS subscriptions

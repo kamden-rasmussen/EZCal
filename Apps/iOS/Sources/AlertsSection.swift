@@ -44,38 +44,3 @@ struct AlertsSection: View {
         EventAlert.presets.contains(current) ? EventAlert.presets : (EventAlert.presets + [current]).sorted()
     }
 }
-
-/// Settings rows for the default alerts applied to new events.
-struct DefaultAlertsSettingsRows: View {
-    private static let unset = -1, none = -2
-    @State private var first: Int
-    @State private var second: Int
-
-    init() {
-        let d = AppSettings.defaultAlerts
-        _first = State(initialValue: d == nil ? Self.unset : (d!.first ?? Self.none))
-        _second = State(initialValue: d.flatMap { $0.count > 1 ? $0[1] : nil } ?? Self.none)
-    }
-
-    var body: some View {
-        Picker("First alert", selection: $first) {
-            Text("Calendar default").tag(Self.unset)
-            Text("None").tag(Self.none)
-            ForEach(EventAlert.presets, id: \.self) { Text(EventAlert.label($0)).tag($0) }
-        }
-        .accessibilityIdentifier("defaultAlertFirst")
-        Picker("Second alert", selection: $second) {
-            Text("None").tag(Self.none)
-            ForEach(EventAlert.presets, id: \.self) { Text(EventAlert.label($0)).tag($0) }
-        }
-        .disabled(first < 0)
-        .accessibilityIdentifier("defaultAlertSecond")
-        .onChange(of: first) { _, _ in save() }
-        .onChange(of: second) { _, _ in save() }
-    }
-
-    private func save() {
-        if first == Self.unset { AppSettings.defaultAlerts = nil; return }
-        AppSettings.defaultAlerts = first == Self.none ? [] : ([first] + (second >= 0 ? [second] : []))
-    }
-}

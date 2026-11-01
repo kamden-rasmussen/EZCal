@@ -36,11 +36,9 @@ final class DayWeekGridUITests: EZCalUITestCase {
         let down = ev.frame.midY < app.frame.midY
         let from = ev.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let to = from.withOffset(CGVector(dx: 0, dy: down ? 84 : -84))   // 1.5 h at 56 pt/h
-        from.press(forDuration: 0.8, thenDragTo: to)
-        chooseScopeIfAsked()
+        from.press(forDuration: 0.8, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
         let moved = anyEl("dayEvent")
-        XCTAssertTrue(moved.waitForExistence(timeout: 5))
-        XCTAssertNotEqual(moved.value as? String, before, "event time should change after a move")
+        XCTAssertTrue(finishEdit { moved.exists && moved.value as? String != before }, "event time should change after a move")
         XCTAssertFalse(app.staticTexts["detailTitle"].exists, "a drag must not open details")
     }
 
@@ -54,7 +52,7 @@ final class DayWeekGridUITests: EZCalUITestCase {
         bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 .withOffset(CGVector(dx: 0, dy: 56)))
-        chooseScopeIfAsked()
+        finishEdit { (self.anyEl("dayEvent").value as? String ?? "") != before }
         let afterBottom = anyEl("dayEvent").value as? String ?? ""
         XCTAssertNotEqual(afterBottom, before, "end time should change after resizing the bottom")
         let startBefore = before.components(separatedBy: " – ").first
@@ -65,7 +63,7 @@ final class DayWeekGridUITests: EZCalUITestCase {
         top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 .withOffset(CGVector(dx: 0, dy: -28)))
-        chooseScopeIfAsked()
+        finishEdit { (self.anyEl("dayEvent").value as? String ?? "") != afterBottom }
         let afterTop = anyEl("dayEvent").value as? String ?? ""
         XCTAssertNotEqual(afterTop.components(separatedBy: " – ").first, startBefore, "top resize should change the start")
         XCTAssertEqual(afterTop.components(separatedBy: " – ").last, afterBottom.components(separatedBy: " – ").last)
@@ -85,9 +83,9 @@ final class DayWeekGridUITests: EZCalUITestCase {
         let left = before.midX > 250
         let from = ev.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         from.press(forDuration: 0.8, thenDragTo: from.withOffset(CGVector(dx: left ? -52 : 52, dy: 56)))
-        chooseScopeIfAsked()
         let moved = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
             .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        finishEdit { moved.exists && abs(moved.frame.midX - before.midX) > 25 }
         XCTAssertTrue(moved.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(abs(moved.frame.midX - before.midX), 25, "event should land in the neighbouring day column")
         XCTAssertGreaterThan(moved.frame.minY, before.minY + 20, "and an hour later")
@@ -104,9 +102,9 @@ final class DayWeekGridUITests: EZCalUITestCase {
         XCTAssertTrue(bottom.waitForExistence(timeout: 5))
         let c = bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         c.press(forDuration: 0.1, thenDragTo: c.withOffset(CGVector(dx: 0, dy: 56)))
-        chooseScopeIfAsked()
         let after = app.descendants(matching: .any).matching(identifier: "weekDayEvent")
             .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        finishEdit { after.exists && after.frame.height > beforeH + 20 }
         XCTAssertGreaterThan(after.frame.height, beforeH + 20)
     }
 
@@ -119,6 +117,15 @@ final class DayWeekGridUITests: EZCalUITestCase {
             .press(forDuration: 0.1, thenDragTo: grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
         XCTAssertEqual(app.state, .runningForeground)
         XCTAssertTrue(anyEl("weekDayGridBackground").exists)
+    }
+
+    func testDayTabShowsDateOnlyOnce() throws {
+        selectTab("Day")
+        let title = anyEl("dayTitle")
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertFalse(title.label.isEmpty)
+        XCTAssertEqual(app.navigationBars.firstMatch.staticTexts.count, 0,
+                       "Day tab must not repeat the date as a nav-bar title")
     }
 
     // MARK: - 3-day view (#133)
