@@ -528,8 +528,56 @@ struct EventEditorView: View {
         }
     }
 
+    // MARK: Alerts (issue #131)
+
+    private var alertList: [Int] { draft.alerts ?? [] }
+
+    /// One menu per alert with a remove button, then "Add alert". nil alerts (Google calendar defaults) read as such.
+    private var alertsRows: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if draft.alerts == nil {
+                row("bell") { Text("Calendar default alerts").foregroundStyle(Theme.text3).accessibilityIdentifier("editorAlertsDefault") }
+            }
+            ForEach(Array(alertList.enumerated()), id: \.offset) { idx, minutes in
+                row("bell") {
+                    HStack {
+                        Menu {
+                            ForEach(alertOptions(including: minutes), id: \.self) { m in
+                                Button(EventAlert.label(m)) {
+                                    var l = alertList; l[idx] = m; draft.alerts = EventAlert.normalized(l)
+                                }
+                            }
+                        } label: { Text(EventAlert.label(minutes)) }
+                        .menuStyle(.borderlessButton).fixedSize()
+                        .accessibilityIdentifier("editorAlert-\(idx)")
+                        Spacer()
+                        Button { var l = alertList; l.remove(at: idx); draft.alerts = l } label: {
+                            Image(systemName: "minus.circle").foregroundStyle(Theme.text3)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Remove alert").help("Remove alert")
+                    }
+                }
+            }
+            if alertList.count < EventAlert.maxCount {
+                row("bell.badge") {
+                    Button("Add alert") {
+                        let next = ([10, 0, 5, 15, 30, 60, 1440] + EventAlert.presets).first { !alertList.contains($0) } ?? 10
+                        draft.alerts = EventAlert.normalized(alertList + [next])
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Theme.text3)
+                    .accessibilityIdentifier("editorAddAlert")
+                }
+            }
+        }
+    }
+
+    private func alertOptions(including current: Int) -> [Int] {
+        EventAlert.presets.contains(current) ? EventAlert.presets : (EventAlert.presets + [current]).sorted()
+    }
+
     private var detailsBlock: some View {
         VStack(alignment: .leading, spacing: 14) {
+            alertsRows
             if !isEK { visibilityRow }
             row("mappin.and.ellipse") {
                 TextField("Add location", text: $draft.location).textFieldStyle(.plain)
