@@ -93,15 +93,29 @@ class EZCalUITestCase: XCTestCase {
 
     // MARK: - Touch drag / resize
 
-    /// Goes to Day view and returns the first timed event block found in the coming week.
+    /// Demo events that belong to another person's calendar (overlay): shown in the grid but read-only, so a
+    /// long-press does not lift them and they get no resize handles. Monday's first event ("Investor prep") is one,
+    /// which made the drag/resize tests fail every Monday (#171).
+    static let readOnlyDemoEvents = ["Investor prep", "1:1 with Dana", "Demo prep"]
+
+    /// Goes to Day view and returns a timed event block that can be dragged and resized, from the first day in the
+    /// coming week that has one: not an overlay event, and tall enough to carry resize handles when there is a
+    /// choice. The element is found by its title, so it keeps resolving to the same event after it is edited.
     func firstDayEvent() -> XCUIElement {
         selectTab("Day")
+        let blocks = app.descendants(matching: .any).matching(identifier: "dayEvent")
         for _ in 0..<7 {
-            if anyEl("dayEvent").waitForExistence(timeout: 1) { return scrolledIntoView(anyEl("dayEvent")) }
+            if blocks.firstMatch.waitForExistence(timeout: 1) {
+                let editable = blocks.allElementsBoundByIndex.filter { !Self.readOnlyDemoEvents.contains($0.label) }
+                if let pick = editable.first(where: { $0.frame.height > 40 }) ?? editable.first {
+                    let title = pick.label
+                    return scrolledIntoView(blocks.matching(NSPredicate(format: "label == %@", title)).firstMatch)
+                }
+            }
             app.buttons["nextButton"].tap()
         }
-        XCTFail("no timed events in the next week")
-        return anyEl("dayEvent")
+        XCTFail("no editable timed events in the next week")
+        return blocks.firstMatch
     }
 
     /// The time grid opens scrolled to the first event, so the now line (an accessibility element inside the
