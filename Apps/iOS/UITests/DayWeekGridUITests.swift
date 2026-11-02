@@ -37,7 +37,7 @@ final class DayWeekGridUITests: EZCalUITestCase {
         let from = ev.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let to = from.withOffset(CGVector(dx: 0, dy: down ? 84 : -84))   // 1.5 h at 56 pt/h
         from.press(forDuration: 0.8, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
-        let moved = anyEl("dayEvent")
+        let moved = ev
         XCTAssertTrue(finishEdit { moved.exists && moved.value as? String != before }, "event time should change after a move")
         XCTAssertFalse(app.staticTexts["detailTitle"].exists, "a drag must not open details")
     }
@@ -52,8 +52,8 @@ final class DayWeekGridUITests: EZCalUITestCase {
         bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: bottom.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 .withOffset(CGVector(dx: 0, dy: 56)))
-        finishEdit { (self.anyEl("dayEvent").value as? String ?? "") != before }
-        let afterBottom = anyEl("dayEvent").value as? String ?? ""
+        finishEdit { (ev.value as? String ?? "") != before }
+        let afterBottom = ev.value as? String ?? ""
         XCTAssertNotEqual(afterBottom, before, "end time should change after resizing the bottom")
         let startBefore = before.components(separatedBy: " – ").first
         XCTAssertEqual(afterBottom.components(separatedBy: " – ").first, startBefore, "bottom resize keeps the start")
@@ -63,8 +63,8 @@ final class DayWeekGridUITests: EZCalUITestCase {
         top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: top.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 .withOffset(CGVector(dx: 0, dy: -28)))
-        finishEdit { (self.anyEl("dayEvent").value as? String ?? "") != afterBottom }
-        let afterTop = anyEl("dayEvent").value as? String ?? ""
+        finishEdit { (ev.value as? String ?? "") != afterBottom }
+        let afterTop = ev.value as? String ?? ""
         XCTAssertNotEqual(afterTop.components(separatedBy: " – ").first, startBefore, "top resize should change the start")
         XCTAssertEqual(afterTop.components(separatedBy: " – ").last, afterBottom.components(separatedBy: " – ").last)
     }
