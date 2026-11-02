@@ -25,13 +25,21 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private nonisolated static let openAction = "OPEN"
 
     private let center = UNUserNotificationCenter.current()
-    private var categoriesRegistered = false
+    /// iOS keeps at most 64 pending local notifications and silently drops the rest.
+    private nonisolated static let maxPending = 64
 
-    private override init() { super.init() }
+    private override init() {
+        super.init()
+        // The delegate and categories must be in place from launch, not just after permission is
+        // requested: a notification tapped while the app is closed is delivered to the delegate as the
+        // app starts, and without one the tap (and its Join/Open action) is lost.
+        registerCategories()
+    }
 
-    private func registerCategoriesIfNeeded() {
-        guard !categoriesRegistered else { return }
-        categoriesRegistered = true
+    /// Touch `shared` early in app launch so `init` runs before any notification response arrives.
+    func start() {}
+
+    private func registerCategories() {
         center.delegate = self
         let join = UNNotificationAction(identifier: Self.joinAction, title: "Join", options: [.foreground])
         let open = UNNotificationAction(identifier: Self.openAction, title: "Open", options: [.foreground])
@@ -44,7 +52,6 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     /// Only ever called right before the first real schedule — never at launch — so permission is
     /// requested lazily, once the user has actually turned reminders on.
     private func ensureAuthorized() async -> Bool {
-        registerCategoriesIfNeeded()
         let settings = await center.notificationSettings()
         switch settings.authorizationStatus {
         case .authorized, .provisional: return true
@@ -66,6 +73,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         guard await ensureAuthorized() else { return }
         let pending = await center.pendingNotificationRequests()
         let ourPending = Set(pending.map(\.identifier).filter { $0.hasPrefix(Self.idPrefix) })
+        let planned = Array(planned.sorted { $0.fireDate < $1.fireDate }.prefix(Self.maxPending))
         let desired = Set(planned.map(\.id))
 
         let stale = ourPending.subtracting(desired)

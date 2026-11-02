@@ -6,7 +6,10 @@ struct EZCaliOSApp: App {
     @Environment(\.scenePhase) private var phase
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system.rawValue
 
-    init() { _ = OpenEventRouter.shared }   // start observing notification taps before any view exists
+    init() {
+        _ = OpenEventRouter.shared   // start observing notification taps before any view exists
+        NotificationService.shared.start()   // delegate must exist at launch so notification taps aren't lost
+    }
 
     var body: some Scene {
         WindowGroup {
