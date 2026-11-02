@@ -51,6 +51,7 @@ struct SettingsSheet: View {
                     }
                     .accessibilityIdentifier("appearancePicker")
                 }
+                Section("Working hours") { WorkingHoursSettingsRows() }
                 Section("New events") {
                     Picker("Default length", selection: $duration) {
                         ForEach([15, 30, 45, 60, 90, 120], id: \.self) { Text("\($0) min").tag($0) }

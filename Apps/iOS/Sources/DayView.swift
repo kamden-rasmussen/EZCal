@@ -12,6 +12,10 @@ struct DayView: View {
     private var hourHeight: CGFloat {
         CGFloat(min(max(hourHeightStorage, AppSettings.hourHeightRange.lowerBound), AppSettings.hourHeightRange.upperBound))
     }
+    @AppStorage(WorkingHours.Keys.days) private var workDaysRaw = WorkingHours.defaultDaysRaw
+    @AppStorage(WorkingHours.Keys.start) private var workStart = WorkingHours.standard.startMinute
+    @AppStorage(WorkingHours.Keys.end) private var workEnd = WorkingHours.standard.endMinute
+    private var workingHours: WorkingHours { WorkingHours(daysRaw: workDaysRaw, startMinute: workStart, endMinute: workEnd) }
     @State private var hourHeightAtPinchStart: Double?
     private let gutter: CGFloat = 48
     @State private var drag: DayDragState?
@@ -287,6 +291,14 @@ struct DayView: View {
                                     .onEnded { v in
                                         if case .second(true, let drag?) = v { createEvent(at: drag.location.y, day: d) }
                                     })
+                            // Wash over hours outside the working day (Settings -> Working hours).
+                            ForEach(Array(workingHours.nonWorkingRanges(on: d, cal: store.cal).enumerated()), id: \.offset) { _, r in
+                                Theme.nonWorkingShade
+                                    .frame(width: colWidth, height: CGFloat(r.count) / 60 * hourHeight)
+                                    .offset(x: gutter + colWidth * CGFloat(i), y: CGFloat(r.lowerBound) / 60 * hourHeight)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
+                            }
                             ForEach(EventLayout.place(timedByDay[i], day: d, cal: store.cal)) { item in
                                 block(item, days: days, col: i, colWidth: colWidth, gridWidth: geo.size.width)
                             }
@@ -599,13 +611,12 @@ struct DayView: View {
         store.newDraft(start: GridTime.date(minutes: m, on: day, cal: store.cal))
     }
 
-    /// Hour the grid scrolls to when it opens or the date changes: a little before "now" when today is
-    /// showing, otherwise an hour before the first event (8 on an empty day).
+    /// Hour the grid scrolls to when it opens or the date changes; see `WorkingHours.initialScrollHour`.
     private func startHour(_ timed: [CalEvent]) -> Int {
-        if visibleDays.contains(where: { store.cal.isDateInToday($0) }) {
-            return max(store.cal.component(.hour, from: Date()) - 2, 0)
-        }
-        return max((timed.first.map { store.cal.component(.hour, from: $0.start) } ?? 8) - 1, 0)
+        let today = visibleDays.contains(where: { store.cal.isDateInToday($0) })
+        return workingHours.initialScrollHour(
+            nowHour: today ? store.cal.component(.hour, from: Date()) : nil,
+            firstEventHour: timed.first.map { store.cal.component(.hour, from: $0.start) })
     }
 
     private func hourLabel(_ h: Int) -> String {

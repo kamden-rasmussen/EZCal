@@ -11,9 +11,6 @@ struct SettingsView: View {
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("notificationLeadMinutes") private var notificationLeadMinutes = 5
     @AppStorage("notificationVideoOnly") private var notificationVideoOnly = false
-    @AppStorage(WorkingHours.Keys.days) private var workDaysRaw = WorkingHours.defaultDaysRaw
-    @AppStorage(WorkingHours.Keys.start) private var workStart = WorkingHours.standard.startMinute
-    @AppStorage(WorkingHours.Keys.end) private var workEnd = WorkingHours.standard.endMinute
     @AppStorage("showSecondaryZone") private var showSecondaryZone = true
     @AppStorage("secondaryZoneID") private var secondaryZoneID = ""
     // Zoom meeting defaults — read into a fresh `ZoomMeetingOptions` wherever a meeting is created
@@ -192,19 +189,7 @@ struct SettingsView: View {
             .tag(Tab.general)
 
             Form {
-                Section("Working hours") {
-                    WorkDaysPicker(daysRaw: $workDaysRaw)
-                    LabeledContent("Starts") {
-                        MinutePicker(minute: $workStart)
-                            .onChange(of: workStart) { _, new in if workEnd <= new { workEnd = min(new + WorkingHours.minuteStep, 24 * 60) } }
-                    }
-                    LabeledContent("Ends") {
-                        MinutePicker(minute: $workEnd)
-                            .onChange(of: workEnd) { _, new in if new <= workStart { workStart = max(new - WorkingHours.minuteStep, 0) } }
-                    }
-                    Text("Hours outside this range are shaded in the grid, and the day starts scrolled to the beginning of your working day.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                Section("Working hours") { WorkingHoursSettingsRows() }
                 Section("Secondary time zone") {
                     Toggle("Show a second hour column", isOn: $showSecondaryZone)
                     Picker("Time zone", selection: $secondaryZoneID) {
@@ -250,57 +235,6 @@ struct SettingsView: View {
         case .auto:
             return "Side by side columns when they'd stay readable; cascades instead once a cluster would slice into columns narrower than that."
         }
-    }
-}
-
-/// Seven day-of-week toggle chips (Sun…Sat order follows the user's locale start-of-week for familiarity,
-/// but the underlying storage always uses Calendar weekday numbers 1...7 so it's locale-independent).
-struct WorkDaysPicker: View {
-    @Binding var daysRaw: String
-    private let symbols = Calendar.current.veryShortWeekdaySymbols   // index 0 = Sunday, matching weekday 1
-
-    var body: some View {
-        let days = WorkingHours.decodeDays(daysRaw)
-        HStack(spacing: 6) {
-            ForEach(1...7, id: \.self) { weekday in
-                let on = days.contains(weekday)
-                Button {
-                    var d = days
-                    if on { d.remove(weekday) } else { d.insert(weekday) }
-                    daysRaw = WorkingHours.encodeDays(d)
-                } label: {
-                    Text(symbols[weekday - 1])
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 26, height: 26)
-                        .foregroundStyle(on ? Theme.accentText : Theme.text2)
-                        .background(Circle().fill(on ? Theme.accent : Theme.hover))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Calendar.current.weekdaySymbols[weekday - 1])
-                .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-            }
-        }
-    }
-}
-
-/// Half-hour time-of-day picker bound to minutes-since-midnight, so it stores cleanly in UserDefaults/AppSettings.
-struct MinutePicker: View {
-    @Binding var minute: Int
-
-    private var asDate: Binding<Date> {
-        Binding(
-            get: { Calendar.current.date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: Date()) ?? Date() },
-            set: { d in
-                let c = Calendar.current.dateComponents([.hour, .minute], from: d)
-                minute = (c.hour ?? 0) * 60 + (((c.minute ?? 0) / WorkingHours.minuteStep) * WorkingHours.minuteStep)
-            })
-    }
-
-    var body: some View {
-        DatePicker("", selection: asDate, displayedComponents: .hourAndMinute)
-            .labelsHidden()
-            .datePickerStyle(.stepperField)
-            .frame(width: 100)
     }
 }
 

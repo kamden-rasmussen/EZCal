@@ -63,6 +63,25 @@ struct WorkingHours: Equatable {
     /// End hour rounded up, so a partial last hour (e.g. ending 17:30) still shows in an hour-by-hour axis.
     var endHour: Int { (endMinute + 59) / 60 }
 
+    enum Edge { case start, end }
+
+    /// Keeps start < end after the user edits one side: the other side is pushed a step away.
+    static func reconciled(start: Int, end: Int, editing: Edge) -> (start: Int, end: Int) {
+        switch editing {
+        case .start: return (start, end <= start ? min(start + minuteStep, 24 * 60) : end)
+        case .end: return (start >= end ? max(end - minuteStep, 0) : start, end)
+        }
+    }
+
+    /// Hour a phone-style grid should open scrolled to. Today: a couple of hours before now, but never
+    /// above the start of the working day. Other days: an hour before the first event, or the start of
+    /// the working day when that is earlier (or the day is empty).
+    func initialScrollHour(nowHour: Int?, firstEventHour: Int?) -> Int {
+        if let nowHour { return min(max(nowHour - 2, startHour), 23) }
+        if let e = firstEventHour { return max(min(e - 1, startHour), 0) }
+        return startHour
+    }
+
     static func minuteOfDay(_ date: Date, cal: Calendar = .current) -> Int {
         let c = cal.dateComponents([.hour, .minute], from: date)
         return (c.hour ?? 0) * 60 + (c.minute ?? 0)

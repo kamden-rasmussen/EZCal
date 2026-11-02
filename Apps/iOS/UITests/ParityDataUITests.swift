@@ -36,6 +36,17 @@ final class ParityDataUITests: EZCalUITestCase {
         app.buttons["settingsDoneButton"].tap()
     }
 
+    /// Working hours (#117): the days and start/end rows exist, and tapping a day chip toggles it.
+    func testSettingsWorkingHoursDaysToggle() throws {
+        openSettings()
+        let sunday = reveal(app.buttons["workDay-1"])   // off by default (Mon-Fri)
+        reveal(anyEl("workStartPicker"))
+        reveal(anyEl("workEndPicker"))
+        let before = sunday.isSelected
+        sunday.tap()
+        XCTAssertTrue(waitUntil(timeout: 5) { sunday.isSelected != before }, "tapping a day chip should toggle it")
+    }
+
     // MARK: - Calendar list
 
     func testColorPickerShowsSwatchesAndReset() throws {
