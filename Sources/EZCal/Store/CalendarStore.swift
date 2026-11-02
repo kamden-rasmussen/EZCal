@@ -202,8 +202,10 @@ final class CalendarStore {
     var visibleDays: [Date] {
         let c = cal
         switch mode {
-        case .day:
-            return [c.startOfDay(for: anchor)]
+        case .day, .threeDay:
+            // Day / 3 Day: `anchor` is the leftmost day, followed by consecutive days.
+            let start = c.startOfDay(for: anchor)
+            return (0..<(mode.consecutiveDayCount ?? 1)).map { c.date(byAdding: .day, value: $0, to: start)! }
         case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
             // macOS Week / Work Week scroll continuously (Views/WeekScrollView.swift): `anchor` is the leftmost
             // visible day and the visible days are the next N column days from there (weekends skipped when hidden).
@@ -240,7 +242,9 @@ final class CalendarStore {
     private var baseFetchRange: Range<Date> {
         let c = cal
         switch mode {
-        case .day: return c.startOfDay(for: anchor)..<c.endOfDay(anchor)
+        case .day, .threeDay:
+            let n = mode.consecutiveDayCount ?? 1
+            return c.startOfDay(for: anchor)..<c.date(byAdding: .day, value: n, to: c.startOfDay(for: anchor))!
         case .workWeek where Self.continuousWeekScroll, .week where Self.continuousWeekScroll:
             // Visible days plus a two-week buffer either side, so scrolling doesn't refetch per day.
             return WeekScrollMath.fetchRange(visible: visibleDays, bufferDays: 14, cal: c)
@@ -264,7 +268,7 @@ final class CalendarStore {
         switch mode {
         case .day: return (anchor.formatted(.dateTime.weekday(.wide).month(.wide).day()), year)
         case .month: return (anchor.formatted(.dateTime.month(.wide)), year)
-        case .week, .workWeek:
+        case .week, .workWeek, .threeDay:
             guard let f = days.first, let l = days.last else { return ("", year) }
             let sameMonth = cal.isDate(f, equalTo: l, toGranularity: .month)
             let main = sameMonth
@@ -283,7 +287,7 @@ final class CalendarStore {
     func step(_ n: Int) {
         let c = cal
         switch mode {
-        case .day: anchor = c.date(byAdding: .day, value: n, to: anchor)!
+        case .day, .threeDay: anchor = c.date(byAdding: .day, value: n * (mode.consecutiveDayCount ?? 1), to: anchor)!
         case .week, .workWeek: anchor = c.date(byAdding: .weekOfYear, value: n, to: anchor)!
         case .month: anchor = c.date(byAdding: .month, value: n, to: anchor)!
         }

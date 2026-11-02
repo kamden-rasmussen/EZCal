@@ -172,6 +172,7 @@ extension CalendarStore {
         add("today", "Go to", "Today", icon: "T", key: "T") { self.goToday() }
         add("next", "Go to", "Next \(mode.title.lowercased())", icon: "→", key: "]") { self.step(1) }
         add("prev", "Go to", "Previous \(mode.title.lowercased())", icon: "←", key: "[") { self.step(-1) }
+        add("threeday", "Views", "3 day view", icon: "3", key: "3") { self.setMode(.threeDay) }
         add("workweek", "Views", "Work week view (Mon–Fri)", icon: "5", key: "5") { self.setMode(.workWeek) }
         add("week", "Views", "Week view", icon: "W", key: "W") { self.setMode(.week) }
         add("day", "Views", "Day view", icon: "D", key: "D") { self.setMode(.day) }

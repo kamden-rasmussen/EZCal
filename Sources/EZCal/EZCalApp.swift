@@ -48,6 +48,7 @@ struct EZCalApp: App {
                 Button("Go to Date…") { store.openPalette("go to ") }.keyboardShortcut("g")
                 Divider()
                 Button("Day") { store.setMode(.day) }.keyboardShortcut("1")
+                Button("3 Day") { store.setMode(.threeDay) }.keyboardShortcut("5")
                 Button("Work Week (Mon–Fri)") { store.setMode(.workWeek) }.keyboardShortcut("2")
                 Button("Week") { store.setMode(.week) }.keyboardShortcut("3")
                 Button("Month") { store.setMode(.month) }.keyboardShortcut("4")

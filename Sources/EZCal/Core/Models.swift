@@ -233,11 +233,20 @@ struct EventDraft: Identifiable {
 }
 
 enum ViewMode: String, CaseIterable, Identifiable {
-    case day, workWeek, week, month
+    case day, threeDay, workWeek, week, month
     var id: String { rawValue }
+    /// Columns of a plain consecutive-day grid (Day / 3 Day); nil for the week-style and month modes.
+    var consecutiveDayCount: Int? {
+        switch self {
+        case .day: return 1
+        case .threeDay: return 3
+        case .workWeek, .week, .month: return nil
+        }
+    }
     var title: String {
         switch self {
         case .day: return "Day"
+        case .threeDay: return "3 Day"
         case .workWeek: return "Work week"
         case .week: return "Week"
         case .month: return "Month"
