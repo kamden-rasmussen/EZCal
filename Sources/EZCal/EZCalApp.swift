@@ -15,6 +15,7 @@ struct EZCalApp: App {
     @State private var updates = UpdateChecker()
 
     init() {
+        NotificationService.shared.start()   // delegate must exist at launch so notification taps aren't lost
         let s = CalendarStore()
         _store = State(initialValue: s)
         DebugSnapshot.scheduleIfRequested(store: s)
