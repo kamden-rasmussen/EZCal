@@ -21,7 +21,6 @@ struct SettingsSheet: View {
                 Section("Accounts") {
                     LabeledContent("Device calendars (iCloud etc.)", value: store.eventKitEnabled ? "Connected" : "Not connected")
                         .accessibilityIdentifier("settingsDevice")
-                    LabeledContent("Google Calendar", value: "Not set up on iOS yet")
                     LabeledContent("Zoom", value: "Not set up on iOS yet")
                 }
                 Section("Calendar view") {
@@ -65,6 +64,34 @@ struct SettingsSheet: View {
                 }
                 Section("Default alerts for new events") { DefaultAlertsSettingsRows() }
                 Section("Default calendar for new events") { DefaultCalendarSettingsRows() }
+                Section("Google accounts") {
+                    ForEach(store.accounts) { a in
+                        HStack {
+                            Text(a.email)
+                            Spacer()
+                            Button("Remove", role: .destructive) { store.signOut(a) }
+                                .buttonStyle(.borderless)
+                                .accessibilityIdentifier("googleRemove-\(a.email)")
+                        }
+                    }
+                    if store.googleNeedsSignIn {
+                        Label("Google's sign-in expired. Sign in again to keep syncing.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                    Button {
+                        Task { await store.signIn() }
+                    } label: {
+                        Label(store.isSigningIn ? "Waiting for browser…" : (store.googleNeedsSignIn ? "Sign in with Google again" : "Sign in with Google"),
+                              systemImage: "person.badge.plus")
+                    }
+                    .disabled(store.isSigningIn || !AppSettings.hasGoogleCredentials)
+                    .accessibilityIdentifier("googleSignInButton")
+                    if !AppSettings.hasGoogleCredentials {
+                        Text("Google sign-in isn't configured in this build (no iOS client ID).")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("googleNotConfiguredHint")
+                    }
+                }
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)
                         .accessibilityIdentifier("notificationsToggle")

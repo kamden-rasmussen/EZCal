@@ -158,9 +158,14 @@ final class AgendaNavigationUITests: EZCalUITestCase {
 
     func testSettingsSheetShowsAccountStatus() throws {
         openMenuItem("settingsButton", expecting: "settingsDoneButton")
-        XCTAssertTrue(app.staticTexts["Google Calendar"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Zoom"].waitForExistence(timeout: 5))
         let n = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Not set up on iOS yet'")).count
-        XCTAssertGreaterThanOrEqual(n, 2)
+        XCTAssertGreaterThanOrEqual(n, 1)
+        // The Google section sits lower in the sheet; scroll until its sign-in button exists.
+        let google = app.descendants(matching: .any).matching(identifier: "googleSignInButton").firstMatch
+        for _ in 0..<8 where !google.exists { app.swipeUp() }
+        XCTAssertTrue(google.exists)
+        for _ in 0..<8 where !app.buttons["settingsDoneButton"].isHittable { app.swipeDown() }
         app.buttons["settingsDoneButton"].tap()
     }
 

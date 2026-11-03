@@ -1,4 +1,7 @@
 // Shared build settings. Override the signing team in Config/Local.xcconfig (gitignored):
 //   DEVELOPMENT_TEAM = ABCDE12345
 DEVELOPMENT_TEAM = MN3744WT73
+// Google sign-in redirect scheme (the reversed iOS client ID, com.googleusercontent.apps.<id>). Fill it in
+// Config/Local.xcconfig once the iOS OAuth client exists; this placeholder keeps builds working without it.
+GOOGLE_IOS_URL_SCHEME = com.googleusercontent.apps.unconfigured
 #include? "Local.xcconfig"

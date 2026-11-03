@@ -1,7 +1,13 @@
 # EZCal iOS
 
 XcodeGen project (`project.yml`). Sources are in `Sources/`; shared code is compiled from `../../Sources/EZCal/{Core,Store,Services}`.
-This build reads on-device calendars (iCloud etc.) via EventKit. Google/Zoom are not set up on iOS yet (see GitHub issue #37).
+This build reads on-device calendars (iCloud etc.) via EventKit. Google Calendar works once an iOS OAuth client is configured (below); Zoom is not set up on iOS yet (see GitHub issue #37).
+
+## Google sign-in
+Sign-in is disabled (with a hint in Settings and on the connect screen) until `googleIOSClientID` is set.
+1. Create an OAuth client of type "iOS" for bundle ID `com.ezcal.app.ios` (see `TODO.md`) and put its client ID in `Sources/EZCal/Core/Secrets.swift` as `googleIOSClientID`.
+2. Put the reversed client ID in `Apps/iOS/Config/Local.xcconfig` (gitignored): `GOOGLE_IOS_URL_SCHEME = com.googleusercontent.apps.<id>`. `Info.plist` reads it into `CFBundleURLTypes`; the default placeholder in `Base.xcconfig` keeps builds working without it.
+3. Rebuild. Settings > Google accounts adds, re-signs-in and removes accounts.
 
 ## Simulator
 `make ios-test` runs the UI tests (demo data, in-memory).

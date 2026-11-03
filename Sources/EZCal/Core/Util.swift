@@ -118,7 +118,11 @@ enum AppSettings {
     static var zoomClientID: String { Secrets.zoomClientID }
     static var zoomClientSecret: String { Secrets.zoomClientSecret }
 
+    #if os(iOS)
+    static var hasGoogleCredentials: Bool { !Secrets.googleIOSClientID.isEmpty }
+    #else
     static var hasGoogleCredentials: Bool { !googleClientID.isEmpty }
+    #endif
     static var hasZoomCredentials: Bool { !zoomClientID.isEmpty && !zoomClientSecret.isEmpty }
 
     // Zoom meeting defaults (Settings → Zoom); see `ZoomMeetingOptions`.

@@ -1,2 +1,5 @@
 // Copy to Local.xcconfig (gitignored) and fill in your Apple Developer Team ID.
 DEVELOPMENT_TEAM = YOURTEAMID
+// Reversed iOS Google client ID: client ID "123-abc.apps.googleusercontent.com" -> "com.googleusercontent.apps.123-abc".
+// (The client ID itself goes in Sources/EZCal/Core/Secrets.swift as googleIOSClientID.)
+// GOOGLE_IOS_URL_SCHEME = com.googleusercontent.apps.123-abc
