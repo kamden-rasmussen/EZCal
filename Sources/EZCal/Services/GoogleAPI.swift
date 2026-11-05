@@ -166,6 +166,8 @@ struct GoogleAPI: Sendable {
                 .init(name: "timeMin", value: RFC3339.string(range.lowerBound)),
                 .init(name: "timeMax", value: RFC3339.string(range.upperBound)),
             ]
+            // Ask for focus time / out of office explicitly rather than relying on the unset-means-all default.
+            items += ["default", "focusTime", "outOfOffice", "fromGmail"].map { .init(name: "eventTypes", value: $0) }
             if let token { items.append(.init(name: "pageToken", value: token)) }
             c.queryItems = items
             let list = try JSONDecoder().decode(GEventList.self, from: try await data("GET", c.url!))
