@@ -32,6 +32,16 @@ final class EventGroupingTests: XCTestCase {
         XCTAssertEqual(placed.sorted { $0.sideSlot < $1.sideSlot }.map(\.id), ["b", "a"])
     }
 
+    func testCalendarFirstOrderOverridesStartTimeForOverlaps() {
+        var early = event("early", title: "Alpha", source: "s1", minutes: 60); early.sourceRank = 5
+        var late = event("late", title: "Beta", source: "s2", minutes: 60, offset: 1800); late.sourceRank = 1
+        func leftToRight(_ o: SameTimeOrder) -> [String] {
+            EventLayout.place([early, late], day: day, cal: cal, order: o).sorted { $0.sideSlot < $1.sideSlot }.map(\.id)
+        }
+        XCTAssertEqual(leftToRight(.startFirst), ["early", "late"])
+        XCTAssertEqual(leftToRight(.calendarFirst), ["late", "early"])
+    }
+
     func testSameMeetingOnThreeCalendarsFoldsIntoOneStack() {
         let items = EventGrouping.group([event("a", title: "Sync", source: "s1"),
                                          event("b", title: " sync ", source: "s2", offset: 120),

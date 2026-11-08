@@ -182,6 +182,7 @@ struct TimeGridView: View {
 struct DayColumn: View {
     @Environment(CalendarStore.self) private var store
     @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.sideBySide.rawValue
+    @AppStorage("sameTimeOrder") private var sameTimeOrderRaw = SameTimeOrder.startFirst.rawValue
     let day: Date
     let hourHeight: Double
 
@@ -194,7 +195,8 @@ struct DayColumn: View {
     private var overlapMode: OverlapLayoutMode { OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .sideBySide }
 
     var body: some View {
-        let placed = EventLayout.place(store.events(on: day).timed, day: day, cal: store.cal)
+        let placed = EventLayout.place(store.events(on: day).timed, day: day, cal: store.cal,
+                                       order: SameTimeOrder(rawValue: sameTimeOrderRaw) ?? .startFirst)
         let dayStart = store.cal.startOfDay(for: day)
         let isToday = Calendar.current.isDateInToday(day)
         let dueTasks = store.tasks.tasks(on: day, cal: store.cal).timed

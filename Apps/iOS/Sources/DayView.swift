@@ -35,6 +35,7 @@ struct DayView: View {
     @State private var lifting = false
     /// Overlap layout (shared with macOS: same key/values — Side by side / Overlap (cascade) / Auto).
     @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.sideBySide.rawValue
+    @AppStorage("sameTimeOrder") private var sameTimeOrderRaw = SameTimeOrder.startFirst.rawValue
     private var overlapMode: OverlapLayoutMode { OverlapLayoutMode(rawValue: overlapLayoutModeRaw) ?? .sideBySide }
     /// Stacked (same meeting on several calendars) card that was tapped, and the calendar picked from its list.
     @State private var stackSelection: StackSelection?
@@ -299,7 +300,8 @@ struct DayView: View {
                                     .allowsHitTesting(false)
                                     .accessibilityHidden(true)
                             }
-                            ForEach(EventLayout.place(timedByDay[i], day: d, cal: store.cal)) { item in
+                            ForEach(EventLayout.place(timedByDay[i], day: d, cal: store.cal,
+                                                                order: SameTimeOrder(rawValue: sameTimeOrderRaw) ?? .startFirst)) { item in
                                 block(item, days: days, col: i, colWidth: colWidth, gridWidth: geo.size.width)
                             }
                             if store.cal.isDateInToday(d) {
