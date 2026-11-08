@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("defaultVideo") private var defaultVideo = "none"
     @AppStorage("hourHeight") private var hourHeight = 56.0
     @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.sideBySide.rawValue
+    @AppStorage("sameTimeOrder") private var sameTimeOrderRaw = SameTimeOrder.startFirst.rawValue
     @AppStorage("notificationsEnabled") private var notificationsEnabled = false
     @AppStorage("notificationLeadMinutes") private var notificationLeadMinutes = 5
     @AppStorage("notificationVideoOnly") private var notificationVideoOnly = false
@@ -159,6 +160,12 @@ struct SettingsView: View {
                     Text("Auto (side by side when it fits)").tag(OverlapLayoutMode.auto.rawValue)
                 }
                 Text(overlapModeCaption)
+                    .font(.caption).foregroundStyle(.secondary)
+                Picker("Order overlapping events", selection: $sameTimeOrderRaw) {
+                    Text("By start time, then calendar").tag(SameTimeOrder.startFirst.rawValue)
+                    Text("By account and calendar order").tag(SameTimeOrder.calendarFirst.rawValue)
+                }
+                Text("Calendar order follows the sidebar: account order first, then each account's calendar order.")
                     .font(.caption).foregroundStyle(.secondary)
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)

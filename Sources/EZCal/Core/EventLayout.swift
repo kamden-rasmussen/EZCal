@@ -97,6 +97,14 @@ enum OverlapLayoutMode: String {
     case auto         // side-by-side columns when a cluster's slice width would stay readable; cascade otherwise
 }
 
+/// How events that overlap in time are ordered left to right. Persisted as the `sameTimeOrder` setting.
+enum SameTimeOrder: String {
+    /// The earlier event sits on the left; events starting at the same moment fall back to calendar order.
+    case startFirst
+    /// Sidebar order (account, then calendar) always decides, whatever the start times.
+    case calendarFirst
+}
+
 enum EventLayout {
     /// Ideal per-layer reveal width in a cascaded (non-side-by-side) cluster: how much of each earlier-starting
     /// card stays visible along its left edge before the next, later-starting card covers the rest of it. Wide
@@ -140,13 +148,18 @@ enum EventLayout {
     /// Each event spans the full day-column width; overlapping events overlay one another (cascaded/z-ordered
     /// in `DayColumn`) instead of being packed into narrow side-by-side slices. Same-slot duplicates across
     /// calendars are first folded into a single stacked item by `EventGrouping`.
-    static func place(_ events: [CalEvent], day: Date, cal: Calendar) -> [PlacedEvent] {
+    static func place(_ events: [CalEvent], day: Date, cal: Calendar, order: SameTimeOrder = .startFirst) -> [PlacedEvent] {
         let dayStart = cal.startOfDay(for: day)
         let dayEnd = cal.endOfDay(day)
         var items = EventGrouping.group(events).map { item in
             (item: item, s: max(item.start, dayStart), en: min(max(item.end, item.start.addingTimeInterval(20 * 60)), dayEnd))
         }
-        items.sort { $0.s != $1.s ? $0.s < $1.s : $0.en > $1.en }
+        // Same start: sidebar order (account, then calendar) decides who sits further left; then longest first.
+        items.sort {
+            if $0.s != $1.s { return $0.s < $1.s }
+            let r0 = $0.item.front.sourceRank, r1 = $1.item.front.sourceRank
+            return r0 != r1 ? r0 < r1 : $0.en > $1.en
+        }
 
         var result: [PlacedEvent] = []
         var cluster: [(item: TimeGridItem, s: Date, en: Date)] = []
@@ -155,20 +168,27 @@ enum EventLayout {
         func flush() {
             guard !cluster.isEmpty else { return }
             let n = cluster.count
-            // Classic greedy interval packing for the side-by-side alternative: each item takes the first
-            // column whose previous occupant has already ended, opening a new column otherwise.
-            var colEnds: [Date] = []
-            var sideSlot: [Int] = []
-            for it in cluster {
-                if let free = colEnds.firstIndex(where: { $0 <= it.s }) {
-                    colEnds[free] = it.en
-                    sideSlot.append(free)
+            // Greedy interval packing for the side-by-side layout: each item takes the first column with no
+            // overlapping occupant, opening a new column otherwise. Items are taken in start order, or in
+            // sidebar order (account, then calendar) when that's the user's preference.
+            var columns: [[(s: Date, en: Date)]] = []
+            var sideSlot = [Int](repeating: 0, count: n)
+            let packingOrder = cluster.indices.sorted { a, b in
+                guard order == .calendarFirst else { return a < b }
+                let ra = cluster[a].item.front.sourceRank, rb = cluster[b].item.front.sourceRank
+                return ra != rb ? ra < rb : a < b
+            }
+            for i in packingOrder {
+                let it = cluster[i]
+                if let free = columns.firstIndex(where: { col in col.allSatisfy { $0.en <= it.s || $0.s >= it.en } }) {
+                    columns[free].append((it.s, it.en))
+                    sideSlot[i] = free
                 } else {
-                    colEnds.append(it.en)
-                    sideSlot.append(colEnds.count - 1)
+                    columns.append([(it.s, it.en)])
+                    sideSlot[i] = columns.count - 1
                 }
             }
-            let sideSlots = colEnds.count
+            let sideSlots = columns.count
             let clusterID = cluster.map(\.item.id).sorted().joined(separator: "|")
             result += cluster.enumerated().map { i, it in
                 PlacedEvent(item: it.item, start: it.s, end: it.en, column: i, columns: n,

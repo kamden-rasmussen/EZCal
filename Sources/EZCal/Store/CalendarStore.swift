@@ -342,6 +342,36 @@ final class CalendarStore {
         }.map(\.element)
     }
 
+    /// Every source in the order the sidebar shows them — Google accounts (in account order), Apple groups,
+    /// subscriptions, then coworkers — each group in its own drag order. Drives stack fronts and the left-to-right
+    /// order of different events at the same time.
+    var sidebarOrderedSources: [Source] {
+        var result: [Source] = []
+        for acct in accounts { result += ordered(calendars.filter { $0.accountId == acct.id && !$0.isEventKit && !$0.isICS }) }
+        let apple = Dictionary(grouping: calendars.filter(\.isEventKit), by: \.accountId)
+        for key in apple.keys.sorted() { result += ordered(apple[key] ?? []) }
+        result += ordered(calendars.filter(\.isICS))
+        result += ordered(people)
+        let seen = Set(result.map(\.id))
+        return result + allSources.filter { !seen.contains($0.id) }
+    }
+
+    /// Moves a Google account up (`delta` -1) or down (+1) in the sidebar.
+    func moveAccount(_ id: String, by delta: Int) {
+        guard let from = accounts.firstIndex(where: { $0.id == id }) else { return }
+        moveAccount(id, toIndex: from + delta)
+    }
+
+    /// Moves a Google account to `newIndex` (its final position among all accounts).
+    func moveAccount(_ id: String, toIndex newIndex: Int) {
+        guard let from = accounts.firstIndex(where: { $0.id == id }) else { return }
+        let to = min(max(newIndex, 0), accounts.count - 1)
+        guard to != from else { return }
+        accounts.insert(accounts.remove(at: from), at: to)
+        persist()
+        rebuildDisplay()
+    }
+
     /// Moves `id` to `newIndex` within `group` (the group's current on-screen order — i.e. already
     /// `store.ordered(...)`), called once when a sidebar drag ends (see `ReorderableSourceList`).
     /// `sourceOrder` is a single flat ranking shared by every group, so this works out the group's new
@@ -795,7 +825,7 @@ final class CalendarStore {
         var seenAnywhere = Set<String>()
         var real: [CalEvent] = []
         var busy: [CalEvent] = []
-        let rank = Dictionary(ordered(allSources).enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let rank = Dictionary(sidebarOrderedSources.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
         for s in allSources where isVisible(s) {
             for var e in eventsBySource[s.id] ?? [] {
                 e.sourceRank = rank[s.id] ?? .max
