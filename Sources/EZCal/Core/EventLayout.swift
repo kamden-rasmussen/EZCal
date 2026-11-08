@@ -49,6 +49,8 @@ enum EventGrouping {
                 matched.append(candidate)
                 return true
             }
+            // Front of the stack = the copy on the calendar highest in the sidebar (stable, so ties keep input order).
+            matched.sort { $0.sourceRank < $1.sourceRank }
             items.append(matched.count > 1 ? .stack(matched) : .single(anchor))
         }
         return items

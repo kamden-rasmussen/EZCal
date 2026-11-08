@@ -152,7 +152,8 @@ final class KeyboardTests: XCTestCase {
         store.rebuildDisplay()
         store.focusedEventID = later.id
 
-        XCTAssertEqual(store.joinMeetingDecision(), .confirm(later))
+        var ranked = later; ranked.sourceRank = 0   // rebuildDisplay stamps the sidebar position
+        XCTAssertEqual(store.joinMeetingDecision(), .confirm(ranked))
     }
 
     func testJoinMeetingWithNoFocusAndNoUpcomingShowsError() {

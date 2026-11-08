@@ -119,6 +119,9 @@ struct CalEvent: Identifiable, Hashable, Sendable {
     /// Alerts as minutes before the start (issue #131). nil = the calendar's default alerts (Google
     /// `useDefault`), or unknown for sources that don't expose alerts.
     var alertMinutes: [Int]? = nil
+    /// Position of this event's calendar in the sidebar order (0 = top). Stamped by `CalendarStore.rebuildDisplay()`;
+    /// `EventGrouping` uses it to put the highest calendar's copy on the front of a stack.
+    var sourceRank: Int = .max
 
     /// May change the event's own fields (title, time, ...), as opposed to only its guest list.
     var canModify: Bool { canEdit && (isOrganizer || guestsCanModify) }

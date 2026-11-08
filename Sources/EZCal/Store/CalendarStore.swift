@@ -367,6 +367,7 @@ final class CalendarStore {
         if !spliced { result.append(contentsOf: ids) }
         sourceOrder = result
         persist()
+        rebuildDisplay()   // stack fronts follow the sidebar order
     }
 
     func toggle(_ s: Source) {
@@ -794,8 +795,10 @@ final class CalendarStore {
         var seenAnywhere = Set<String>()
         var real: [CalEvent] = []
         var busy: [CalEvent] = []
+        let rank = Dictionary(ordered(allSources).enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
         for s in allSources where isVisible(s) {
-            for e in eventsBySource[s.id] ?? [] {
+            for var e in eventsBySource[s.id] ?? [] {
+                e.sourceRank = rank[s.id] ?? .max
                 if e.isBusyOnly { busy.append(e); continue }
                 let slot = "\(e.uid)|\(e.start.timeIntervalSince1970)"
                 if e.isOverlay {

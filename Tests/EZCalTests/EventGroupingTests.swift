@@ -17,6 +17,14 @@ final class EventGroupingTests: XCTestCase {
                  isRecurring: false, zoomMeetingID: nil, isTentative: false, isDeclined: false)
     }
 
+    func testStackFrontIsCopyOnHighestRankedCalendar() {
+        var low = event("low", title: "Sync", source: "s1"); low.sourceRank = 2
+        var high = event("high", title: "Sync", source: "s2", offset: 60); high.sourceRank = 0
+        let items = EventGrouping.group([low, high])
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].front.id, "high")
+    }
+
     func testSameMeetingOnThreeCalendarsFoldsIntoOneStack() {
         let items = EventGrouping.group([event("a", title: "Sync", source: "s1"),
                                          event("b", title: " sync ", source: "s2", offset: 120),
