@@ -42,6 +42,12 @@ struct SidebarView: View {
                     group(acct.email) {
                         ReorderableSourceList(sources: store.ordered(store.calendars.filter { $0.accountId == acct.id }))
                     }
+                    .contextMenu {
+                        Button("Move Account Up") { store.moveAccount(acct.id, by: -1) }
+                            .disabled(store.accounts.first?.id == acct.id)
+                        Button("Move Account Down") { store.moveAccount(acct.id, by: 1) }
+                            .disabled(store.accounts.last?.id == acct.id)
+                    }
                 }
                 let apple = Dictionary(grouping: store.calendars.filter(\.isEventKit), by: \.accountId)
                 ForEach(apple.keys.sorted(), id: \.self) { key in

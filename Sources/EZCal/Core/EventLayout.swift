@@ -146,7 +146,12 @@ enum EventLayout {
         var items = EventGrouping.group(events).map { item in
             (item: item, s: max(item.start, dayStart), en: min(max(item.end, item.start.addingTimeInterval(20 * 60)), dayEnd))
         }
-        items.sort { $0.s != $1.s ? $0.s < $1.s : $0.en > $1.en }
+        // Same start: sidebar order (account, then calendar) decides who sits further left; then longest first.
+        items.sort {
+            if $0.s != $1.s { return $0.s < $1.s }
+            let r0 = $0.item.front.sourceRank, r1 = $1.item.front.sourceRank
+            return r0 != r1 ? r0 < r1 : $0.en > $1.en
+        }
 
         var result: [PlacedEvent] = []
         var cluster: [(item: TimeGridItem, s: Date, en: Date)] = []

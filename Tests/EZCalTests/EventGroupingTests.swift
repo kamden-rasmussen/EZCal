@@ -25,6 +25,13 @@ final class EventGroupingTests: XCTestCase {
         XCTAssertEqual(items[0].front.id, "high")
     }
 
+    func testSimultaneousDifferentEventsSlotLeftToRightBySourceRank() {
+        var a = event("a", title: "Alpha", source: "s1", minutes: 30); a.sourceRank = 5
+        var b = event("b", title: "Beta", source: "s2", minutes: 60); b.sourceRank = 1
+        let placed = EventLayout.place([a, b], day: day, cal: cal)
+        XCTAssertEqual(placed.sorted { $0.sideSlot < $1.sideSlot }.map(\.id), ["b", "a"])
+    }
+
     func testSameMeetingOnThreeCalendarsFoldsIntoOneStack() {
         let items = EventGrouping.group([event("a", title: "Sync", source: "s1"),
                                          event("b", title: " sync ", source: "s2", offset: 120),
