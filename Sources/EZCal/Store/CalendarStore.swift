@@ -359,9 +359,15 @@ final class CalendarStore {
     /// Moves a Google account up (`delta` -1) or down (+1) in the sidebar.
     func moveAccount(_ id: String, by delta: Int) {
         guard let from = accounts.firstIndex(where: { $0.id == id }) else { return }
-        let to = from + delta
-        guard accounts.indices.contains(to) else { return }
-        accounts.swapAt(from, to)
+        moveAccount(id, toIndex: from + delta)
+    }
+
+    /// Moves a Google account to `newIndex` (its final position among all accounts).
+    func moveAccount(_ id: String, toIndex newIndex: Int) {
+        guard let from = accounts.firstIndex(where: { $0.id == id }) else { return }
+        let to = min(max(newIndex, 0), accounts.count - 1)
+        guard to != from else { return }
+        accounts.insert(accounts.remove(at: from), at: to)
         persist()
         rebuildDisplay()
     }

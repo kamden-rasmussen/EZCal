@@ -15,8 +15,21 @@ enum SidebarReorder {
     }
 }
 
+private struct AccountFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
 struct SidebarView: View {
     @Environment(CalendarStore.self) private var store
+    @State private var accountFrames: [String: CGRect] = [:]
+    @State private var draggingAccount: String?
+    @State private var accountDragOffset: CGFloat = 0
+    @State private var accountDragStartMidY: CGFloat = 0
+    /// Index among the other accounts where the dragged one would land if released now.
+    @State private var accountDropTarget: Int?
 
     var body: some View {
         @Bindable var store = store
@@ -39,15 +52,7 @@ struct SidebarView: View {
                 MiniMonthView()
 
                 ForEach(store.accounts) { acct in
-                    group(acct.email) {
-                        ReorderableSourceList(sources: store.ordered(store.calendars.filter { $0.accountId == acct.id }))
-                    }
-                    .contextMenu {
-                        Button("Move Account Up") { store.moveAccount(acct.id, by: -1) }
-                            .disabled(store.accounts.first?.id == acct.id)
-                        Button("Move Account Down") { store.moveAccount(acct.id, by: 1) }
-                            .disabled(store.accounts.last?.id == acct.id)
-                    }
+                    accountGroup(acct)
                 }
                 let apple = Dictionary(grouping: store.calendars.filter(\.isEventKit), by: \.accountId)
                 ForEach(apple.keys.sorted(), id: \.self) { key in
@@ -118,6 +123,8 @@ struct SidebarView: View {
                 }
             }
             .padding(.horizontal, 14).padding(.top, 4).padding(.bottom, 14)
+            .coordinateSpace(name: Self.contentSpace)
+            .onPreferenceChange(AccountFrameKey.self) { accountFrames = $0 }
             }
         }
         .background(Theme.side)
@@ -139,6 +146,69 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .help("Subscribe to a read-only .ics feed")
+    }
+
+    // MARK: Account reordering (drag the header; right-click offers Move Up/Down too)
+
+    private func accountGroup(_ acct: Account) -> some View {
+        let dragging = draggingAccount == acct.id
+        return VStack(alignment: .leading, spacing: 2) {
+            SectionLabel(acct.email).padding(.horizontal, 6).padding(.bottom, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .gesture(accountDrag(acct))
+            ReorderableSourceList(sources: store.ordered(store.calendars.filter { $0.accountId == acct.id }))
+        }
+        .background(GeometryReader { g in
+            Color.clear.preference(key: AccountFrameKey.self, value: [acct.id: g.frame(in: .named(Self.contentSpace))])
+        })
+        .overlay(alignment: .top) { if accountLineAbove == acct.id { accountInsertionLine } }
+        .overlay(alignment: .bottom) { if accountLineBelowLast == acct.id { accountInsertionLine } }
+        .zIndex(dragging ? 1 : 0)
+        .opacity(dragging ? 0.8 : 1)
+        .offset(y: dragging ? accountDragOffset : 0)
+        .contextMenu {
+            Button("Move Account Up") { store.moveAccount(acct.id, by: -1) }
+                .disabled(store.accounts.first?.id == acct.id)
+            Button("Move Account Down") { store.moveAccount(acct.id, by: 1) }
+                .disabled(store.accounts.last?.id == acct.id)
+        }
+    }
+
+    private static let contentSpace = "sidebarContent"
+
+    private var otherAccounts: [Account] { store.accounts.filter { $0.id != draggingAccount } }
+    private var accountLineAbove: String? {
+        guard let t = accountDropTarget, t < otherAccounts.count else { return nil }
+        return otherAccounts[t].id
+    }
+    private var accountLineBelowLast: String? {
+        guard let t = accountDropTarget, t == otherAccounts.count else { return nil }
+        return otherAccounts.last?.id
+    }
+    private var accountInsertionLine: some View {
+        Capsule().fill(Theme.accent).frame(height: 2).padding(.horizontal, 4).offset(y: -1).allowsHitTesting(false)
+    }
+
+    private func accountDrag(_ acct: Account) -> some Gesture {
+        DragGesture(minimumDistance: 5, coordinateSpace: .named(Self.contentSpace))
+            .onChanged { value in
+                if draggingAccount != acct.id {
+                    draggingAccount = acct.id
+                    accountDragStartMidY = accountFrames[acct.id]?.midY ?? value.startLocation.y
+                }
+                accountDragOffset = value.translation.height
+                let y = accountDragStartMidY + value.translation.height
+                let target = otherAccounts.filter { (accountFrames[$0.id]?.midY ?? 0) < y }.count
+                if target != accountDropTarget {
+                    withAnimation(.interactiveSpring(response: 0.25, dampingFraction: 0.8)) { accountDropTarget = target }
+                }
+            }
+            .onEnded { _ in
+                defer { draggingAccount = nil; accountDragOffset = 0; accountDropTarget = nil }
+                guard let target = accountDropTarget else { return }
+                withAnimation(.easeInOut(duration: 0.15)) { store.moveAccount(acct.id, toIndex: target) }
+            }
     }
 
     private func group<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
