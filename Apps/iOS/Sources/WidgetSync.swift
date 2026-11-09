@@ -5,6 +5,7 @@ import WidgetKit
 /// loaded events change, and handles `ezcal://event/<id>` and `ezcal://day/<yyyy-MM-dd|today>` links.
 struct WidgetSync: ViewModifier {
     let store: CalendarStore
+    @Environment(\.scenePhase) private var scenePhase
     private var router: OpenEventRouter { .shared }
 
     /// A notification tap (or the pending one from a cold launch): open that event.
@@ -45,7 +46,10 @@ struct WidgetSync: ViewModifier {
             .onChange(of: store.upcoming) { _, _ in sync() }
             .onChange(of: store.calendars) { _, _ in sync() }
             .onChange(of: router.pendingID) { _, _ in consumePending() }
-            .task { await consumeDemoOpen(); consumePending() }
+            // onChange doesn't fire for state restored at launch, so also write the cache (and the calendar
+            // list the widget's picker reads) on launch and whenever the app comes back to the foreground.
+            .onChange(of: scenePhase) { _, phase in if phase == .active { sync() } }
+            .task { sync(); await consumeDemoOpen(); consumePending() }
             .onOpenURL { url in
                 guard url.scheme == WidgetShared.scheme else { return }
                 let arg = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

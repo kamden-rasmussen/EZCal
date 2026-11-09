@@ -1,5 +1,6 @@
 import AppIntents
 import WidgetKit
+import EventKit
 
 /// One calendar in the widget's edit sheet. The list comes from the app-group cache the app writes after each refresh.
 struct CalendarEntity: AppEntity {
@@ -17,7 +18,13 @@ struct CalendarEntity: AppEntity {
 
 struct CalendarQuery: EntityQuery {
     private var all: [CalendarEntity] {
-        (WidgetShared.read()?.calendars ?? []).map { CalendarEntity(id: $0.id, name: $0.name, group: $0.group) }
+        let shared = (WidgetShared.read()?.calendars ?? []).map { CalendarEntity(id: $0.id, name: $0.name, group: $0.group) }
+        if !shared.isEmpty { return shared }
+        // The app hasn't written its list yet: offer the device's own calendars (same ids as the app's Apple sources).
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return [] }
+        return EKEventStore().calendars(for: .event).map {
+            CalendarEntity(id: "ek|" + $0.calendarIdentifier, name: $0.title, group: $0.source?.title ?? "")
+        }
     }
 
     func entities(for identifiers: [String]) async throws -> [CalendarEntity] {
