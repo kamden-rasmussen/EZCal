@@ -1,4 +1,5 @@
 import WidgetKit
+import AppIntents
 import SwiftUI
 import EventKit
 
@@ -8,21 +9,21 @@ struct AgendaEntry: TimelineEntry {
     let isPlaceholder: Bool
 }
 
-struct AgendaProvider: TimelineProvider {
+struct AgendaProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> AgendaEntry {
         AgendaEntry(date: Date(), events: WidgetShared.demoEvents(), isPlaceholder: true)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (AgendaEntry) -> Void) {
+    func snapshot(for configuration: SelectCalendarsIntent, in context: Context) async -> AgendaEntry {
         let now = Date()
-        let live = Self.load(now: now)
-        completion(AgendaEntry(date: now, events: context.isPreview && live.isEmpty ? WidgetShared.demoEvents(now: now) : live,
-                               isPlaceholder: false))
+        let live = Self.load(now: now, only: configuration.selectedIDs)
+        return AgendaEntry(date: now, events: context.isPreview && live.isEmpty ? WidgetShared.demoEvents(now: now) : live,
+                           isPlaceholder: false)
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<AgendaEntry>) -> Void) {
+    func timeline(for configuration: SelectCalendarsIntent, in context: Context) async -> Timeline<AgendaEntry> {
         let now = Date()
-        let all = Self.load(now: now)
+        let all = Self.load(now: now, only: configuration.selectedIDs)
         // One entry now plus one at every upcoming start/end so "next event" and countdowns roll over on their own.
         var dates: Set<Date> = [now]
         for e in all where !e.isAllDay {
@@ -34,19 +35,26 @@ struct AgendaProvider: TimelineProvider {
             AgendaEntry(date: d, events: all.filter { $0.end > d }, isPlaceholder: false)
         }
         let hourly = now.addingTimeInterval(3600)
-        completion(Timeline(entries: entries, policy: .after(hourly)))
+        return Timeline(entries: entries, policy: .after(hourly))
     }
 
     /// EventKit first (if the widget process has calendar access), else the app-group cache.
-    static func load(now: Date) -> [WidgetEvent] {
+    /// `only` limits the result to those `Source.id`s; empty means every calendar.
+    static func load(now: Date, only: Set<String> = []) -> [WidgetEvent] {
         let cal = Calendar.current
         let start = cal.startOfDay(for: now)
         let end = cal.date(byAdding: .day, value: 3, to: start)!
+        func allowed(_ e: WidgetEvent) -> Bool { only.isEmpty || (e.calendarId.map(only.contains) ?? false) }
+        let cached = (WidgetShared.read()?.events ?? []).filter { $0.end > start && $0.start < end }
         var result: [WidgetEvent] = []
         if EKEventStore.authorizationStatus(for: .event) == .fullAccess {
             let store = EKEventStore()
-            let pred = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-            result = store.events(matching: pred).compactMap { e in
+            var calendars: [EKCalendar]? = nil
+            if !only.isEmpty {
+                calendars = store.calendars(for: .event).filter { only.contains("ek|" + $0.calendarIdentifier) }
+            }
+            let pred = store.predicateForEvents(withStart: start, end: end, calendars: calendars)
+            result = (calendars?.isEmpty == true) ? [] : store.events(matching: pred).compactMap { e in
                 guard e.status != .canceled, let s = e.startDate, let en = e.endDate else { return nil }
                 return WidgetEvent(id: e.eventIdentifier ?? UUID().uuidString,
                                    title: (e.title?.isEmpty == false ? e.title! : "(No title)"),
@@ -54,8 +62,11 @@ struct AgendaProvider: TimelineProvider {
                                    colorHex: Self.hex(e.calendar?.cgColor))
             }
         }
-        if result.isEmpty, let cache = WidgetShared.read() {
-            result = cache.events.filter { $0.end > start && $0.start < end }
+        if result.isEmpty {
+            result = cached.filter(allowed)
+        } else {
+            // Google and subscription calendars only reach the widget through the cache.
+            result += cached.filter { !($0.calendarId?.hasPrefix("ek|") ?? true) && allowed($0) }
         }
         return result.filter { $0.end > now }
             .sorted { ($0.isAllDay ? 1 : 0, $0.start) < ($1.isAllDay ? 1 : 0, $1.start) }
@@ -71,22 +82,22 @@ struct AgendaProvider: TimelineProvider {
 
 struct UpNextWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "UpNextWidget", provider: AgendaProvider()) { entry in
+        AppIntentConfiguration(kind: "UpNextWidget", intent: SelectCalendarsIntent.self, provider: AgendaProvider()) { entry in
             UpNextView(entry: entry).containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Up Next")
-        .description("Your next events at a glance.")
+        .description("Your next events at a glance. Edit the widget to choose calendars.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
     }
 }
 
 struct TodayWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "TodayWidget", provider: AgendaProvider()) { entry in
+        AppIntentConfiguration(kind: "TodayWidget", intent: SelectCalendarsIntent.self, provider: AgendaProvider()) { entry in
             TodayView(entry: entry).containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Today")
-        .description("Today's agenda.")
+        .description("Today's agenda. Edit the widget to choose calendars.")
         .supportedFamilies([.systemLarge])
     }
 }

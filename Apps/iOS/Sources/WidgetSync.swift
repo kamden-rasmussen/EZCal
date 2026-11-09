@@ -5,6 +5,7 @@ import WidgetKit
 /// loaded events change, and handles `ezcal://event/<id>` and `ezcal://day/<yyyy-MM-dd|today>` links.
 struct WidgetSync: ViewModifier {
     let store: CalendarStore
+    @Environment(\.scenePhase) private var scenePhase
     private var router: OpenEventRouter { .shared }
 
     /// A notification tap (or the pending one from a cold launch): open that event.
@@ -30,9 +31,12 @@ struct WidgetSync: ViewModifier {
         var seen = Set<String>()
         let mapped = known.filter { !$0.isOverlay && !$0.isDeclined && $0.end > cutoff && seen.insert($0.id).inserted }.map {
             WidgetEvent(id: $0.eventId, title: $0.title, start: $0.start, end: $0.end,
-                        isAllDay: $0.isAllDay, location: $0.location, colorHex: $0.colorHex)
+                        isAllDay: $0.isAllDay, location: $0.location, colorHex: $0.colorHex, calendarId: $0.sourceId)
         }
-        WidgetShared.write(WidgetCache(updated: Date(), isDemo: store.isDemo, events: mapped))
+        let calendars = store.sidebarOrderedSources.filter { $0.kind == .calendar }.map {
+            WidgetCalendar(id: $0.id, name: $0.name, colorHex: $0.colorHex, group: $0.groupTitle)
+        }
+        WidgetShared.write(WidgetCache(updated: Date(), isDemo: store.isDemo, events: mapped, calendars: calendars))
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -40,8 +44,12 @@ struct WidgetSync: ViewModifier {
         content
             .onChange(of: store.displayEvents) { _, _ in sync() }
             .onChange(of: store.upcoming) { _, _ in sync() }
+            .onChange(of: store.calendars) { _, _ in sync() }
             .onChange(of: router.pendingID) { _, _ in consumePending() }
-            .task { await consumeDemoOpen(); consumePending() }
+            // onChange doesn't fire for state restored at launch, so also write the cache (and the calendar
+            // list the widget's picker reads) on launch and whenever the app comes back to the foreground.
+            .onChange(of: scenePhase) { _, phase in if phase == .active { sync() } }
+            .task { sync(); await consumeDemoOpen(); consumePending() }
             .onOpenURL { url in
                 guard url.scheme == WidgetShared.scheme else { return }
                 let arg = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

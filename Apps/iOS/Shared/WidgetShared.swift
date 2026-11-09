@@ -12,12 +12,24 @@ struct WidgetEvent: Codable, Identifiable, Hashable {
     var isAllDay: Bool
     var location: String
     var colorHex: String
+    /// The `Source.id` of the calendar this event belongs to; nil in caches written before the widget could filter.
+    var calendarId: String? = nil
+}
+
+/// A calendar the widget can be limited to.
+struct WidgetCalendar: Codable, Identifiable, Hashable {
+    var id: String          // Source.id
+    var name: String
+    var colorHex: String
+    var group: String       // account / Apple group, shown as the picker subtitle
 }
 
 struct WidgetCache: Codable {
     var updated: Date
     var isDemo: Bool
     var events: [WidgetEvent]
+    /// Calendars offered in the widget's edit sheet, in sidebar order.
+    var calendars: [WidgetCalendar]? = nil
 }
 
 enum WidgetShared {
