@@ -145,6 +145,29 @@ final class DayWeekGridUITests: EZCalUITestCase {
         XCTAssertNotEqual(dayTitle.label, before)
     }
 
+    /// "Swipe by day" (default): a swipe in a multi-day grid shifts the columns by one day, not a whole page.
+    func testSwipeInThreeDayViewMovesOneDay() throws {
+        selectTab("Day")
+        pickGrid("3 Day")
+        let headers = app.descendants(matching: .any).matching(identifier: "columnHeader")
+        XCTAssertTrue(headers.element(boundBy: 2).waitForExistence(timeout: 5))
+        let second = headers.element(boundBy: 1).label
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertTrue(headers.element(boundBy: 0).waitForExistence(timeout: 5))
+        XCTAssertEqual(headers.element(boundBy: 0).label, second)
+    }
+
+    func testSwipeInWeekViewMovesOneDay() throws {
+        selectTab("Day")
+        pickGrid("Week")
+        let headers = app.descendants(matching: .any).matching(identifier: "columnHeader")
+        XCTAssertTrue(headers.element(boundBy: 1).waitForExistence(timeout: 5))
+        let second = headers.element(boundBy: 1).label
+        app.scrollViews.firstMatch.swipeLeft()
+        XCTAssertTrue(headers.element(boundBy: 0).waitForExistence(timeout: 5))
+        XCTAssertEqual(headers.element(boundBy: 0).label, second)
+    }
+
     func testEmptyDayInDayView() throws {
         selectTab("Day")
         // Demo data spans -1...+1 weeks; 30 days out is guaranteed empty.

@@ -26,6 +26,8 @@ struct DayView: View {
     @State private var showGoTo = false
     /// 3-day view is `gridMode == .day` plus this flag, so the shared `ViewMode` stays untouched.
     @AppStorage("gridThreeDay") private var threeDay = false
+    /// Swiping the 3 Day / Work Week / Week grids moves one day instead of a whole page (macOS-style).
+    @AppStorage(CalendarStore.weekSwipeByDayKey) private var swipeByDay = true
     // Swipe paging (#106).
     @State private var swipeX: CGFloat = 0
     @State private var swipeAxis: Axis?
@@ -104,7 +106,9 @@ struct DayView: View {
                 .accessibilityIdentifier("gridModePicker")
                 .onChange(of: gridMode) { _, _ in syncStore() }
                 .onChange(of: threeDay) { _, _ in syncStore() }
+                .onChange(of: swipeByDay) { _, _ in store.goTo(store.anchor) }   // re-aligns the week to its start
                 .onAppear { syncStore() }
+                .onDisappear { store.alignsLeadingToWeek = false }
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             Divider()
@@ -163,6 +167,7 @@ struct DayView: View {
     private func syncStore() {
         store.fetchPadDays = 7
         store.extraFetchDays = gridMode == .day && threeDay ? 2 : 0
+        store.alignsLeadingToWeek = gridMode == .week || gridMode == .workWeek
         if gridMode == .day { if threeDay { store.setMode(.day) } } else { store.setMode(gridMode) }
     }
 
@@ -209,8 +214,12 @@ struct DayView: View {
     /// One page forward/back for the current mode.
     private func navigate(_ n: Int) {
         if gridMode == .day {
-            let step = threeDay ? 3 : 1
+            let step = threeDay && !swipeByDay ? 3 : 1
             store.goTo(store.cal.date(byAdding: .day, value: n * step, to: store.anchor) ?? store.anchor)
+        } else if swipeByDay {
+            // Week / Work Week: anchor is the leftmost column; move it one column (skipping hidden weekend days).
+            let rule = store.weekColumns.rule
+            store.weekScrollAnchorChanged(to: WeekScrollMath.shift(store.anchor, byColumns: n, rule: rule, cal: store.cal))
         } else { store.step(n) }
     }
 
@@ -385,7 +394,10 @@ struct DayView: View {
                     Text(d.formatted(.dateTime.weekday(.abbreviated))).font(.caption2).foregroundStyle(.secondary)
                     Text(d.formatted(.dateTime.day())).font(.subheadline.weight(today ? .bold : .regular))
                         .foregroundStyle(today ? Color.accentColor : .primary)
-                }.frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("columnHeader")
             }
         }.padding(.vertical, 4)
     }
