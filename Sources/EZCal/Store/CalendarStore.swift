@@ -228,6 +228,13 @@ final class CalendarStore {
     /// iOS grid extras: more days than the mode implies (3-day view) and neighbouring pages to preload for
     /// swiping. Both default to 0, so macOS is unaffected.
     @ObservationIgnored var extraFetchDays = 0
+    /// Whether Today / jump-to-date snap `anchor` to the start of the week in Week / Work Week. Always on for macOS; on iOS
+    /// the Day/Agenda tabs share the store's mode without showing a week, so the Week grid switches it on while it is up.
+    #if os(macOS)
+    @ObservationIgnored var alignsLeadingToWeek = true
+    #else
+    @ObservationIgnored var alignsLeadingToWeek = false
+    #endif
     @ObservationIgnored var fetchPadDays = 0
 
     /// Range we ask Google for. Always includes every visible day (weekends included).

@@ -12,6 +12,7 @@ struct SettingsSheet: View {
     @AppStorage("defaultVideo") private var defaultVideo = "none"
     @AppStorage("hourHeight") private var hourHeight = 56.0
     @AppStorage("overlapLayoutMode") private var overlapLayoutMode = OverlapLayoutMode.sideBySide.rawValue
+    @AppStorage(CalendarStore.weekSwipeByDayKey) private var swipeByDay = true
     @AppStorage("sameTimeOrder") private var sameTimeOrder = SameTimeOrder.startFirst.rawValue
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system.rawValue
     @State private var permissionDeniedAlert = false
@@ -47,6 +48,7 @@ struct SettingsSheet: View {
                         Text("Auto").tag(OverlapLayoutMode.auto.rawValue)
                     }
                     .accessibilityIdentifier("overlapLayoutPicker")
+                    Toggle("Swipe by day", isOn: $swipeByDay)
                     Picker("Order overlapping events", selection: $sameTimeOrder) {
                         Text("By start time").tag(SameTimeOrder.startFirst.rawValue)
                         Text("By calendar order").tag(SameTimeOrder.calendarFirst.rawValue)

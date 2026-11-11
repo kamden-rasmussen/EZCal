@@ -3,13 +3,16 @@ import Foundation
 /// Store side of the continuously scrolling Week / Work Week grid (`Views/WeekScrollView.swift`).
 /// In those two modes `anchor` is the leftmost visible day.
 ///
-/// macOS only: iOS keeps its own paged Week grid, so there `visibleDays`/`fetchRange` stay week-aligned.
+/// macOS always does this. iOS keeps a paged, week-aligned Week grid unless the "Swipe by day" setting
+/// (`weekSwipeByDayKey`, on by default) is on; then `visibleDays`/`fetchRange` follow `anchor` like macOS.
 extension CalendarStore {
+    static let weekSwipeByDayKey = "weekSwipeByDay"
+
     static var continuousWeekScroll: Bool {
         #if os(macOS)
         true
         #else
-        false
+        UserDefaults.standard.object(forKey: weekSwipeByDayKey) as? Bool ?? true
         #endif
     }
 
@@ -22,7 +25,7 @@ extension CalendarStore {
     /// What `anchor` should become to "go to" `d`: in Week / Work Week the containing week's first column
     /// (matching the old paged behaviour for Today and jump-to-date); other modes keep `d` unchanged.
     func alignedLeading(for d: Date) -> Date {
-        guard Self.continuousWeekScroll else { return d }
+        guard Self.continuousWeekScroll, alignsLeadingToWeek else { return d }
         switch mode {
         case .workWeek:
             return WeekScrollMath.firstColumnDay(onOrAfter: mondayStart(d), rule: .monFri, cal: cal)
