@@ -5,15 +5,29 @@ private func timeText(_ e: WidgetEvent) -> String {
     e.isAllDay ? "All day" : e.start.formatted(date: .omitted, time: .shortened)
 }
 
+/// "", "Tomorrow " or "Fri " for how far from `now` the event's day is. An event already under way that began
+/// on an earlier day (a week-long all-day event) counts as today.
+func dayPrefix(_ e: WidgetEvent, now: Date) -> String {
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: now)
+    let startDay = max(cal.startOfDay(for: e.start), today)
+    switch cal.dateComponents([.day], from: today, to: startDay).day ?? 0 {
+    case 0: return ""
+    case 1: return "Tomorrow "
+    default: return e.start.formatted(.dateTime.weekday(.abbreviated)) + " "
+    }
+}
+
 struct EventRow: View {
     let e: WidgetEvent
     var showDay = false
+    var now = Date()
     var body: some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2).fill(Color(widgetHex: e.colorHex)).frame(width: 4)
             VStack(alignment: .leading, spacing: 1) {
                 Text(e.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text((showDay && !Calendar.current.isDateInToday(e.start) ? "Tomorrow " : "") + timeText(e)
+                Text((showDay ? dayPrefix(e, now: now) : "") + timeText(e)
                      + (e.location.isEmpty ? "" : " · \(e.location)"))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -73,15 +87,14 @@ struct UpNextView: View {
     }
 
     private var medium: some View {
-        let today = Calendar.current.startOfDay(for: entry.date)
         let rows = Array(entry.events.prefix(3))
-        let tomorrowSpill = rows.contains { !Calendar.current.isDate($0.start, inSameDayAs: today) }
+        let tomorrowSpill = rows.contains { !dayPrefix($0, now: entry.date).isEmpty }
         return Group {
             if rows.isEmpty { empty } else {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(tomorrowSpill ? "UP NEXT" : "TODAY").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
                     ForEach(rows) { e in
-                        Link(destination: WidgetShared.eventURL(e)) { EventRow(e: e, showDay: true) }.buttonStyle(.plain)
+                        Link(destination: WidgetShared.eventURL(e)) { EventRow(e: e, showDay: true, now: entry.date) }.buttonStyle(.plain)
                     }
                     Spacer(minLength: 0)
                 }.frame(maxWidth: .infinity, alignment: .leading)

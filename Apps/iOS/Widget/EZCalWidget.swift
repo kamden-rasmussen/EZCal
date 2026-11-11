@@ -30,6 +30,10 @@ struct AgendaProvider: AppIntentTimelineProvider {
             if e.start > now { dates.insert(e.start) }
             if e.end > now { dates.insert(e.end) }
         }
+        // Day labels ("Tomorrow", the TODAY header) change at midnight, with or without an event there.
+        if let midnight = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) {
+            dates.insert(midnight)
+        }
         let sorted = Array(dates.sorted().prefix(24))
         let entries = sorted.map { d in
             AgendaEntry(date: d, events: all.filter { $0.end > d }, isPlaceholder: false)
@@ -68,8 +72,11 @@ struct AgendaProvider: AppIntentTimelineProvider {
             // Google and subscription calendars only reach the widget through the cache.
             result += cached.filter { !($0.calendarId?.hasPrefix("ek|") ?? true) && allowed($0) }
         }
+        // By day first (an event already under way counts as today), then timed before all-day, so a later day's
+        // all-day event can't jump ahead of an earlier day's timed one.
+        func day(_ e: WidgetEvent) -> Date { max(cal.startOfDay(for: e.start), start) }
         return result.filter { $0.end > now }
-            .sorted { ($0.isAllDay ? 1 : 0, $0.start) < ($1.isAllDay ? 1 : 0, $1.start) }
+            .sorted { (day($0), $0.isAllDay ? 1 : 0, $0.start) < (day($1), $1.isAllDay ? 1 : 0, $1.start) }
     }
 
     private static func hex(_ cg: CGColor?) -> String {
