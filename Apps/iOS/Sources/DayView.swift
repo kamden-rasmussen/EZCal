@@ -31,6 +31,8 @@ struct DayView: View {
     // Swipe paging (#106).
     @State private var swipeX: CGFloat = 0
     @State private var swipeAxis: Axis?
+    /// Set around a by-day swipe so the grid keeps its vertical scroll position instead of jumping back to the morning.
+    @State private var keepScroll = false
     @State private var containerW: CGFloat = 390
     /// True from the moment a long press lifts an event (or a resize handle is grabbed) until it is dropped,
     /// so the page-swipe never fights an event drag.
@@ -183,18 +185,30 @@ struct DayView: View {
                 if swipeAxis == nil {
                     swipeAxis = abs(v.translation.width) > abs(v.translation.height) * 1.5 ? .horizontal : .vertical
                 }
-                if swipeAxis == .horizontal { swipeX = v.translation.width }
+                // By-day grids pop to the next day on release rather than dragging the whole page along.
+                if swipeAxis == .horizontal && !popsByDay { swipeX = v.translation.width }
             }
             .onEnded { v in
                 defer { swipeAxis = nil }
                 guard swipeAxis == .horizontal, !lifting, drag == nil else { settleSwipe(); return }
                 let dx = v.translation.width, predicted = v.predictedEndTranslation.width
-                if abs(dx) > containerW * 0.25 || abs(predicted) > containerW * 0.6 {
+                if popsByDay {
+                    if abs(dx) > 40 || abs(predicted) > 120 { popByDay(dir: dx < 0 ? 1 : -1) }
+                } else if abs(dx) > containerW * 0.25 || abs(predicted) > containerW * 0.6 {
                     commitSwipe(dir: dx < 0 ? 1 : -1)
                 } else {
                     settleSwipe()
                 }
             }
+    }
+
+    /// 3 Day / Work Week / Week with "Swipe by day": one day per swipe, no slide animation (like Apple Calendar).
+    private var popsByDay: Bool { swipeByDay && gridMode != .month && !(gridMode == .day && !threeDay) }
+
+    private func popByDay(dir: Int) {
+        keepScroll = true
+        navigate(dir)
+        DispatchQueue.main.async { keepScroll = false }
     }
 
     private func settleSwipe() { withAnimation(.easeOut(duration: 0.18)) { swipeX = 0 } }
@@ -353,7 +367,9 @@ struct DayView: View {
             // Fixed-height grid: cap type size so hour labels and short events don't clip.
             .dynamicTypeSize(...(single ? DynamicTypeSize.xLarge : DynamicTypeSize.large))
             .onAppear { proxy.scrollTo("scroll", anchor: .top) }
-            .onChange(of: store.anchor) { _, _ in proxy.scrollTo("scroll", anchor: .top) }
+            .onChange(of: store.anchor) { _, _ in
+                if keepScroll { keepScroll = false } else { proxy.scrollTo("scroll", anchor: .top) }
+            }
         }
     }
 
