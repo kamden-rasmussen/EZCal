@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("firstWeekday") private var firstWeekday = 0
     @AppStorage("defaultDuration") private var defaultDuration = 60
     @AppStorage("defaultVideo") private var defaultVideo = "none"
+    @AppStorage(CalendarStore.refreshIntervalKey) private var refreshInterval = CalendarStore.defaultRefreshInterval
     @AppStorage("hourHeight") private var hourHeight = 56.0
     @AppStorage("overlapLayoutMode") private var overlapLayoutModeRaw = OverlapLayoutMode.sideBySide.rawValue
     @AppStorage("sameTimeOrder") private var sameTimeOrderRaw = SameTimeOrder.startFirst.rawValue
@@ -150,6 +151,9 @@ struct SettingsView: View {
                     Text("Never").tag("none")
                     Text("Zoom").tag("zoom")
                     Text("Google Meet").tag("meet")
+                }
+                Picker("Check for changes", selection: $refreshInterval) {
+                    ForEach(CalendarStore.refreshIntervalChoices, id: \.seconds) { Text($0.label).tag($0.seconds) }
                 }
                 LabeledContent("Hour height") {
                     Slider(value: $hourHeight, in: AppSettings.hourHeightRange).frame(width: 180)

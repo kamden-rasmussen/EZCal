@@ -7,6 +7,12 @@ import Foundation
 /// (`weekSwipeByDayKey`, on by default) is on; then `visibleDays`/`fetchRange` follow `anchor` like macOS.
 extension CalendarStore {
     static let weekSwipeByDayKey = "weekSwipeByDay"
+    /// Seconds between background refreshes; 0 means manual only.
+    static let refreshIntervalKey = "refreshIntervalSeconds"
+    static let defaultRefreshInterval = 300
+    static let refreshIntervalChoices: [(label: String, seconds: Int)] = [
+        ("Manual only", 0), ("Every 15 seconds", 15), ("Every 30 seconds", 30), ("Every minute", 60), ("Every 2 minutes", 120), ("Every 5 minutes", 300),
+        ("Every 10 minutes", 600), ("Every 15 minutes", 900), ("Every 30 minutes", 1800)]
 
     static var continuousWeekScroll: Bool {
         #if os(macOS)
