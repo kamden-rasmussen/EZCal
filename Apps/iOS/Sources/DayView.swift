@@ -260,7 +260,12 @@ struct DayView: View {
                 if n != 0 {
                     keepScroll = true
                     shiftAnchor(byDays: n)
-                    DispatchQueue.main.async { keepScroll = false }
+                    // Cleared on a delay, not the next runloop turn: that can beat `onChange(of: store.anchor)`, which would
+                    // then scroll to the new day's first event.
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        keepScroll = false
+                    }
                 }
                 swipeX = 0
             }
