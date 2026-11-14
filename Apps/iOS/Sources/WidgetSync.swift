@@ -31,7 +31,8 @@ struct WidgetSync: ViewModifier {
         var seen = Set<String>()
         let mapped = known.filter { !$0.isOverlay && !$0.isDeclined && $0.end > cutoff && seen.insert($0.id).inserted }.map {
             WidgetEvent(id: $0.eventId, title: $0.title, start: $0.start, end: $0.end,
-                        isAllDay: $0.isAllDay, location: $0.location, colorHex: $0.colorHex, calendarId: $0.sourceId)
+                        isAllDay: $0.isAllDay, location: $0.location, colorHex: $0.colorHex, calendarId: $0.sourceId,
+                        meetingURL: $0.meetingURL?.absoluteString)
         }
         let calendars = store.sidebarOrderedSources.filter { $0.kind == .calendar }.map {
             WidgetCalendar(id: $0.id, name: $0.name, colorHex: $0.colorHex, group: $0.groupTitle)
