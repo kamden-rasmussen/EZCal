@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(CalendarStore.self) private var store
     // Observed so the grid re-renders when these settings change.
+    @AppStorage(CalendarStore.refreshIntervalKey) private var refreshInterval = CalendarStore.defaultRefreshInterval
     @AppStorage("showWeekends") private var showWeekends = true
     @AppStorage("firstWeekday") private var firstWeekday = 0
     @State private var lastActivation = Date.distantPast
@@ -113,10 +114,12 @@ struct ContentView: View {
             }
         }
         .task { await store.bootstrap() }
-        .task {
-            // Periodic refresh so the calendar stays current while it sits open.
+        .task(id: refreshInterval) {
+            // Periodic refresh so the calendar stays current while it sits open; restarts when the setting changes.
+            guard refreshInterval > 0 else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(refreshInterval) * 1_000_000_000)
+                if Task.isCancelled { break }
                 await store.refreshAll()
             }
         }
