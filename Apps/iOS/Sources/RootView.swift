@@ -18,7 +18,7 @@ struct RootView: View {
     @AppStorage("gridThreeDay") private var threeDay = false
     @State private var authStatus = EKEventStore.authorizationStatus(for: .event)
 
-    private var needsConnect: Bool { !store.isDemo && !store.eventKitEnabled }
+    private var needsConnect: Bool { !store.isDemo && !store.eventKitEnabled && store.accounts.isEmpty }
 
     var body: some View {
         @Bindable var store = store

@@ -16,7 +16,7 @@ struct ConnectView: View {
                 .font(.title2.bold()).multilineTextAlignment(.center)
             Text(blocked
                  ? "EZCal needs full access to Calendars to show and edit your events. Turn it on in Settings."
-                 : "EZCal shows and edits the calendars already on this iPhone, such as iCloud. Nothing leaves your device.")
+                 : "EZCal shows and edits the calendars already on this iPhone, such as iCloud, or your Google Calendar.")
                 .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
             if blocked {
                 Button("Open Settings") {
@@ -28,6 +28,12 @@ struct ConnectView: View {
                 Button("Connect calendars") { Task { await store.enableEventKit() } }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .accessibilityIdentifier("connectButton")
+            }
+            if !blocked {
+                Button(store.isSigningIn ? "Waiting for Google…" : "Sign in with Google") { Task { await store.signIn() } }
+                    .buttonStyle(.bordered).controlSize(.large)
+                    .disabled(store.isSigningIn || !AppSettings.hasGoogleCredentials)
+                    .accessibilityIdentifier("connectGoogleButton")
             }
             if let m = store.errorMessage, !blocked {
                 Text(m).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
