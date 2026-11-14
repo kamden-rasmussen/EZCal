@@ -14,6 +14,8 @@ struct WidgetEvent: Codable, Identifiable, Hashable {
     var colorHex: String
     /// The `Source.id` of the calendar this event belongs to; nil in caches written before the widget could filter.
     var calendarId: String? = nil
+    /// Video-call link, when the event has one (lets Siri's "join my next meeting" work for Google events too).
+    var meetingURL: String? = nil
 }
 
 /// A calendar the widget can be limited to.
