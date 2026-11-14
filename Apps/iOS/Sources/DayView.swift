@@ -340,6 +340,7 @@ struct DayView: View {
                         }
                     }
                     .frame(width: stripColW(1), alignment: .top)
+                    .stripHeight(i)
                     .accessibilityHidden(pad)
                 }
             }.padding(.vertical, 8)
@@ -376,6 +377,7 @@ struct DayView: View {
                         }
                     }
                     .padding(.horizontal, 2).frame(width: stripColW(visible), alignment: .leading)
+                    .stripHeight(i)
                     .accessibilityHidden(i < lead || i >= lead + visible)
                 }
             }.padding(.vertical, 4)
@@ -390,13 +392,7 @@ struct DayView: View {
     /// A row of per-day columns beside the hour gutter. Draws every day in `content` (columns `colW` wide) but shows
     /// only the visible window, offset so the first visible day sits at the gutter and sliding with `swipeX`.
     private func stripRow<Content: View>(lead: Int, visible: Int, @ViewBuilder _ content: () -> Content) -> some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: gutter, height: 1)
-            HStack(spacing: 0) { content() }
-                .offset(x: -CGFloat(lead) * stripColW(visible) + swipeX)
-                .frame(width: stripColW(visible) * CGFloat(visible), alignment: .leading)
-                .clipped()
-        }
+        StripRowView(gutter: gutter, colW: stripColW(visible), lead: lead, visible: visible, swipeX: swipeX, content: content())
     }
 
     // MARK: - The time grid (one or more columns; touch drag/resize in all of them)
@@ -781,5 +777,41 @@ struct DayView: View {
     private func hourLabel(_ h: Int) -> String {
         h == 0 ? "" : (Calendar.current.date(bySettingHour: h, minute: 0, second: 0, of: Date())!
             .formatted(.dateTime.hour()))
+    }
+}
+
+
+private struct StripHeightsKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) { value.merge(nextValue()) { $1 } }
+}
+
+private extension View {
+    /// Reports this strip column's height so its row can size to the visible days only.
+    func stripHeight(_ i: Int) -> some View {
+        background(GeometryReader { g in Color.clear.preference(key: StripHeightsKey.self, value: [i: g.size.height]) })
+    }
+}
+
+/// A row of per-day columns beside the hour gutter. Draws every day in `content` (columns `colW` wide) but shows
+/// only the visible window, offset so the first visible day sits at the gutter and sliding with `swipeX`.
+/// Columns that call `.stripHeight(_:)` size the row: it is as tall as the tallest *visible* day, so a busy day
+/// off-screen doesn't leave an empty band under a quiet one.
+private struct StripRowView<Content: View>: View {
+    let gutter: CGFloat, colW: CGFloat, lead: Int, visible: Int, swipeX: CGFloat
+    let content: Content
+    @State private var heights: [Int: CGFloat] = [:]
+
+    private var rowHeight: CGFloat? { (lead..<(lead + visible)).compactMap { heights[$0] }.max() }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: gutter, height: 1)
+            HStack(alignment: .top, spacing: 0) { content }
+                .offset(x: -CGFloat(lead) * colW + swipeX)
+                .frame(width: colW * CGFloat(visible), height: rowHeight, alignment: .topLeading)
+                .clipped()
+        }
+        .onPreferenceChange(StripHeightsKey.self) { heights = $0 }
     }
 }
