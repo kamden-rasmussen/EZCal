@@ -127,11 +127,11 @@ final class AgendaNavigationUITests: EZCalUITestCase {
         grid.swipeUp()
         XCTAssertEqual(dayTitle.label, today, "vertical scroll must not change the day")
         grid.swipeLeft()
-        XCTAssertNotEqual(dayTitle.label, today, "swipe left goes to the next day")
+        XCTAssertTrue(waitFor { dayTitle.label != today }, "swipe left goes to the next day")
         grid.swipeRight()
-        XCTAssertEqual(dayTitle.label, today, "swipe right goes back")
+        XCTAssertTrue(waitFor { dayTitle.label == today }, "swipe right goes back")
         grid.swipeRight()
-        XCTAssertNotEqual(dayTitle.label, today)
+        XCTAssertTrue(waitFor { dayTitle.label != today })
     }
 
     func testSwipeChangesWeek() throws {
@@ -140,9 +140,9 @@ final class AgendaNavigationUITests: EZCalUITestCase {
         XCTAssertTrue(dayTitle.waitForExistence(timeout: 5))
         let before = dayTitle.label
         app.scrollViews.firstMatch.swipeLeft()
-        XCTAssertNotEqual(dayTitle.label, before)
+        XCTAssertTrue(waitFor { dayTitle.label != before })
         app.scrollViews.firstMatch.swipeRight()
-        XCTAssertEqual(dayTitle.label, before)
+        XCTAssertTrue(waitFor { dayTitle.label == before })
     }
 
     // MARK: - Polish (#137)

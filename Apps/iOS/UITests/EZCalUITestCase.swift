@@ -24,6 +24,12 @@ class EZCalUITestCase: XCTestCase {
         p.tap()
         app.buttons[name].firstMatch.tap()
     }
+    /// Polls until `cond` holds (for UI that settles a moment after a gesture, like the day-strip slide).
+    func waitFor(_ timeout: TimeInterval = 5, _ cond: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(timeout)
+        while Date() < end { if cond() { return true }; RunLoop.current.run(until: Date().addingTimeInterval(0.1)) }
+        return cond()
+    }
     func anyEl(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     var dayTitle: XCUIElement { app.buttons["dayTitle"] }
 

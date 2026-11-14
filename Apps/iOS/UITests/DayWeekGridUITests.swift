@@ -142,30 +142,72 @@ final class DayWeekGridUITests: EZCalUITestCase {
         app.buttons["prevButton"].tap()
         XCTAssertEqual(dayTitle.label, before)
         app.scrollViews.firstMatch.swipeLeft()
-        XCTAssertNotEqual(dayTitle.label, before)
+        XCTAssertTrue(waitFor { dayTitle.label != before })
     }
 
-    /// "Swipe by day" (default): a swipe in a multi-day grid shifts the columns by one day, not a whole page.
-    func testSwipeInThreeDayViewMovesOneDay() throws {
+    /// "Swipe by day" (default): the columns follow the finger and settle on a whole day. Dragging slowly by one
+    /// column's width moves exactly one day; a fling (below) can carry further.
+    private func headers() -> XCUIElementQuery { app.descendants(matching: .any).matching(identifier: "columnHeader") }
+
+    private func dragOneColumn(columns: Int, leftward: Bool) {
+        let grid = app.scrollViews.firstMatch
+        let colW = (grid.frame.width - 48) / CGFloat(columns)
+        let width = grid.frame.width
+        let startX: CGFloat = columns == 1 ? (leftward ? 0.92 : 0.08) : (leftward ? 0.8 : 0.3)
+        let from = grid.coordinate(withNormalizedOffset: CGVector(dx: startX, dy: 0.5))
+        // A one-day grid's column is almost the whole screen, so the drag is capped to what fits (still rounds to 1 day).
+        let dist = min(colW, width * 0.84)
+        let to = from.withOffset(CGVector(dx: leftward ? -dist : dist, dy: 0))
+        from.press(forDuration: 0.1, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.4)
+    }
+
+    func testSlowDragInThreeDayViewMovesOneDay() throws {
         selectTab("Day")
         pickGrid("3 Day")
-        let headers = app.descendants(matching: .any).matching(identifier: "columnHeader")
-        XCTAssertTrue(headers.element(boundBy: 2).waitForExistence(timeout: 5))
-        let second = headers.element(boundBy: 1).label
-        app.scrollViews.firstMatch.swipeLeft()
-        XCTAssertTrue(headers.element(boundBy: 0).waitForExistence(timeout: 5))
-        XCTAssertEqual(headers.element(boundBy: 0).label, second)
+        XCTAssertTrue(headers().element(boundBy: 2).waitForExistence(timeout: 5))
+        XCTAssertEqual(headers().count, 3, "off-screen strip columns must stay hidden")
+        let first = headers().element(boundBy: 0).label, second = headers().element(boundBy: 1).label
+        dragOneColumn(columns: 3, leftward: true)
+        XCTAssertTrue(waitFor { headers().element(boundBy: 0).label == second })
+        dragOneColumn(columns: 3, leftward: false)
+        XCTAssertTrue(waitFor { headers().element(boundBy: 0).label == first })
     }
 
-    func testSwipeInWeekViewMovesOneDay() throws {
+    func testSlowDragInWeekViewMovesOneDay() throws {
         selectTab("Day")
         pickGrid("Week")
-        let headers = app.descendants(matching: .any).matching(identifier: "columnHeader")
-        XCTAssertTrue(headers.element(boundBy: 1).waitForExistence(timeout: 5))
-        let second = headers.element(boundBy: 1).label
+        XCTAssertTrue(headers().element(boundBy: 1).waitForExistence(timeout: 5))
+        let n = headers().count
+        let first = headers().element(boundBy: 0).label, second = headers().element(boundBy: 1).label
+        dragOneColumn(columns: n, leftward: true)
+        XCTAssertTrue(waitFor { headers().element(boundBy: 0).label == second })
+        dragOneColumn(columns: n, leftward: false)
+        XCTAssertTrue(waitFor { headers().element(boundBy: 0).label == first })
+    }
+
+    func testSlowDragInSingleDayViewMovesOneDay() throws {
+        selectTab("Day")
+        XCTAssertTrue(anyEl("dayGridBackground").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "dayGridBackground").count, 1,
+                       "off-screen strip days must not look like the visible one")
+        let before = dayTitle.label
+        dragOneColumn(columns: 1, leftward: true)
+        XCTAssertTrue(waitFor { dayTitle.label != before })
+        let next = dayTitle.label
+        dragOneColumn(columns: 1, leftward: false)
+        XCTAssertTrue(waitFor { dayTitle.label == before })
+        XCTAssertNotEqual(next, before)
+    }
+
+    func testFlingInWeekViewStillMovesAndComesBack() throws {
+        selectTab("Day")
+        pickGrid("Week")
+        XCTAssertTrue(headers().element(boundBy: 1).waitForExistence(timeout: 5))
+        let first = headers().element(boundBy: 0).label
         app.scrollViews.firstMatch.swipeLeft()
-        XCTAssertTrue(headers.element(boundBy: 0).waitForExistence(timeout: 5))
-        XCTAssertEqual(headers.element(boundBy: 0).label, second)
+        XCTAssertTrue(waitFor { headers().element(boundBy: 0).label != first })
+        app.scrollViews.firstMatch.swipeRight()
+        XCTAssertTrue(waitFor { headers().element(boundBy: 0).label == first })
     }
 
     func testEmptyDayInDayView() throws {

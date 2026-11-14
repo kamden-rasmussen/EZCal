@@ -33,6 +33,10 @@ struct DayView: View {
     @State private var swipeAxis: Axis?
     /// Set around a by-day swipe so the grid keeps its vertical scroll position instead of jumping back to the morning.
     @State private var keepScroll = false
+    /// True while a released swipe is settling onto a day column; further swipes wait.
+    @State private var settling = false
+    /// Days drawn on each side of the visible window while swiping by day, so the grid can slide without blank edges.
+    private static let stripPad = 7
     @State private var containerW: CGFloat = 390
     /// True from the moment a long press lifts an event (or a resize handle is grabbed) until it is dropped,
     /// so the page-swipe never fights an event drag.
@@ -65,6 +69,30 @@ struct DayView: View {
             return threeDay ? (0..<3).compactMap { store.cal.date(byAdding: .day, value: $0, to: d0) } : [d0]
         }
         return store.visibleDays
+    }
+
+    /// 3 Day / Work Week / Week with "Swipe by day": the grid draws `stripPad` extra days either side and the finger
+    /// slides that strip, settling on a whole day (Apple Calendar-style).
+    private var stripMode: Bool { gridMode != .month && (isSingleDay || swipeByDay) }
+    /// The one-day grid always slides day by day; the setting only decides whether the multi-day grids do.
+    private var isSingleDay: Bool { gridMode == .day && !threeDay }
+    /// Columns before the first visible one in what's drawn (0 outside strip mode).
+    private var gridLead: Int { stripMode ? Self.stripPad : 0 }
+    private var stripColWidth: CGFloat { max(stripColW(visibleDays.count), 1) }
+
+    /// Most days one swipe may carry the grid: a screenful at most, and never past the pad drawn off-screen.
+    private var maxStripDays: Int { min(Self.stripPad - 1, max(visibleDays.count, 1)) }
+
+    /// The visible window plus `stripPad` days each side, skipping hidden weekend days like the grid does.
+    private var stripDays: [Date] {
+        let pad = Self.stripPad, cal = store.cal
+        if gridMode == .day {
+            let d0 = cal.startOfDay(for: store.anchor)
+            return (-pad..<((threeDay ? 3 : 1) + pad)).compactMap { cal.date(byAdding: .day, value: $0, to: d0) }
+        }
+        let vis = visibleDays
+        return WeekScrollMath.window(around: vis.first ?? store.anchor, before: pad, after: vis.count - 1 + pad,
+                                     rule: store.weekColumns.rule, cal: cal)
     }
 
     /// Always a 3-letter month — screen space here is tighter than on macOS, which sometimes spells
@@ -106,10 +134,10 @@ struct DayView: View {
                 }
                 .pickerStyle(.menu)
                 .accessibilityIdentifier("gridModePicker")
-                .onChange(of: gridMode) { _, _ in syncStore() }
+                .onChange(of: gridMode) { _, _ in syncStore(); alignWeekIfNeeded(force: true) }
                 .onChange(of: threeDay) { _, _ in syncStore() }
-                .onChange(of: swipeByDay) { _, _ in store.goTo(store.anchor) }   // re-aligns the week to its start
-                .onAppear { syncStore() }
+                .onChange(of: swipeByDay) { _, _ in syncStore(); store.goTo(store.anchor) }   // re-aligns the week to its start
+                .onAppear { syncStore(); alignWeekIfNeeded(force: false) }
                 .onDisappear { store.alignsLeadingToWeek = false }
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
@@ -118,16 +146,16 @@ struct DayView: View {
                 if gridMode == .month {
                     MonthView(gridMode: $gridMode)
                 } else if days.count == 1 {
-                    singleDay(days[0])
+                    singleDay(stripMode ? stripDays : days, lead: gridLead)
                 } else {
-                    multiDay(days)
+                    multiDay(stripMode ? stripDays : days, lead: gridLead, visible: days.count)
                 }
             }
             .background(GeometryReader { g in
                 Color.clear.onAppear { containerW = g.size.width }.onChange(of: g.size.width) { _, w in containerW = w }
             })
-            .offset(x: swipeX)
-            .opacity(1 - min(abs(swipeX) / max(containerW, 1), 1) * 0.5)
+            .offset(x: stripMode ? 0 : swipeX)
+            .opacity(stripMode ? 1 : 1 - min(abs(swipeX) / max(containerW, 1), 1) * 0.5)
             .clipped()
             .simultaneousGesture(swipeGesture)
         }
@@ -165,9 +193,16 @@ struct DayView: View {
             })
     }
 
+    /// Week / Work Week open on the week containing the anchor (like the old paged grid). On appear that only happens while
+    /// the anchor is still the untouched default of today, so a day you've swiped to isn't snapped back.
+    private func alignWeekIfNeeded(force: Bool) {
+        guard stripMode, gridMode == .week || gridMode == .workWeek else { return }
+        if force || store.cal.isDateInToday(store.anchor) { store.goTo(store.anchor) }
+    }
+
     /// Keeps the shared store's fetch window in step with what the grid shows.
     private func syncStore() {
-        store.fetchPadDays = 7
+        store.fetchPadDays = stripMode ? 21 : 7   // strip mode draws ±7 days, so keep those loaded with room to spare
         store.extraFetchDays = gridMode == .day && threeDay ? 2 : 0
         store.alignsLeadingToWeek = gridMode == .week || gridMode == .workWeek
         if gridMode == .day { if threeDay { store.setMode(.day) } } else { store.setMode(gridMode) }
@@ -181,19 +216,29 @@ struct DayView: View {
     private var swipeGesture: some Gesture {
         DragGesture(minimumDistance: 20, coordinateSpace: .global)
             .onChanged { v in
+                guard !settling else { return }
                 guard !lifting, drag == nil, hourHeightAtPinchStart == nil else { swipeX = 0; return }
                 if swipeAxis == nil {
                     swipeAxis = abs(v.translation.width) > abs(v.translation.height) * 1.5 ? .horizontal : .vertical
                 }
-                // By-day grids pop to the next day on release rather than dragging the whole page along.
-                if swipeAxis == .horizontal && !popsByDay { swipeX = v.translation.width }
+                guard swipeAxis == .horizontal else { return }
+                if stripMode {
+                    // The columns follow the finger, up to the extra days drawn off-screen.
+                    let limit = CGFloat(maxStripDays) * stripColWidth
+                    swipeX = min(max(v.translation.width, -limit), limit)
+                } else {
+                    swipeX = v.translation.width
+                }
             }
             .onEnded { v in
                 defer { swipeAxis = nil }
+                guard !settling else { return }
                 guard swipeAxis == .horizontal, !lifting, drag == nil else { settleSwipe(); return }
                 let dx = v.translation.width, predicted = v.predictedEndTranslation.width
-                if popsByDay {
-                    if abs(dx) > 40 || abs(predicted) > 120 { popByDay(dir: dx < 0 ? 1 : -1) }
+                if stripMode {
+                    // Whole days the strip should end up moved by, counting a little momentum; dragging left = later days.
+                    let n = min(max(Int((-predicted / stripColWidth).rounded()), -maxStripDays), maxStripDays)
+                    settleStrip(by: n)
                 } else if abs(dx) > containerW * 0.25 || abs(predicted) > containerW * 0.6 {
                     commitSwipe(dir: dx < 0 ? 1 : -1)
                 } else {
@@ -202,13 +247,35 @@ struct DayView: View {
             }
     }
 
-    /// 3 Day / Work Week / Week with "Swipe by day": one day per swipe, no slide animation (like Apple Calendar).
-    private var popsByDay: Bool { swipeByDay && gridMode != .month && !(gridMode == .day && !threeDay) }
+    /// Slides the strip the rest of the way onto day column `n` (0 = back to where it was), then moves the anchor by
+    /// `n` days and zeroes the offset in one non-animated step: pixel-identical, so there is no visible jump.
+    private func settleStrip(by n: Int) {
+        let w = stripColWidth
+        settling = true
+        withAnimation(.easeOut(duration: 0.22)) { swipeX = -CGFloat(n) * w }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 240_000_000)
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) {
+                if n != 0 {
+                    keepScroll = true
+                    shiftAnchor(byDays: n)
+                    DispatchQueue.main.async { keepScroll = false }
+                }
+                swipeX = 0
+            }
+            settling = false
+        }
+    }
 
-    private func popByDay(dir: Int) {
-        keepScroll = true
-        navigate(dir)
-        DispatchQueue.main.async { keepScroll = false }
+    /// Moves the leftmost day by `n` columns (Week / Work Week skip hidden weekend days).
+    private func shiftAnchor(byDays n: Int) {
+        if gridMode == .day {
+            let d = store.cal.date(byAdding: .day, value: n, to: store.anchor) ?? store.anchor
+            if threeDay { store.weekScrollAnchorChanged(to: d) } else { store.goTo(d) }
+        } else {
+            store.weekScrollAnchorChanged(to: WeekScrollMath.shift(store.anchor, byColumns: n, rule: store.weekColumns.rule, cal: store.cal))
+        }
     }
 
     private func settleSwipe() { withAnimation(.easeOut(duration: 0.18)) { swipeX = 0 } }
@@ -230,7 +297,7 @@ struct DayView: View {
         if gridMode == .day {
             let step = threeDay && !swipeByDay ? 3 : 1
             store.goTo(store.cal.date(byAdding: .day, value: n * step, to: store.anchor) ?? store.anchor)
-        } else if swipeByDay {
+        } else if swipeByDay && gridMode != .month {
             // Week / Work Week: anchor is the leftmost column; move it one column (skipping hidden weekend days).
             let rule = store.weekColumns.rule
             store.weekScrollAnchorChanged(to: WeekScrollMath.shift(store.anchor, byColumns: n, rule: rule, cal: store.cal))
@@ -240,32 +307,39 @@ struct DayView: View {
     // MARK: - Day / multi-day headers (all-day rows)
 
     @ViewBuilder
-    private func singleDay(_ day: Date) -> some View {
-        let r = store.events(on: day)
-        if !r.allDay.isEmpty {
-            VStack(spacing: 4) {
-                ForEach(r.allDay) { ev in
-                    Button { store.sheet = .detail(ev) } label: {
-                        Text(ev.title).font(.footnote).lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(6).background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
-                    }.buttonStyle(.plain)
-                    .accessibilityIdentifier("allDayEvent")
+    private func singleDay(_ days: [Date], lead: Int) -> some View {
+        let allDay = days.map { store.events(on: $0).allDay }
+        if !allDay[lead].isEmpty {
+            stripRow(lead: lead, visible: 1) {
+                ForEach(Array(days.enumerated()), id: \.offset) { i, _ in
+                    let pad = i != lead
+                    VStack(spacing: 4) {
+                        ForEach(allDay[i]) { ev in
+                            Button { store.sheet = .detail(ev) } label: {
+                                Text(ev.title).font(.footnote).lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(6).background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
+                            }.buttonStyle(.plain)
+                            .accessibilityIdentifier(pad ? "allDayEventPad" : "allDayEvent")
+                        }
+                    }
+                    .frame(width: stripColW(1), alignment: .top)
+                    .accessibilityHidden(pad)
                 }
-            }.padding(8)
+            }.padding(.vertical, 8)
             Divider()
         }
-        timeGrid([day])
+        timeGrid(days, lead: lead, visible: 1)
     }
 
     @ViewBuilder
-    private func multiDay(_ days: [Date]) -> some View {
-        columnHeaders(days)
+    private func multiDay(_ days: [Date], lead: Int, visible: Int) -> some View {
+        columnHeaders(days, lead: lead, visible: visible)
         Divider()
         let allDay = days.map { store.events(on: $0).allDay }
-        if allDay.contains(where: { !$0.isEmpty }) {
-            HStack(spacing: 0) {
-                Color.clear.frame(width: gutter, height: 1)
+        // Only the visible window decides whether the all-day row shows, so it doesn't pop in mid-swipe.
+        if allDay[lead..<(lead + visible)].contains(where: { !$0.isEmpty }) {
+            stripRow(lead: lead, visible: visible) {
                 ForEach(Array(days.enumerated()), id: \.offset) { i, d in
                     VStack(alignment: .leading, spacing: 2) {
                         let shown = allDay[i].count > 2 ? 1 : allDay[i].count
@@ -276,37 +350,60 @@ struct DayView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(ev.color.opacity(0.25), in: RoundedRectangle(cornerRadius: 3))
                             }.buttonStyle(.plain)
-                            .accessibilityIdentifier("weekAllDayEvent")
+                            .accessibilityIdentifier(i < lead || i >= lead + visible ? "weekAllDayEventPad" : "weekAllDayEvent")
                         }
                         if allDay[i].count > 2 {
                             Text("+\(allDay[i].count - 1)").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                                 .padding(.horizontal, 3)
                                 .accessibilityLabel("\(allDay[i].count - 1) more all-day events")
-                                .accessibilityIdentifier("allDayMore")
+                                .accessibilityIdentifier(i < lead || i >= lead + visible ? "allDayMorePad" : "allDayMore")
                         }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 2)
+                    }
+                    .padding(.horizontal, 2).frame(width: stripColW(visible), alignment: .leading)
+                    .accessibilityHidden(i < lead || i >= lead + visible)
                 }
             }.padding(.vertical, 4)
             Divider()
         }
-        timeGrid(days)
+        timeGrid(days, lead: lead, visible: visible)
+    }
+
+    /// Width of one day column in the grid: the one-day grid keeps a small right margin.
+    private func stripColW(_ visible: Int) -> CGFloat { (containerW - gutter - (visible == 1 ? 8 : 0)) / CGFloat(max(visible, 1)) }
+
+    /// A row of per-day columns beside the hour gutter. Draws every day in `content` (columns `colW` wide) but shows
+    /// only the visible window, offset so the first visible day sits at the gutter and sliding with `swipeX`.
+    private func stripRow<Content: View>(lead: Int, visible: Int, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: gutter, height: 1)
+            HStack(spacing: 0) { content() }
+                .offset(x: -CGFloat(lead) * stripColW(visible) + swipeX)
+                .frame(width: stripColW(visible) * CGFloat(visible), alignment: .leading)
+                .clipped()
+        }
     }
 
     // MARK: - The time grid (one or more columns; touch drag/resize in all of them)
 
-    private func timeGrid(_ days: [Date]) -> some View {
-        let single = days.count == 1
+    private func timeGrid(_ days: [Date], lead: Int = 0, visible: Int? = nil) -> some View {
+        let visible = visible ?? days.count
+        let single = visible == 1
         let timedByDay = days.map { store.events(on: $0).timed }
         return ScrollViewReader { proxy in
             ScrollView {
                 GeometryReader { geo in
-                    let colWidth = (geo.size.width - gutter - (single ? 8 : 0)) / CGFloat(days.count)
+                    let colWidth = (geo.size.width - gutter - (single ? 8 : 0)) / CGFloat(visible)
                     ZStack(alignment: .topLeading) {
                         hourLabels()
+                        // All days drawn side by side; the container is shifted so the first visible one sits at the gutter
+                        // and slides with the finger, and masked so the off-screen days never show over the hour labels.
+                        ZStack(alignment: .topLeading) {
                         ForEach(Array(days.enumerated()), id: \.offset) { i, d in
+                            let inWindow = i >= lead && i < lead + visible
+                            Group {
                             // Long-press an empty spot to create an event there (events sit above and win).
                             Color.clear.contentShape(Rectangle())
-                                .accessibilityIdentifier(single ? "dayGridBackground" : "weekDayGridBackground")
+                                .accessibilityIdentifier((single ? "dayGridBackground" : "weekDayGridBackground") + (inWindow ? "" : "Pad"))
                                 .frame(width: colWidth, height: hourHeight * 24)
                                 .offset(x: gutter + colWidth * CGFloat(i))
                                 .onTapGesture { selectedID = nil }
@@ -325,15 +422,27 @@ struct DayView: View {
                             }
                             ForEach(EventLayout.place(timedByDay[i], day: d, cal: store.cal,
                                                                 order: SameTimeOrder(rawValue: sameTimeOrderRaw) ?? .startFirst)) { item in
-                                block(item, days: days, col: i, colWidth: colWidth, gridWidth: geo.size.width)
+                                block(item, days: days, col: i, colWidth: colWidth, gridWidth: geo.size.width, inWindow: inWindow)
                             }
                             if store.cal.isDateInToday(d) {
                                 NowIndicator(day: d, hourHeight: hourHeight, width: colWidth, cal: store.cal)
                                     .offset(x: gutter + colWidth * CGFloat(i)).zIndex(3)
                             }
+                            }
+                            .accessibilityHidden(!inWindow)
+                            .allowsHitTesting(inWindow)
+                        }
+                        }
+                        .offset(x: -CGFloat(lead) * colWidth + swipeX)
+                        .frame(width: geo.size.width, height: hourHeight * 24, alignment: .topLeading)
+                        .mask {
+                            HStack(spacing: 0) {
+                                Color.clear.frame(width: lead > 0 ? gutter : 0)
+                                Color.black
+                            }.padding(.vertical, -60)
                         }
                         if let d = drag, !d.committing {
-                            timeLabel(d, days: days, colWidth: colWidth, gridWidth: geo.size.width)
+                            timeLabel(d, days: days, lead: lead, colWidth: colWidth, gridWidth: geo.size.width)
                         }
                     }
                 }
@@ -401,19 +510,19 @@ struct DayView: View {
         }
     }
 
-    private func columnHeaders(_ days: [Date]) -> some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: gutter, height: 1)
-            ForEach(days, id: \.self) { d in
+    private func columnHeaders(_ days: [Date], lead: Int, visible: Int) -> some View {
+        stripRow(lead: lead, visible: visible) {
+            ForEach(Array(days.enumerated()), id: \.offset) { i, d in
                 let today = store.cal.isDateInToday(d)
                 VStack(spacing: 2) {
                     Text(d.formatted(.dateTime.weekday(.abbreviated))).font(.caption2).foregroundStyle(.secondary)
                     Text(d.formatted(.dateTime.day())).font(.subheadline.weight(today ? .bold : .regular))
                         .foregroundStyle(today ? Color.accentColor : .primary)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(width: stripColW(visible))
                 .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("columnHeader")
+                .accessibilityIdentifier(i < lead || i >= lead + visible ? "columnHeaderPad" : "columnHeader")
+                .accessibilityHidden(i < lead || i >= lead + visible)
             }
         }.padding(.vertical, 4)
     }
@@ -439,10 +548,10 @@ struct DayView: View {
     }
 
     @ViewBuilder
-    private func block(_ item: PlacedEvent, days: [Date], col: Int, colWidth: CGFloat, gridWidth: CGFloat) -> some View {
+    private func block(_ item: PlacedEvent, days: [Date], col: Int, colWidth: CGFloat, gridWidth: CGFloat, inWindow: Bool = true) -> some View {
         let stack: [CalEvent]? = { if case .stack(let es) = item.item { return es } else { return nil } }()
         let e: CalEvent = { switch item.item { case .single(let e): return e; case .stack(let es): return es[0] } }()
-        let single = days.count == 1
+        let single = days.count - 2 * gridLead == 1
         let live = drag?.id == e.id ? drag : nil
         // While moving across days the block is drawn in the column under the finger.
         let shownCol = min(max(col + (live?.kind == .move ? live?.dayDelta ?? 0 : 0), 0), days.count - 1)
@@ -473,7 +582,7 @@ struct DayView: View {
         .accessibilityLabel(label)
         .accessibilityValue(timeText(s, en))
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier(stack != nil ? (single ? "dayStackedEvent" : "weekStackedEvent") : (single ? "dayEvent" : "weekDayEvent"))
+        .accessibilityIdentifier((stack != nil ? (single ? "dayStackedEvent" : "weekStackedEvent") : (single ? "dayEvent" : "weekDayEvent")) + (inWindow ? "" : "Pad"))
         .onTapGesture {
             selectedID = nil
             if let stack { stackSelection = StackSelection(events: stack) } else { store.sheet = .detail(e) }
@@ -545,7 +654,7 @@ struct DayView: View {
                 .onEnded { _ in lifting = false; finish() })
     }
 
-    private func timeLabel(_ d: DayDragState, days: [Date], colWidth: CGFloat, gridWidth: CGFloat) -> some View {
+    private func timeLabel(_ d: DayDragState, days: [Date], lead: Int, colWidth: CGFloat, gridWidth: CGFloat) -> some View {
         let col = min(max(d.col0 + (d.kind == .move ? d.dayDelta : 0), 0), days.count - 1)
         let top = CGFloat(GridTime.y(of: d.start, on: days[col], hourHeight: Double(hourHeight), cal: store.cal))
         return Text(d.valid ? timeText(d.start, d.end) : "Release to cancel")
@@ -553,7 +662,7 @@ struct DayView: View {
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(.thinMaterial, in: Capsule())
             .overlay(Capsule().stroke(.secondary.opacity(0.4)))
-            .offset(x: max(min(gutter + colWidth * CGFloat(col), gridWidth - 170), gutter), y: max(top - 28, 0))
+            .offset(x: max(min(gutter + colWidth * CGFloat(col - lead), gridWidth - 170), gutter), y: max(top - 28, 0))
             .zIndex(20)
             .allowsHitTesting(false)
             .accessibilityIdentifier("dragTimeLabel")
@@ -569,8 +678,12 @@ struct DayView: View {
         d.fingerY = p.y
         d.valid = p.y >= 0 && p.y <= hourHeight * 24 && p.x >= -8 && p.x <= gridWidth + 8
         if d.kind == .move, colWidth > 0 {
-            let c = min(max(Int(((p.x - gutter) / colWidth).rounded(.down)), 0), days.count - 1)
+            // The finger's column within the visible window, as an index into the days actually drawn.
+            let visibleCount = days.count - 2 * gridLead
+            let c = min(max(Int(((p.x - gutter) / colWidth).rounded(.down)), 0), visibleCount - 1) + gridLead
             d.dayDelta = c - d.col0
+            // Columns can skip days (hidden weekends), so the real move is the calendar days between the two columns.
+            d.calendarDayDelta = store.cal.dateComponents([.day], from: days[d.col0], to: days[c]).day ?? d.dayDelta
         }
         recompute(&d)
         drag = d
@@ -579,7 +692,7 @@ struct DayView: View {
     private func recompute(_ d: inout DayDragState) {
         let r = DayDragMath.compute(kind: d.kind, origStart: d.origStart, origEnd: d.origEnd,
                                     deltaY: d.fingerY - d.startY, hourHeight: hourHeight, day: d.day, cal: store.cal,
-                                    dayDelta: d.dayDelta)
+                                    dayDelta: d.calendarDayDelta)
         if r.start != d.start || r.end != d.end { Haptics.tick() }
         d.start = r.start; d.end = r.end
     }
