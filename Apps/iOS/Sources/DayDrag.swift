@@ -18,6 +18,7 @@ struct DayDragState {
     var day: Date = Date()       // start of the day the event was dragged from
     var col0 = 0                 // grid column the drag began in
     var dayDelta = 0             // columns moved sideways (move only)
+    var calendarDayDelta = 0     // calendar days that move is worth (differs from dayDelta when columns skip days)
 }
 
 /// Pure time math for touch dragging; reuses the shared `EventDragMath` for snapping/moving/bottom resize.
