@@ -25,8 +25,32 @@ struct SettingsSheet: View {
                 Section("Accounts") {
                     LabeledContent("Device calendars (iCloud etc.)", value: store.eventKitEnabled ? "Connected" : "Not connected")
                         .accessibilityIdentifier("settingsDevice")
-                    LabeledContent("Google Calendar", value: "Not set up on iOS yet")
                     LabeledContent("Zoom", value: "Not set up on iOS yet")
+                }
+                Section("Google Calendar") {
+                    ForEach(store.accounts) { a in
+                        HStack {
+                            Text(a.email)
+                            Spacer()
+                            Button("Remove", role: .destructive) { store.signOut(a) }
+                                .accessibilityIdentifier("removeGoogle-\(a.email)")
+                        }
+                    }
+                    if store.googleNeedsSignIn {
+                        Text("Your Google sign-in expired. Sign in again to keep Google events up to date.")
+                            .font(.footnote).foregroundStyle(.orange)
+                    }
+                    Button {
+                        Task { await store.signIn() }
+                    } label: {
+                        Label(store.isSigningIn ? "Waiting for Google…" : (store.accounts.isEmpty ? "Sign in with Google" : "Add another Google account"),
+                              systemImage: "person.badge.plus")
+                    }
+                    .disabled(store.isSigningIn || !AppSettings.hasGoogleCredentials)
+                    .accessibilityIdentifier("googleSignInButton")
+                    if let e = store.errorMessage, !store.accounts.isEmpty || !store.eventKitEnabled {
+                        Text(e).font(.footnote).foregroundStyle(.red)
+                    }
                 }
                 Section("Calendar view") {
                     Toggle("Show weekends", isOn: $showWeekends)
