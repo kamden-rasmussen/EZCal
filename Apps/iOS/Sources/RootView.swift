@@ -4,6 +4,7 @@ import EventKit
 enum HomeTab: String, CaseIterable, Identifiable {
     case agenda = "Agenda", day = "Day"
     var id: String { rawValue }
+    static let showAgendaKey = "showAgenda"
 }
 
 struct RootView: View {
@@ -13,6 +14,7 @@ struct RootView: View {
     @State private var showCalendars = false
     @State private var showSettings = false
     @State private var showGoTo = false
+    @AppStorage(HomeTab.showAgendaKey) private var showAgenda = true
     @AppStorage("gridThreeDay") private var threeDay = false
     @State private var authStatus = EKEventStore.authorizationStatus(for: .event)
 
@@ -60,13 +62,15 @@ struct RootView: View {
                     } label: { Image(systemName: "line.3.horizontal") }
                     .accessibilityLabel("Menu").accessibilityIdentifier("menuButton")
                 }
-                ToolbarItem(placement: .principal) {
-                    Picker("View", selection: $tab) {
-                        ForEach(HomeTab.allCases) { Text($0.rawValue).tag($0) }
+                if showAgenda {
+                    ToolbarItem(placement: .principal) {
+                        Picker("View", selection: $tab) {
+                            ForEach(HomeTab.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 200)
+                        .accessibilityIdentifier("tabPicker")
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 200)
-                    .accessibilityIdentifier("tabPicker")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { store.newDraft(start: defaultStart()) } label: { Image(systemName: "plus") }
@@ -84,6 +88,8 @@ struct RootView: View {
             }
         }
         .joinConfirmation()
+        .onAppear { if !showAgenda { tab = .day } }
+        .onChange(of: showAgenda) { _, on in if !on { tab = .day } }
         .sheet(isPresented: $showCalendars) { CalendarListSheet() }
         .sheet(isPresented: $showSettings) { SettingsSheet() }
         .sheet(isPresented: $showGoTo) { GoToDateSheet() }

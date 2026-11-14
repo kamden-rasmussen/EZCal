@@ -13,6 +13,7 @@ struct SettingsSheet: View {
     @AppStorage("hourHeight") private var hourHeight = 56.0
     @AppStorage("overlapLayoutMode") private var overlapLayoutMode = OverlapLayoutMode.sideBySide.rawValue
     @AppStorage(CalendarStore.refreshIntervalKey) private var refreshInterval = CalendarStore.defaultRefreshInterval
+    @AppStorage(HomeTab.showAgendaKey) private var showAgenda = true
     @AppStorage(CalendarStore.weekSwipeByDayKey) private var swipeByDay = true
     @AppStorage("sameTimeOrder") private var sameTimeOrder = SameTimeOrder.startFirst.rawValue
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system.rawValue
@@ -50,6 +51,8 @@ struct SettingsSheet: View {
                     }
                     .accessibilityIdentifier("overlapLayoutPicker")
                     Toggle("Swipe by day", isOn: $swipeByDay)
+                    Toggle("Show Agenda", isOn: $showAgenda)
+                        .accessibilityIdentifier("showAgendaToggle")
                     Picker("Check for changes", selection: $refreshInterval) {
                         ForEach(CalendarStore.refreshIntervalChoices, id: \.seconds) { Text($0.label).tag($0.seconds) }
                     }
