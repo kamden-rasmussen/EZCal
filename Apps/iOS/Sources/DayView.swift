@@ -33,6 +33,7 @@ struct DayView: View {
     @State private var swipeAxis: Axis?
     /// Set around a by-day swipe so the grid keeps its vertical scroll position instead of jumping back to the morning.
     @State private var keepScroll = false
+    @AppStorage(HomeTab.showAgendaKey) private var showAgenda = true
     /// True while a released swipe is settling onto a day column; further swipes wait.
     @State private var settling = false
     /// Days drawn on each side of the visible window while swiping by day, so the grid can slide without blank edges.
@@ -114,16 +115,21 @@ struct DayView: View {
             : "\(main), \(f.formatted(.dateTime.year())) – \(l.formatted(.dateTime.year()))"
     }
 
+    private var dayTitleButton: some View {
+        Button { showGoTo = true } label: {
+            Text(titleText).font(.subheadline.weight(.semibold))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dayTitle")
+        .accessibilityHint("Opens a date picker")
+    }
+
     var body: some View {
         let days = visibleDays
         VStack(spacing: 0) {
             HStack {
-                Button { showGoTo = true } label: {
-                    Text(titleText).font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("dayTitle")
-                .accessibilityHint("Opens a date picker")
+                // With Agenda hidden the top bar has no picker, so the date lives there instead (see `.toolbar` below).
+                if showAgenda { dayTitleButton }
                 Spacer()
                 Picker("View", selection: gridChoice) {
                     Text("Day").tag(GridChoice.day)
@@ -158,6 +164,11 @@ struct DayView: View {
             .opacity(stripMode ? 1 : 1 - min(abs(swipeX) / max(containerW, 1), 1) * 0.5)
             .clipped()
             .simultaneousGesture(swipeGesture)
+        }
+        .toolbar {
+            if !showAgenda {
+                ToolbarItem(placement: .principal) { dayTitleButton }
+            }
         }
         .sheet(isPresented: $showGoTo) { GoToDateSheet() }
         .sheet(item: $stackSelection, onDismiss: {
