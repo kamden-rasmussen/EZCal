@@ -11,7 +11,8 @@ final class OpenEventRouter {
     private init() {
         token = NotificationCenter.default.addObserver(forName: .ezcalOpenEvent, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["eventID"] as? String, !id.isEmpty else { return }
-            MainActor.assumeIsolated { self?.pendingID = id }
+            // A plain hop, not `assumeIsolated`: that traps if this block isn't running on the main actor's executor.
+            Task { @MainActor in self?.pendingID = id }
         }
     }
 }
