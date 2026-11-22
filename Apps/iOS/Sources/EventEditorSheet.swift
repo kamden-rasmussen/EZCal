@@ -35,7 +35,7 @@ struct EventEditorSheet: View {
                         Picker("Calendar", selection: $draft.sourceId) {
                             ForEach(writable) { s in
                                 Label { Text(s.isEventKit ? "\(s.name) · \(s.groupTitle)" : s.name) }
-                                    icon: { Image(systemName: "circle.fill").foregroundStyle(s.color) }
+                                    icon: { ColorDot.image(hex: s.colorHex) }
                                     .tag(s.id)
                             }
                         }
