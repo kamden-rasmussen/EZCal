@@ -115,23 +115,27 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - UNUserNotificationCenterDelegate (called on an arbitrary thread, hence `nonisolated`)
 
+    // The completion-handler forms, not the `async` ones: a `@MainActor` class with `nonisolated async` delegate methods
+    // has tripped Swift's actor-isolation checks when UserNotifications calls back on its own queue (#207). These read
+    // what they need from the (non-Sendable) response here, then hop to the main queue explicitly.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                             willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]   // show it even while EZCal is frontmost
+                                             willPresent notification: UNNotification,
+                                             withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])   // show it even while EZCal is frontmost
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                             didReceive response: UNNotificationResponse) async {
+                                             didReceive response: UNNotificationResponse,
+                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
         let eventID = info["eventID"] as? String ?? ""
-        if response.actionIdentifier == Self.joinAction,
-           let s = info["joinURL"] as? String, !s.isEmpty, let url = URL(string: s) {
-            await MainActor.run { Platform.open(url) }
-            return
-        }
-        // The "Open" action, or a plain click on the notification itself: focus the event in the app.
-        guard !eventID.isEmpty else { return }
-        await MainActor.run {
+        let joinURL = (info["joinURL"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) }
+        let isJoin = response.actionIdentifier == Self.joinAction
+        DispatchQueue.main.async {
+            defer { completionHandler() }
+            if isJoin, let url = joinURL { Platform.open(url); return }
+            // The "Open" action, or a plain click on the notification itself: focus the event in the app.
+            guard !eventID.isEmpty else { return }
             NotificationCenter.default.post(name: .ezcalOpenEvent, object: nil, userInfo: ["eventID": eventID])
         }
     }
