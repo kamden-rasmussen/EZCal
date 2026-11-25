@@ -156,6 +156,24 @@ final class KeyboardTests: XCTestCase {
         XCTAssertEqual(store.joinMeetingDecision(), .confirm(ranked))
     }
 
+    func testJoinAsksWhichMeetingWhenTwoStartTogether() {
+        let store = CalendarStore()
+        let start = Date().addingTimeInterval(-300)
+        let a = event(id: "a", start: start, minutes: 30)
+        let b = event(id: "b", start: start, minutes: 30, meetingURL: URL(string: "https://meet.google.com/xyz"))
+        store.upcoming = [a, b]
+        guard case .choose(let list) = store.joinMeetingDecision() else { return XCTFail("expected a choice") }
+        XCTAssertEqual(Set(list.map(\.id)), ["a", "b"])
+    }
+
+    func testJoinFindsTheMeetingUnderWayPastACallLessEvent() {
+        let store = CalendarStore()
+        let block = event(id: "block", start: Date().addingTimeInterval(-3600), minutes: 120, meetingURL: nil)
+        let call = event(id: "call", start: Date().addingTimeInterval(-300), minutes: 30)
+        store.upcoming = [block, call]
+        XCTAssertEqual(store.joinMeetingDecision(), .open(call.meetingURL!))
+    }
+
     func testJoinMeetingWithNoFocusAndNoUpcomingShowsError() {
         let store = CalendarStore()
         store.joinMeeting()

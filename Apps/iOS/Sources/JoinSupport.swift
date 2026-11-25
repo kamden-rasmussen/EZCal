@@ -10,13 +10,12 @@ extension CalendarStore {
 
     /// "Join next meeting": the next upcoming event that has a video link.
     func joinNextMeeting() {
-        let now = Date()
-        let candidates = upcoming.filter { $0.end > now && $0.meetingURL != nil }
-        guard let e = CalEvent.nextMeeting(in: candidates, now: now) else {
+        let candidates = CalEvent.joinCandidates(in: upcoming)
+        guard let e = candidates.first else {
             errorMessage = "No upcoming meeting with a video link."
             return
         }
-        join(e)
+        if candidates.count > 1 { joinChoices = candidates } else { join(e) }
     }
 
     var hasNextMeeting: Bool { upcoming.contains { $0.end > Date() && $0.meetingURL != nil } }
@@ -64,6 +63,28 @@ struct JoinConfirmation: ViewModifier {
     }
 }
 
+/// Asks which meeting to join when several video meetings start together.
+struct JoinChoice: ViewModifier {
+    @Environment(CalendarStore.self) private var store
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            "Which meeting?",
+            isPresented: Binding(get: { store.joinChoices != nil }, set: { if !$0 { store.joinChoices = nil } }),
+            titleVisibility: .visible
+        ) {
+            ForEach(store.joinChoices ?? []) { e in
+                Button(e.title) { store.chooseJoin(e) }
+            }
+            Button("Cancel", role: .cancel) { store.joinChoices = nil }
+        } message: {
+            if let first = store.joinChoices?.first {
+                Text("More than one meeting starts at \(first.start.formatted(date: .omitted, time: .shortened)).")
+            }
+        }
+    }
+}
+
 extension View {
-    func joinConfirmation() -> some View { modifier(JoinConfirmation()) }
+    func joinConfirmation() -> some View { modifier(JoinConfirmation()).modifier(JoinChoice()) }
 }

@@ -79,7 +79,7 @@ extension CalendarStore {
 
     // MARK: - Actions
 
-    enum JoinDecision: Equatable { case open(URL), confirm(CalEvent), error(String) }
+    enum JoinDecision: Equatable { case open(URL), confirm(CalEvent), choose([CalEvent]), error(String) }
 
     /// Focused event's call, else the next upcoming one. Joins directly only within 10 minutes before
     /// the start through the end; any other meeting asks for confirmation first rather than silently
@@ -90,9 +90,11 @@ extension CalendarStore {
             guard let url = e.meetingURL else { return .error("That event has no video link.") }
             return e.isJoinable() ? .open(url) : .confirm(e)
         }
-        guard let e = nextMeeting, let url = e.meetingURL else {
+        let candidates = CalEvent.joinCandidates(in: upcoming)
+        guard let e = candidates.first, let url = e.meetingURL else {
             return .error("No upcoming meeting with a video link.")
         }
+        if candidates.count > 1 { return .choose(candidates) }
         return e.isJoinable() ? .open(url) : .confirm(e)
     }
 
@@ -100,8 +102,16 @@ extension CalendarStore {
         switch joinMeetingDecision() {
         case .open(let url): Platform.open(url)
         case .confirm(let e): joinRequest = e
+        case .choose(let list): joinChoices = list
         case .error(let msg): errorMessage = msg
         }
+    }
+
+    /// The person picked one of several simultaneous meetings: join it, or confirm first if it is still far off.
+    func chooseJoin(_ e: CalEvent) {
+        joinChoices = nil
+        guard let url = e.meetingURL else { return }
+        if e.isJoinable() { Platform.open(url) } else { joinRequest = e }
     }
 
     /// Confirms joining `joinRequest`, e.g. from the "Join anyway?" dialog.
