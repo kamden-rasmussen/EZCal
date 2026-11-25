@@ -39,6 +39,18 @@ enum WidgetShared {
     static let scheme = "ezcal"
     static let cacheName = "widget-events.json"
 
+    /// How often the widget asks iOS to refresh it, in minutes. Lives in the app group so the widget extension can
+    /// read what the app's Settings wrote. iOS treats the request as a hint and may refresh less often.
+    static let refreshMinutesKey = "widgetRefreshMinutes"
+    static let defaultRefreshMinutes = 60
+    static let refreshChoices: [(label: String, minutes: Int)] = [
+        ("Every 15 minutes", 15), ("Every 30 minutes", 30), ("Every hour", 60), ("Every 2 hours", 120), ("Every 4 hours", 240)]
+    static var defaults: UserDefaults { UserDefaults(suiteName: appGroup) ?? .standard }
+    static var refreshInterval: TimeInterval {
+        let m = defaults.object(forKey: refreshMinutesKey) as? Int ?? defaultRefreshMinutes
+        return TimeInterval(max(m, 15) * 60)
+    }
+
     static var cacheURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
             .appendingPathComponent(cacheName)
