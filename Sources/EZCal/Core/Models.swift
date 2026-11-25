@@ -152,6 +152,19 @@ struct CalEvent: Identifiable, Hashable, Sendable {
         return soon
     }
 
+    /// What J should join: the `nextMeeting` among events that actually have a video link (an all-day event or a
+    /// call-less block that hasn't ended must not shadow a meeting that is under way, #212), plus any other video
+    /// meeting that starts at the same time, so the caller can ask which one. Copies of one meeting that sit on several
+    /// calendars share a link and count once. One entry means no ambiguity; empty means nothing to join.
+    static func joinCandidates(in events: [CalEvent], now: Date = Date(), lead: TimeInterval = joinLead) -> [CalEvent] {
+        let video = events.filter { $0.meetingURL != nil && $0.end > now && !$0.isAllDay }
+        guard let pick = nextMeeting(in: video, now: now, lead: lead) else { return [] }
+        var seen = Set<URL>()
+        return video.filter { $0.id == pick.id || abs($0.start.timeIntervalSince(pick.start)) < 60 }
+            .sorted { $0.id == pick.id && $1.id != pick.id }
+            .filter { seen.insert($0.meetingURL!).inserted }
+    }
+
     /// Whether `date` falls within the event's span — i.e. it's happening right now.
     func isInProgress(at date: Date = Date()) -> Bool { start <= date && date < end }
     /// True from `lead` seconds before the start until the end — the window where pressing J should

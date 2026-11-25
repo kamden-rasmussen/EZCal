@@ -105,6 +105,10 @@ struct ContentView: View {
                               message: "This can't be undone.", confirmLabel: "Delete",
                               onConfirm: { store.deleteRequest = nil; Task { await store.delete(e) } },
                               onCancel: { store.deleteRequest = nil })
+            } else if let choices = store.joinChoices {
+                JoinChoiceDialog(choices: choices,
+                                 onChoose: { store.chooseJoin($0) },
+                                 onCancel: { store.joinChoices = nil })
             } else if let e = store.joinRequest {
                 ConfirmDialog(icon: "video", title: "Join “\(e.title)”?",
                               message: "Scheduled for \(e.start.formatted(.dateTime.weekday(.wide).month(.wide).day().hour().minute())).",

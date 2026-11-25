@@ -37,4 +37,40 @@ final class NextMeetingTests: XCTestCase {
     func testNilWhenEverythingHasEnded() {
         XCTAssertNil(pick([event("a", startsIn: -60, minutes: 30)]))
     }
+
+    // MARK: - What J joins (#212)
+
+    private func candidates(_ events: [CalEvent]) -> [String] { CalEvent.joinCandidates(in: events, now: now).map(\.id) }
+
+    func testJoinSkipsAnUnfinishedEventWithoutAVideoLink() {
+        // A call-less block that started earlier must not shadow the video meeting that is under way.
+        XCTAssertEqual(candidates([event("focus", startsIn: -60, minutes: 120, video: false), event("call", startsIn: -5)]), ["call"])
+    }
+
+    func testJoinSkipsAllDayEvents() {
+        var allDay = event("trip", startsIn: -600, minutes: 1440)
+        allDay.isAllDay = true
+        XCTAssertEqual(candidates([allDay, event("call", startsIn: -5)]), ["call"])
+    }
+
+    func testJoinHasNothingWhenNoEventHasAVideoLink() {
+        XCTAssertEqual(candidates([event("a", startsIn: -5, video: false), event("b", startsIn: 20, video: false)]), [])
+    }
+
+    func testJoinAsksWhenTwoVideoMeetingsStartTogether() {
+        var other = event("b", startsIn: -5)
+        other.meetingURL = URL(string: "https://meet.google.com/abc")
+        XCTAssertEqual(Set(candidates([event("a", startsIn: -5), other])), ["a", "b"])
+    }
+
+    func testJoinTreatsCopiesOnSeveralCalendarsAsOneMeeting() {
+        // Same link on two calendars: not a real choice.
+        XCTAssertEqual(candidates([event("a", startsIn: -5), event("a2", startsIn: -5)]), ["a"])
+    }
+
+    func testJoinDoesNotAskWhenMeetingsStartAtDifferentTimes() {
+        var later = event("b", startsIn: 20)
+        later.meetingURL = URL(string: "https://meet.google.com/abc")
+        XCTAssertEqual(candidates([event("a", startsIn: -5), later]), ["a"])
+    }
 }

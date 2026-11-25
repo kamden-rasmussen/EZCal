@@ -79,6 +79,8 @@ final class CalendarStore {
     /// Set when "J" targets an event that isn't currently in progress — asks for confirmation
     /// instead of joining immediately. See `Store/IdleDeselect.swift`'s neighbor, `joinMeeting()`.
     var joinRequest: CalEvent?
+    /// Set when "J" finds several video meetings starting together: the person picks which one to join.
+    var joinChoices: [CalEvent]?
     /// Last time any keyboard/mouse activity was seen anywhere in the app; drives the idle
     /// auto-deselect in `Store/IdleDeselect.swift`.
     var lastInteractionAt = Date()
