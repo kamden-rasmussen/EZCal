@@ -38,8 +38,7 @@ struct AgendaProvider: AppIntentTimelineProvider {
         let entries = sorted.map { d in
             AgendaEntry(date: d, events: all.filter { $0.end > d }, isPlaceholder: false)
         }
-        let hourly = now.addingTimeInterval(3600)
-        return Timeline(entries: entries, policy: .after(hourly))
+        return Timeline(entries: entries, policy: .after(now.addingTimeInterval(WidgetShared.refreshInterval)))
     }
 
     /// EventKit first (if the widget process has calendar access), else the app-group cache.

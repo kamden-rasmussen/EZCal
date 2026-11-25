@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct SettingsSheet: View {
     @Environment(CalendarStore.self) private var store
@@ -13,6 +14,7 @@ struct SettingsSheet: View {
     @AppStorage("hourHeight") private var hourHeight = 56.0
     @AppStorage("overlapLayoutMode") private var overlapLayoutMode = OverlapLayoutMode.sideBySide.rawValue
     @AppStorage(CalendarStore.refreshIntervalKey) private var refreshInterval = CalendarStore.defaultRefreshInterval
+    @AppStorage(WidgetShared.refreshMinutesKey, store: WidgetShared.defaults) private var widgetRefreshMinutes = WidgetShared.defaultRefreshMinutes
     @AppStorage(HomeTab.showAgendaKey) private var showAgenda = true
     @AppStorage(CalendarStore.weekSwipeByDayKey) private var swipeByDay = true
     @AppStorage("sameTimeOrder") private var sameTimeOrder = SameTimeOrder.startFirst.rawValue
@@ -103,6 +105,15 @@ struct SettingsSheet: View {
                 }
                 Section("Default alerts for new events") { DefaultAlertsSettingsRows() }
                 Section("Default calendar for new events") { DefaultCalendarSettingsRows() }
+                Section("Widget") {
+                    Picker("Refresh", selection: $widgetRefreshMinutes) {
+                        ForEach(WidgetShared.refreshChoices, id: \.minutes) { Text($0.label).tag($0.minutes) }
+                    }
+                    .accessibilityIdentifier("widgetRefreshPicker")
+                    .onChange(of: widgetRefreshMinutes) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
+                    Text("How often the widget asks iOS to update. iOS decides the real timing and may refresh less often.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Meeting reminders") {
                     Toggle("Notify me before meetings", isOn: $notificationsEnabled)
                         .accessibilityIdentifier("notificationsToggle")
