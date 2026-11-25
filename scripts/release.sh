@@ -57,5 +57,6 @@ rm -rf "$TMP"
 
 gh release edit "$TAG" --repo "$TAP" --draft=false
 
-git tag "v$VERSION" && git push origin "v$VERSION"
+# Annotated with an explicit message: with tag.gpgsign / tag.forceSignAnnotate set, a bare `git tag` fails "no tag message?".
+git tag -a "v$VERSION" -m "EZCal $VERSION" && git push origin "v$VERSION"
 echo "Released $VERSION. Users: brew update && brew upgrade --cask ezcal"
